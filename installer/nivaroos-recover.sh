@@ -24,49 +24,74 @@ USER_UNIT=nivaroos-user-service.service
 REVOKED="${NIVAROOS_REVOKED_SESSIONS:-/var/lib/nivaroos/revoked_sessions.json}"
 
 usage() {
-	sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
-	exit "${1:-2}"
-}
+	ui_banner "recover" "Get back in from a shell when the dashboard won't let you"
+	cat <<'EOF'
 
-if [ -z "${NIVAROOS_ALLOW_NONROOT:-}" ] && [ "$(id -u)" -ne 0 ]; then
-	echo "nivaroos-recover: run as root (sudo nivaroos-recover ...)" >&2
-	exit 1
-fi
+  Usage
+    sudo nivaroos-recover status                  services, remote access, recent watchdog actions
+    sudo nivaroos-recover unlock                  clear login lockouts (restarts the user service)
+    sudo nivaroos-recover reset-password <user>   set a new random password and print it
+    sudo nivaroos-recover clear-revocations       forget ended sessions (they work again until they expire)
+    sudo nivaroos-recover restart                 restart every NivaroOS service
+
+  A bad update: nivaroos-rollback (list) / nivaroos-rollback all.
+
+  Exit   0 done, 1 failed, 2 bad usage
+EOF
+}
 
 cmd="${1:-status}"
 shift || true
+case "$cmd" in
+	-h | --help | help)
+		usage
+		exit 0
+		;;
+esac
+
+if [ -z "${NIVAROOS_ALLOW_NONROOT:-}" ] && [ "$(id -u)" -ne 0 ]; then
+	ui_die "nivaroos-recover needs root: sudo nivaroos-recover ..."
+fi
 
 case "$cmd" in
 	status)
-		echo "== NivaroOS services"
+		ui_head "Services"
 		for u in $(nv_units); do
-			printf '  %-40s %s/%s\n' "$u" "$(nv_prop "$u" ActiveState)" "$(nv_prop "$u" SubState)"
+			if nv_unit_healthy "$u"; then
+				ui_ok "$(printf '%-38s %s%s/%s%s' "$u" "$UI_D" "$(nv_prop "$u" ActiveState)" "$(nv_prop "$u" SubState)" "$UI_R")"
+			else
+				ui_err "$(printf '%-38s %s/%s' "$u" "$(nv_prop "$u" ActiveState)" "$(nv_prop "$u" SubState)")" 2>&1
+			fi
 		done
-		echo "== Remote access"
+		ui_head "Remote access"
 		if command -v tailscale >/dev/null 2>&1; then
-			printf '  tailscaled: %s   address: %s\n' "$("$NV_SYSTEMCTL" is-active tailscaled 2>/dev/null)" "$(tailscale ip -4 2>/dev/null | head -n 1)"
+			ui_kv "tailscaled" "$("$NV_SYSTEMCTL" is-active tailscaled 2>/dev/null)"
+			ui_kv "address" "$(tailscale ip -4 2>/dev/null | head -n 1)"
 			tailscale status --json 2>/dev/null | python3 -c 'import json,sys
 d=json.load(sys.stdin); s=d.get("Self",{})
-print("  MagicDNS name:", (s.get("DNSName") or "").rstrip("."))
-print("  node key expiry:", s.get("KeyExpiry") or "disabled (never expires)")' 2>/dev/null || true
+print("    %-12s %s" % ("MagicDNS", (s.get("DNSName") or "").rstrip(".")))
+print("    %-12s %s" % ("key expiry", s.get("KeyExpiry") or "disabled (never expires)"))' 2>/dev/null || true
 		else
-			echo "  tailscale is not installed"
+			ui_kv "tailscale" "not installed"
 		fi
 		for u in ssh.service sshd.service ssh.socket; do
 			st="$("$NV_SYSTEMCTL" is-active "$u" 2>/dev/null || true)"
-			[ -n "$st" ] && [ "$st" != "inactive" ] && printf '  %-12s %s\n' "$u" "$st"
+			[ -n "$st" ] && [ "$st" != "inactive" ] && ui_kv "$u" "$st"
 		done
-		echo "== Recent watchdog / rollback actions"
-		if [ -s "$NV_LOG_FILE" ]; then tail -n 10 "$NV_LOG_FILE" | sed 's/^/  /'; else echo "  (none)"; fi
+		ui_head "Recent watchdog and rollback actions"
+		if [ -s "$NV_LOG_FILE" ]; then tail -n 10 "$NV_LOG_FILE" | sed 's/^/    /'; else printf '    %s(none)%s\n' "$UI_D" "$UI_R"; fi
+		printf '\n'
+
 		;;
 	unlock)
-		nv_restart "$USER_UNIT" && echo "login lockouts cleared ($USER_UNIT restarted)"
+		nv_restart "$USER_UNIT" || ui_die "Could not restart $USER_UNIT: journalctl -u $USER_UNIT -n 50"
+		ui_ok "Login lockouts cleared  ${UI_D}($USER_UNIT restarted)${UI_R}"
 		nv_log "login lockouts cleared from the shell"
 		;;
 	reset-password)
 		user="${1:-}"
-		[ -n "$user" ] || { echo "usage: nivaroos-recover reset-password <username>" >&2; exit 2; }
-		[ -x "$USER_BIN" ] || { echo "$USER_BIN not found" >&2; exit 1; }
+		[ -n "$user" ] || ui_die "Usage: nivaroos-recover reset-password <username>" 2
+		[ -x "$USER_BIN" ] || ui_die "$USER_BIN not found"
 		# Current builds of the user service reset the password and exit.
 		# Older ones then went on to start a second user service; give them
 		# a private runtime directory (so it can't replace the running
@@ -80,12 +105,12 @@ print("  node key expiry:", s.get("KeyExpiry") or "disabled (never expires)")' 2
 		rc=0
 		if ! printf '%s\n' "$out" | grep -q '^Password:'; then
 			printf '%s\n' "$out" | grep -v '^git commit\|^build date' >&2
-			echo "password reset failed" >&2
+			ui_err "Password reset failed"
 			nv_restart "$USER_UNIT" >/dev/null 2>&1 || true
 			exit 1
 		fi
 		printf '%s\n' "$out" | grep '^UserName:\|^Password:'
-		echo "Sign in with this password, then change it in Settings."
+		ui_ok "Sign in with this password, then change it in Settings."
 		nv_restart "$USER_UNIT" >/dev/null 2>&1 || true
 		nv_log "password of '$user' reset from the shell"
 		exit $rc
@@ -93,17 +118,22 @@ print("  node key expiry:", s.get("KeyExpiry") or "disabled (never expires)")' 2
 	clear-revocations)
 		if [ -f "$REVOKED" ]; then
 			bak="$REVOKED.cleared-$(date +%Y%m%d-%H%M%S)"
-			mv -f "$REVOKED" "$bak" && echo "ended-session list moved to $bak"
+			mv -f "$REVOKED" "$bak" || ui_die "Could not move $REVOKED"
+			ui_ok "Ended-session list moved to $bak"
 			nv_log "revoked-session list cleared from the shell (kept as $bak)"
 		else
-			echo "no ended sessions recorded"
+			ui_info "No ended sessions recorded"
 		fi
 		;;
 	restart)
+		rc=0
 		for u in $(nv_units); do
-			nv_restart "$u" && echo "restarted $u" || echo "restart of $u FAILED" >&2
+			if nv_restart "$u"; then ui_ok "restarted $u"; else ui_err "restart of $u failed - journalctl -u $u -n 50"; rc=1; fi
 		done
+		exit $rc
 		;;
-	-h | --help | help) usage 0 ;;
-	*) usage ;;
+	*)
+		ui_err "Unknown command '$cmd' - see --help."
+		exit 2
+		;;
 esac

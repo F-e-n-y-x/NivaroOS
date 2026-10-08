@@ -148,19 +148,22 @@ The companion app (Flutter, in [`mobile/`](mobile/)) puts the server in your poc
 
 ## ⚡ Install
 
-On a **Debian 11+** or **Ubuntu 20.04+** machine (also Raspberry Pi OS, Linux Mint, Pop!_OS and other Debian-based systems), amd64 or arm64:
+On **Debian 12/13** or **Ubuntu 22.04/24.04/26.04**, amd64 or arm64 (other Debian-based systems such as Raspberry Pi OS, Linux Mint and Pop!_OS are best effort), run one command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash
 ```
 
-The installer asks which components you want (or takes the defaults with `-y`), builds NivaroOS from source and starts it. Then open `http://<your-server-ip>` and create your account.
+The installer first checks the machine (OS, architecture, systemd, memory, disk, internet, a free dashboard port, no CasaOS) and changes nothing if a check fails. It then asks which components you want (or takes the defaults with `-y`, or when no one is at the terminal), builds NivaroOS from source in numbered steps and starts it. Then open `http://<your-server-ip>` and create your account.
+
+It is safe to run again: every step can be repeated, so after a failure or Ctrl+C the same command picks up where it stopped. A failed step shows its last output lines; the full log is `/var/log/nivaroos/install.log`. Exit codes: `0` done, `1` failed, `2` bad option, `130` cancelled.
 
 To pass flags, use `| sudo bash -s -- <flags>`:
 
 | Flag | What it does |
 | :--- | :--- |
-| `-y`, `--yes` | Non-interactive: accept the defaults, no selection menu |
+| `-y`, `--yes` | Unattended: accept the defaults, no questions |
+| `--dry-run` | Run the checks and show the planned steps; change nothing |
 | `--with-vm` / `--without-vm` | VM Manager with QEMU/KVM, libvirt and the web console |
 | `--with-host-desktop` / `--without-host-desktop` | Host Desktop streaming over VNC (needs VM Manager) |
 | `--with-download-station` / `--without-download-station` | Download Station (default: on) |
@@ -168,9 +171,10 @@ To pass flags, use `| sudo bash -s -- <flags>`:
 | `--without-ds-torrent` | Don't install `qbittorrent-nox` (torrents use the built-in engine) |
 | `--with-backup` / `--without-backup` | Backup & Sync (default: on) |
 | `--port <port>` | Dashboard port (default: 80, or the next free port) |
-| `--branch <branch>` | Git branch or tag to install (default: `master`) |
+| `--branch <ref>` | Git branch or tag to install (default: `master`) |
+| `--repo <url>` | Git repository to install from |
 | `--force` | Upgrade even while a backup is running (it is retried afterwards) |
-| `--debug` | Verbose logs |
+| `--debug` | Show every step's full output |
 | `-h`, `--help` | All options |
 
 ---
@@ -190,7 +194,20 @@ sudo nivaroos-recover status               # services, remote access, recent wat
 sudo nivaroos-recover unlock               # clear login lockouts
 sudo nivaroos-recover reset-password <user>
 sudo nivaroos-recover restart              # restart every NivaroOS service
+sudo nivaroos-deploy <binary> <unit>       # replace one binary, rolled back if it fails to start
 ```
+
+Every command takes `--help`, honours `NO_COLOR`, and exits `0` on success, `1` on failure and `2` on bad usage.
+
+**Uninstalling:**
+
+```bash
+sudo nivaroos-uninstall                    # asks before deleting any data
+sudo nivaroos-uninstall --yes              # unattended, keeps all data
+sudo nivaroos-uninstall --yes --delete-data
+```
+
+It removes NivaroOS's services, units, binaries, command-line tools, dashboard, config and state. It asks separately about installed apps (their containers and `/DATA/AppData`), virtual machines (`/DATA/VMs`) and your other files in `/DATA`; every answer defaults to keeping them. Drives mounted under `/DATA`, or a `/DATA` that is a separate drive or storage pool, are never deleted from. Docker and other system packages stay installed. `--keep-data` keeps everything without asking, `--dry-run` shows what would happen.
 
 ---
 

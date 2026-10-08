@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
 # ==============================================================================
-#  NivaroOS Uninstaller Script
-#  Clean Teardown & Service Removal
-#  GitHub: https://github.com/F-e-n-y-x/NivaroOS
+#  NivaroOS uninstaller
+#  https://github.com/F-e-n-y-x/NivaroOS
+#
+#    sudo nivaroos-uninstall                 asks before deleting any data
+#    sudo nivaroos-uninstall --yes           unattended; keeps all data
+#    sudo nivaroos-uninstall --yes --delete-data
+#
+#  Removes NivaroOS's services, units, drop-ins, binaries, CLIs, web
+#  dashboard, config and state. Your data (/DATA: apps' data, VMs, files) is
+#  only deleted when you say so, and never on another drive: drives mounted
+#  under /DATA, or a /DATA that is itself a separate drive or storage pool,
+#  are left alone. Docker, Go and other system packages stay installed.
+#  Safe to re-run.
 # ==============================================================================
 
 if [ -z "${BASH_VERSION:-}" ]; then
@@ -10,853 +20,514 @@ if [ -z "${BASH_VERSION:-}" ]; then
 fi
 
 set -Eeuo pipefail
-shopt -s checkwinsize 2>/dev/null || true
 
-SRC_DIR="/opt/nivaroos/src"
-ALL_UNITS="nivaroos-watchdog.timer nivaroos-watchdog.service nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-fans.service nivaroos-vm-sidecar.service nivaroos-download-sidecar.service nivaroos-torrent.service nivaroos-ds-browser.socket nivaroos-ds-browser.service nivaroos-backup.service nivaroos-host-desktop.service rclone.service usb-mount@.service"
+ALL_UNITS="nivaroos-watchdog.timer nivaroos-watchdog.service nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-fans.service nivaroos-vm-sidecar.service nivaroos-download-sidecar.service nivaroos-torrent.service nivaroos-ds-browser.socket nivaroos-ds-browser.service nivaroos-ds-browser-install.service nivaroos-backup.service nivaroos-host-desktop.service rclone.service"
 MANIFEST_FILE="/var/lib/nivaroos/manifest"
 DESKTOP_PROVISION_MARKER="/var/lib/nivaroos/provisioned-desktop"
-LEFTOVER_FILE="/tmp/nivaroos-uninstall-leftovers.$$"
+GDM_WAYLAND_MARKER="/var/lib/nivaroos/host-desktop-gdm-wayland"
+APPS_DIR="/var/lib/nivaroos/apps"
+DATA_DIR="${NIVAROOS_DATA_DIR:-/DATA}"
+LOG_FILE="/var/log/nivaroos-uninstall.log"
 
-PURGE_DATA=""
-REMOVE_PROVISIONED_DESKTOP=""
 YES=""
-CLI_WIDTH=""
-CLI_HEIGHT=""
+DATA_MODE="" # "" ask, keep, delete
+DRY_RUN=""
+REMOVE_PROVISIONED_DESKTOP=""
+DEL_APPS=no
+DEL_VMS=no
+DEL_FILES=no
 STEP_NUM=0
-TOTAL_STEPS=4
-IN_ALT_SCREEN="false"
-START_TIME=0
+TOTAL_STEPS=0
+FAILED_STEPS=()
+SKIPPED_PATHS=()
+LEFTOVER_ITEMS=""
+PROVISIONED_DESKTOP_INFO=""
+GDM_WAYLAND_INFO=""
 
-# ------------------------------------------------------------------------------
-# Terminal & Color Formatting
-# ------------------------------------------------------------------------------
-IS_TTY="false"
-if [ -t 1 ] && [ "${TERM:-}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
-	IS_TTY="true"
-fi
-
-if [ "$IS_TTY" = "true" ]; then
-	COLOR_RESET='\033[0m'
-	COLOR_BOLD='\033[1m'
-	COLOR_DIM='\033[2m'
-	COLOR_CYAN='\033[38;5;51m'
-	COLOR_BLUE='\033[38;5;39m'
-	COLOR_GREEN='\033[38;5;48m'
-	COLOR_YELLOW='\033[38;5;220m'
-	COLOR_RED='\033[38;5;196m'
-	COLOR_PURPLE='\033[38;5;141m'
-	COLOR_MUTED='\033[38;5;244m'
-	COLOR_WHITE='\033[38;5;255m'
+# >>> nivaroos-ui - one block, copied verbatim into install.sh, uninstall.sh
+# and nivaroos-safety-lib.sh (installer/tests/ui-block-test.sh keeps the
+# copies identical; change it here, then copy). Ink and greys like the
+# app's Rack style; colour only for status. No colour when stdout is not a
+# terminal, NO_COLOR is set, or TERM=dumb; ASCII without a UTF-8 locale.
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != dumb ]; then
+	UI_B=$'\033[1m' UI_D=$'\033[2m' UI_R=$'\033[0m'
+	UI_OK=$'\033[38;5;36m' UI_WARN=$'\033[38;5;178m' UI_ERR=$'\033[38;5;167m' UI_MINT=$'\033[38;5;122m'
 else
-	COLOR_RESET=''
-	COLOR_BOLD=''
-	COLOR_DIM=''
-	COLOR_CYAN=''
-	COLOR_BLUE=''
-	COLOR_GREEN=''
-	COLOR_YELLOW=''
-	COLOR_RED=''
-	COLOR_PURPLE=''
-	COLOR_MUTED=''
-	COLOR_WHITE=''
+	UI_B='' UI_D='' UI_R='' UI_OK='' UI_WARN='' UI_ERR='' UI_MINT=''
+fi
+case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+	*[Uu][Tt][Ff]-8* | *[Uu][Tt][Ff]8*) UI_I_OK='✓' UI_I_ERR='✗' UI_I_DOT='●' UI_N1='█▀▄  █' UI_N2='█  ▀▄█' ;;
+	*) UI_I_OK='ok' UI_I_ERR='x' UI_I_DOT='o' UI_N1='|\   |' UI_N2='|  \ |' ;;
+esac
+# ui_banner TITLE [SUBTITLE] - the "Ni" mark (an N whose last stroke is the
+# stem of an i, mint dot on top) with the title beside it.
+ui_banner() {
+	printf '\n       %s%s%s\n' "$UI_MINT" "$UI_I_DOT" "$UI_R"
+	printf '  %s   %sNivaroOS%s %s\n' "$UI_N1" "$UI_B" "$UI_R" "$1"
+	printf '  %s   %s%s%s\n' "$UI_N2" "$UI_D" "${2:-}" "$UI_R"
+}
+ui_head() { printf '\n  %s%s%s\n' "$UI_B" "$1" "$UI_R"; }
+ui_ok() { printf '  %s%s%s %s\n' "$UI_OK" "$UI_I_OK" "$UI_R" "$1"; }
+ui_info() { printf '  %s-%s %s\n' "$UI_D" "$UI_R" "$1"; }
+ui_warn() { printf '  %s!%s %s\n' "$UI_WARN" "$UI_R" "$1" >&2; }
+ui_err() { printf '  %s%s%s %s\n' "$UI_ERR" "$UI_I_ERR" "$UI_R" "$1" >&2; }
+ui_die() { ui_err "$1"; exit "${2:-1}"; }
+# ui_kv KEY VALUE - one aligned "key  value" row.
+ui_kv() { printf '    %s%-12s%s %s\n' "$UI_D" "$1" "$UI_R" "$2"; }
+# <<< nivaroos-ui
+
+INTERACTIVE_TTY="false"
+if [ -t 1 ] && { : </dev/tty; } 2>/dev/null; then
+	INTERACTIVE_TTY="true"
 fi
 
-SPINNER_FRAMES=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+trap 'ui_err "The uninstaller stopped unexpectedly at line $LINENO (log: $LOG_FILE)."; exit 1' ERR
+trap 'printf "\n"; ui_warn "Cancelled - run it again to finish (it is safe to repeat)."; exit 130' INT TERM
 
-info()    { printf '%b\n' "${COLOR_CYAN}ℹ${COLOR_RESET}  ${COLOR_WHITE}$1${COLOR_RESET}"; }
-success() { printf '%b\n' "${COLOR_GREEN}✔${COLOR_RESET}  ${COLOR_GREEN}$1${COLOR_RESET}"; }
-warn()    { printf '%b\n' "${COLOR_YELLOW}⚠${COLOR_RESET}  ${COLOR_YELLOW}$1${COLOR_RESET}" >&2; }
-error()   { printf '%b\n' "${COLOR_RED}✖${COLOR_RESET}  ${COLOR_RED}$1${COLOR_RESET}" >&2; }
-
-cleanup_on_exit() {
-	if [ "$IN_ALT_SCREEN" = "true" ]; then
-		printf "\033[?1049l"
-		IN_ALT_SCREEN="false"
-	fi
-	if [ "$IS_TTY" = "true" ]; then
-		printf "\033[?25h"
-	fi
-}
-trap cleanup_on_exit EXIT INT TERM
-
-# Without -E (errtrace), this trap would never fire for a failure inside a
-# function - which is everything here, since main() calls nothing but
-# functions - so set -e would abort silently with no message at all. See
-# install.sh's identical fix for the full explanation; this mirrors it.
-on_fatal_error() {
-	local exit_code=$?
-	local line_no="$1"
-	if [ "$IN_ALT_SCREEN" = "true" ]; then
-		printf "\033[?1049l"
-		IN_ALT_SCREEN="false"
-	fi
-	if [ "$exit_code" -ne 0 ]; then
-		error "Uninstall terminated unexpectedly at line ${line_no} (exit code ${exit_code})."
-	fi
-	exit "$exit_code"
-}
-trap 'on_fatal_error "$LINENO"' ERR
-
-strip_ansi() {
-	printf '%b' "$1" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\033\[[0-9;]*[a-zA-Z]//g' | tr '\r\t' '  '
-}
-
-# ------------------------------------------------------------------------------
-# Real-Time Terminal Dimension Detection & CPR Hardware Probing
-# ------------------------------------------------------------------------------
-TERM_COLS=80
-TERM_ROWS=24
-
-get_term_size() {
-	if [ -n "${CLI_WIDTH:-}" ] && [ "$CLI_WIDTH" -ge 40 ] 2>/dev/null; then
-		TERM_COLS="$CLI_WIDTH"
-		TERM_ROWS="${CLI_HEIGHT:-24}"
-		return
-	fi
-	if [ -n "${WIDTH:-}" ] && [ "$WIDTH" -ge 40 ] 2>/dev/null; then
-		TERM_COLS="$WIDTH"
-		TERM_ROWS="${HEIGHT:-24}"
-		return
-	fi
-
-	local rows=0 cols=0
-
-	# 1. Probe terminal emulator directly via ANSI CPR (Cursor Position Report)
-	if [ "$IS_TTY" = "true" ] && [ -e /dev/tty ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
-		if command -v stty >/dev/null 2>&1; then
-			local old_stty
-			old_stty="$(stty -g </dev/tty 2>/dev/null || true)"
-			if [ -n "$old_stty" ]; then
-				stty raw -echo min 0 time 0 </dev/tty 2>/dev/null || true
-				printf "\0337\033[9999;9999H\033[6n\0338" >/dev/tty 2>/dev/null || true
-				local resp=""
-				read -r -t 0.08 -d 'R' resp </dev/tty 2>/dev/null || true
-				stty "$old_stty" </dev/tty 2>/dev/null || true
-				if [[ "$resp" =~ \[([0-9]+)\;([0-9]+) ]]; then
-					rows="${BASH_REMATCH[1]}"
-					cols="${BASH_REMATCH[2]}"
-				fi
-			fi
-		fi
-	fi
-
-	# 2. Fallback to stty size on /dev/tty
-	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
-		if [ -e /dev/tty ]; then
-			local stty_out
-			stty_out="$(stty size </dev/tty 2>/dev/null || true)"
-			if [ -n "$stty_out" ]; then
-				rows="$(echo "$stty_out" | awk '{print $1}')"
-				cols="$(echo "$stty_out" | awk '{print $2}')"
-			fi
-		fi
-	fi
-
-	# 3. Fallback to stty size on stdin
-	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
-		if [ -t 0 ] || [ -t 1 ]; then
-			local stty_out
-			stty_out="$(stty size 2>/dev/null || true)"
-			if [ -n "$stty_out" ]; then
-				rows="$(echo "$stty_out" | awk '{print $1}')"
-				cols="$(echo "$stty_out" | awk '{print $2}')"
-			fi
-		fi
-	fi
-
-	# 4. Fallback to tput
-	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
-		if command -v tput >/dev/null 2>&1; then
-			cols="$(tput cols 2>/dev/null || true)"
-			rows="$(tput lines 2>/dev/null || true)"
-		fi
-	fi
-
-	# 5. Fallback to environment variables
-	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
-		cols="${COLUMNS:-80}"
-		rows="${LINES:-24}"
-	fi
-
-	if [ "$cols" -lt 40 ] 2>/dev/null; then cols=80; fi
-	if [ "$rows" -lt 10 ] 2>/dev/null; then rows=24; fi
-
-	# Sync kernel tty driver if CPR found a larger width
-	if [ "$cols" -gt 0 ] && [ "$rows" -gt 0 ] && [ -e /dev/tty ]; then
-		stty rows "$rows" cols "$cols" </dev/tty 2>/dev/null || true
-	fi
-
-	TERM_COLS="$cols"
-	TERM_ROWS="$rows"
-}
-
-get_terminal_width() {
-	get_term_size
-	echo "$TERM_COLS"
-}
-
-get_terminal_height() {
-	get_term_size
-	echo "$TERM_ROWS"
-}
-
-check_root() {
-	if [ "$(id -u)" -ne 0 ]; then
-		if command -v sudo >/dev/null 2>&1; then
-			info "Root privileges required. Elevating with sudo..."
-			exec sudo -E bash "$0" "$@"
-		else
-			error "NivaroOS uninstaller must be run as root."
-			exit 1
-		fi
-	fi
-}
-
-print_banner() {
-	if [ "$IS_TTY" = "true" ]; then
-		clear 2>/dev/null || true
-	fi
-	printf "\n"
-	printf '%b' "${COLOR_BOLD}${COLOR_CYAN}"
+usage() {
+	ui_banner "uninstaller" "Removes NivaroOS; asks before deleting data"
 	cat <<'EOF'
-    _   _ _                         ___  ____  
-   | \ | (_)_   ____ _ _ __ ___    / _ \/ ___| 
-   |  \| | \ \ / / _` | '__/ _ \  | | | \___ \ 
-   | |\  | |\ V / (_| | | | (_) | | |_| |___) |
-   |_| \_|_| \_/ \__,_|_|  \___/   \___/|____/ 
+
+  Usage
+    sudo nivaroos-uninstall [options]
+
+  Options
+    -y, --yes                       Unattended: no questions. Data is kept
+                                    unless --delete-data is given too
+    --keep-data                     Keep all data in /DATA (apps' data, VMs, files)
+                                    and the installed apps' containers
+    --delete-data                   Delete apps (containers and /DATA/AppData),
+                                    VMs (/DATA/VMs) and everything else in /DATA
+    --remove-provisioned-desktop    Also remove a desktop NivaroOS installed for
+                                    Host Desktop (never one you already had)
+    --dry-run                       Show what would be removed; change nothing
+    -h, --help                      Show this help
+
+  Never touched: drives mounted under /DATA, a /DATA on its own drive or
+  pool, Docker, Go and other system packages.
+
+  Exit   0 done, 1 something could not be removed, 2 bad option, 130 cancelled
 EOF
-	printf '%b\n' "${COLOR_RESET}"
-	printf '%b\n\n' "   ${COLOR_PURPLE}✦${COLOR_RESET} ${COLOR_BOLD}NivaroOS Complete Teardown & Uninstaller${COLOR_RESET} ${COLOR_PURPLE}✦${COLOR_RESET}"
 }
 
 parse_args() {
 	while [ $# -gt 0 ]; do
 		case "$1" in
-			--purge-data) PURGE_DATA=yes ;;
+			--yes | -y | --unattended) YES=yes ;;
+			--keep-data) DATA_MODE=keep ;;
+			--delete-data | --purge-data) DATA_MODE=delete ;;
 			--remove-provisioned-desktop) REMOVE_PROVISIONED_DESKTOP=yes ;;
-			--yes|-y|--unattended) YES=yes ;;
-			--width=*) CLI_WIDTH="${1#*=}" ;;
-			--width|-w)
-				shift
-				CLI_WIDTH="${1:-}"
-				;;
-			--help|-h)
-				print_banner
-				printf '%b\n' "${COLOR_BOLD}Usage:${COLOR_RESET} uninstall.sh [options]\n"
-				printf '%b\n' "${COLOR_BOLD}Options:${COLOR_RESET}"
-				printf '%b\n' "  ${COLOR_CYAN}-y, --yes${COLOR_RESET}                       Automatic non-interactive uninstall (skip confirmation)"
-				printf '%b\n' "  ${COLOR_CYAN}--purge-data${COLOR_RESET}                    Permanently delete /DATA (all app configs, VM disks, files)"
-				printf '%b\n' "  ${COLOR_CYAN}--remove-provisioned-desktop${COLOR_RESET}    Also remove the desktop environment install.sh installed for Host Desktop streaming (never touches a desktop you already had)"
-				printf '%b\n' "  ${COLOR_CYAN}--width <cols>${COLOR_RESET}                  Force specific terminal box width (default: auto-detect)"
-				printf '%b\n' "  ${COLOR_CYAN}-h, --help${COLOR_RESET}                      Display this help message and exit"
-				printf '\n'
+			--dry-run | -n) DRY_RUN=yes ;;
+			--width | -w) shift ;; # accepted for compatibility
+			--width=*) ;;
+			--help | -h)
+				usage
 				exit 0
 				;;
 			*)
-				error "Unknown argument '$1'. Run with --help to see available options."
-				exit 1
+				ui_err "Unknown option '$1' - see --help."
+				exit 2
 				;;
 		esac
-		shift
+		[ $# -eq 0 ] || shift
 	done
 }
 
-confirm_uninstall() {
-	if [ -n "$YES" ]; then
-		return
+check_root() {
+	[ "$(id -u)" -eq 0 ] && return 0
+	[ -n "$DRY_RUN" ] && return 0
+	if [ -f "$0" ] && command -v sudo >/dev/null 2>&1; then
+		exec sudo -E bash "$0" "$@"
 	fi
+	ui_die "The uninstaller needs root: sudo nivaroos-uninstall"
+}
 
-	if [ ! -t 0 ]; then
-		return
-	fi
-
-	printf '%b\n' "${COLOR_BOLD}${COLOR_WHITE}You are about to uninstall NivaroOS from this machine.${COLOR_RESET}"
-	printf '%b\n' "  • All NivaroOS systemd background services will be stopped and removed."
-	printf '%b\n' "  • System binaries (/usr/bin/nivaroos*) and web assets will be deleted."
-	if [ "$PURGE_DATA" = "yes" ]; then
-		printf '%b\n' "  ${COLOR_RED}• WARNING: /DATA will be permanently erased (all app databases, VM disks, files).${COLOR_RESET}"
-	else
-		printf '%b\n' "  • User data in ${COLOR_GREEN}/DATA${COLOR_RESET} will be ${COLOR_GREEN}PRESERVED${COLOR_RESET} safely."
-	fi
-	printf '\n'
-
+# ask QUESTION - yes/no on the terminal, default no.
+ask() {
 	local reply=""
-	printf '%b' "  ${COLOR_CYAN}?${COLOR_RESET} ${COLOR_BOLD}Proceed with uninstallation?${COLOR_RESET} [y/N]: "
+	printf '  ? %s [y/N]: ' "$1"
 	read -r reply </dev/tty || reply=""
-	case "$reply" in
-		[yY]|[yY][eE][sS]) ;;
-		*)
-			info "Uninstallation aborted."
-			exit 0
+	case "$reply" in [yY] | [yY][eE][sS]) return 0 ;; esac
+	return 1
+}
+
+# on_root_fs PATH - PATH is on the same filesystem as / (not a drive or
+# pool mounted there or above it).
+on_root_fs() {
+	[ "$(stat -c %d "$1" 2>/dev/null)" = "$(stat -c %d / 2>/dev/null)" ]
+}
+
+# safe_rm PATH - delete PATH unless it, or the filesystem it is on, is not
+# the system disk. --one-file-system also skips drives mounted inside it.
+safe_rm() {
+	local p="$1"
+	[ -e "$p" ] || [ -L "$p" ] || return 0
+	if ! on_root_fs "$p" || mountpoint -q "$p" 2>/dev/null; then
+		echo "kept $p - it is on another drive"
+		echo "$p" >>"$SKIP_FILE"
+		return 0
+	fi
+	rm -rf --one-file-system "$p"
+}
+
+# choose_data decides, before anything is removed, what happens to data.
+choose_data() {
+	case "$DATA_MODE" in
+		keep) return 0 ;;
+		delete)
+			DEL_APPS=yes DEL_VMS=yes DEL_FILES=yes
+			return 0
 			;;
 	esac
+	# Unattended, or no terminal to ask on: data is kept.
+	[ -n "$YES" ] && return 0
+	[ "$INTERACTIVE_TTY" = "true" ] || return 0
+	ui_head "Your data"
+	printf '    %sEach answer defaults to no: data is kept unless you say yes.%s\n\n' "$UI_D" "$UI_R"
+	ask "Delete installed apps (their containers) and their data in ${DATA_DIR}/AppData?" && DEL_APPS=yes
+	ask "Delete virtual machines (definitions and disks in ${DATA_DIR}/VMs)?" && DEL_VMS=yes
+	ask "Delete everything else in ${DATA_DIR} (Documents, Downloads, Media, Gallery ...)?" && DEL_FILES=yes
+	return 0
+}
+
+confirm() {
+	ui_head "This will"
+	ui_info "stop and remove every NivaroOS service, timer and drop-in"
+	ui_info "remove NivaroOS binaries, CLIs, the web dashboard, /etc/nivaroos and /var/lib/nivaroos"
+	if [ "$DEL_APPS" = yes ]; then ui_warn "DELETE installed apps' containers and ${DATA_DIR}/AppData" 2>&1; else ui_ok "keep installed apps and ${DATA_DIR}/AppData"; fi
+	if [ "$DEL_VMS" = yes ]; then ui_warn "DELETE virtual machines and ${DATA_DIR}/VMs" 2>&1; else ui_ok "keep virtual machines and ${DATA_DIR}/VMs"; fi
+	if [ "$DEL_FILES" = yes ]; then ui_warn "DELETE your other files in ${DATA_DIR}" 2>&1; else ui_ok "keep your files in ${DATA_DIR}"; fi
+	ui_ok "leave drives mounted under ${DATA_DIR} and other drives alone"
+	printf '\n'
+	[ -n "$DRY_RUN" ] && return 0
+	[ -n "$YES" ] && return 0
+	if [ "$INTERACTIVE_TTY" != "true" ]; then
+		ui_die "No terminal to confirm on - run with --yes to uninstall unattended (data is kept unless --delete-data)." 2
+	fi
+	ask "Uninstall NivaroOS?" || {
+		ui_info "Nothing was changed."
+		exit 0
+	}
 	printf '\n'
 }
 
+# run_step TITLE SCRIPT - best effort: a failed step is reported (with its
+# last output lines) and the uninstall goes on; the exit code says so.
 run_step() {
-	local title="$1"
+	local title="$1" out rc tag
 	shift
 	STEP_NUM=$((STEP_NUM + 1))
-	local step_tag="[${STEP_NUM}/${TOTAL_STEPS}]"
-	local start_ts
-	start_ts=$(date +%s)
-
-	local log_file
-	log_file=$(mktemp /tmp/nivaroos-uninstall-step-XXXXXX.log)
-
-	if [ "$IS_TTY" = "true" ]; then
-		(
-			eval "$*"
-		) > "$log_file" 2>&1 </dev/null &
-		local cmd_pid=$!
-
-		local frame_idx=0
-		local num_frames=${#SPINNER_FRAMES[@]}
-
-		# Alternate screen + absolute positioning, not relative "cursor up
-		# N lines" on the normal buffer - see install.sh's run_step for the
-		# full explanation (a long-running step scrolling the terminal used
-		# to desync the redraw, printing every frame as new lines forever).
-		printf "\033[?1049h\033[?25l"
-		IN_ALT_SCREEN="true"
-
-		while kill -0 "$cmd_pid" 2>/dev/null; do
-			local current_ts
-			current_ts=$(date +%s)
-			local elapsed=$((current_ts - start_ts))
-			local frame="${SPINNER_FRAMES[$frame_idx]}"
-
-			# Dynamically re-query terminal size EVERY frame in real-time
-			get_term_size
-			local box_width=$((TERM_COLS - 2))
-			if [ "$box_width" -lt 38 ]; then box_width=38; fi
-			local inner_width=$((box_width - 6))
-
-			# Fill however much vertical space is actually available
-			# (reserving 3 rows for the header + box borders), capped so an
-			# extreme terminal doesn't turn this into a huge wall of text -
-			# see install.sh's run_step for the full explanation.
-			local reserved_lines=3
-			local available_lines=$((TERM_ROWS - reserved_lines))
-			local max_log_lines=30
-			local num_log_lines="$available_lines"
-			if [ "$num_log_lines" -gt "$max_log_lines" ]; then
-				num_log_lines="$max_log_lines"
-			fi
-
-			printf "\033[H"
-
-			if [ "$available_lines" -lt 3 ]; then
-				local status_line="  ${frame} ${step_tag} ${title} (${elapsed}s)"
-				local clean_status
-				clean_status="$(strip_ansi "$status_line")"
-				if [ "${#clean_status}" -gt "$TERM_COLS" ]; then
-					clean_status="${clean_status:0:$TERM_COLS}"
-				fi
-				printf "\033[2K%b%s%b\r\n" "${COLOR_CYAN}" "$clean_status" "${COLOR_RESET}"
-				printf "\033[J"
-				frame_idx=$(( (frame_idx + 1) % num_frames ))
-				sleep 0.08
-				continue
-			fi
-
-			if [ "$num_log_lines" -lt 3 ]; then
-				num_log_lines=3
-			fi
-
-			# Top Half: Progress Header with Animated Spinner & Live Timer
-			printf "\033[2K  %b %b %b %b(%ds)%b\r\n" \
-				"${COLOR_CYAN}${frame}${COLOR_RESET}" \
-				"${COLOR_BOLD}${COLOR_BLUE}${step_tag}${COLOR_RESET}" \
-				"${COLOR_WHITE}${title}${COLOR_RESET}" \
-				"${COLOR_MUTED}" "${elapsed}" "${COLOR_RESET}"
-
-			# Bottom Half: Fully Enclosed Activity Box
-			local title_tag=" Teardown Activity "
-			local top_dashes_len=$((box_width - ${#title_tag} - 4))
-			if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
-			local top_dashes=""
-			for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
-
-			printf "\033[2K%b╭──%b%s%b%s╮%b\r\n" \
-				"${COLOR_MUTED}" "${COLOR_CYAN}" "${title_tag}" "${COLOR_MUTED}" "${top_dashes}" "${COLOR_RESET}"
-
-			local lines=()
-			if [ -f "$log_file" ] && [ -s "$log_file" ]; then
-				mapfile -t lines < <(tail -n "$num_log_lines" "$log_file" 2>/dev/null || true)
-			fi
-
-			local pad_count=$((num_log_lines - ${#lines[@]}))
-			for ((p=0; p<pad_count; p++)); do
-				local empty_pad=""
-				if [ "$inner_width" -gt 3 ]; then
-					empty_pad="$(printf '%*s' "$((inner_width - 3))" '')"
-				fi
-				printf "\033[2K%b│%b  ...%s  %b│%b\r\n" "${COLOR_MUTED}" "${COLOR_MUTED}" "$empty_pad" "${COLOR_MUTED}" "${COLOR_RESET}"
-			done
-
-			for l in "${lines[@]}"; do
-				local clean_l
-				clean_l="$(strip_ansi "$l")"
-				if [ "${#clean_l}" -gt "$inner_width" ]; then
-					clean_l="${clean_l:0:$inner_width}"
-				fi
-				local pad_len=$((inner_width - ${#clean_l}))
-				local pad=""
-				if [ "$pad_len" -gt 0 ]; then
-					pad="$(printf '%*s' "$pad_len" '')"
-				fi
-				printf "\033[2K%b│%b  %s%s  %b│%b\r\n" \
-					"${COLOR_MUTED}" "${COLOR_WHITE}" "$clean_l" "$pad" "${COLOR_MUTED}" "${COLOR_RESET}"
-			done
-
-			local bot_dashes=""
-			for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
-			printf "\033[2K%b╰%s╯%b\r\n" "${COLOR_MUTED}" "${bot_dashes}" "${COLOR_RESET}"
-
-			# Erase anything left over below this frame from a taller
-			# previous one (e.g. the terminal just got shrunk).
-			printf "\033[J"
-
-			frame_idx=$(( (frame_idx + 1) % num_frames ))
-			sleep 0.08
-		done
-
-		# `wait` for a specific PID returns that job's own exit status - if
-		# nonzero, `wait` itself counts as a failing command under set -e,
-		# which (together with the ERR trap firing regardless of errexit
-		# state) would abort right here before the pass/fail handling below
-		# ever runs. Both the trap and errexit have to be suspended around
-		# this one call - see install.sh's run_step for the full
-		# explanation of why `set +e` alone is not sufficient.
-		trap '' ERR
-		set +e
-		wait "$cmd_pid"
-		local exit_code=$?
-		set -e
-		trap 'on_fatal_error "$LINENO"' ERR
-		local end_ts
-		end_ts=$(date +%s)
-		local total_elapsed=$((end_ts - start_ts))
-
-		# Leave the alternate screen - restores the real screen exactly as
-		# it was before entering, so none of the spinner frames above ever
-		# touched real scrollback.
-		printf "\033[?1049l\033[?25h"
-		IN_ALT_SCREEN="false"
-
-		if [ "$exit_code" -eq 0 ]; then
-			printf "\r\033[2K  %b %b %b %b[%ds]%b\n" \
-				"${COLOR_GREEN}✔${COLOR_RESET}" \
-				"${COLOR_BOLD}${COLOR_BLUE}${step_tag}${COLOR_RESET}" \
-				"${COLOR_WHITE}${title}${COLOR_RESET}" \
-				"${COLOR_MUTED}" "${total_elapsed}" "${COLOR_RESET}"
-			rm -f "$log_file"
-		else
-			printf "\r\033[2K  %b %b %b %b[%ds - FAILED]%b\n" \
-				"${COLOR_RED}✖${COLOR_RESET}" \
-				"${COLOR_BOLD}${COLOR_RED}${step_tag}${COLOR_RESET}" \
-				"${COLOR_WHITE}${title}${COLOR_RESET}" \
-				"${COLOR_RED}" "${total_elapsed}" "${COLOR_RESET}"
-			rm -f "$log_file"
-		fi
+	tag="$(printf '%*d/%d' "${#TOTAL_STEPS}" "$STEP_NUM" "$TOTAL_STEPS")"
+	[ -t 1 ] && printf '  %s-%s %s  %s' "$UI_D" "$UI_R" "$tag" "$title"
+	out="$(mktemp)"
+	printf '>>> %s\n' "$title" >>"$LOG_FILE" 2>/dev/null || true
+	set +e
+	trap '' ERR
+	(
+		trap - INT TERM
+		eval "$*"
+	) >"$out" 2>&1 </dev/null
+	rc=$?
+	trap 'ui_err "The uninstaller stopped unexpectedly at line $LINENO (log: $LOG_FILE)."; exit 1' ERR
+	set -e
+	cat "$out" >>"$LOG_FILE" 2>/dev/null || true
+	[ -t 1 ] && printf '\r\033[K'
+	if [ "$rc" -eq 0 ]; then
+		ui_ok "$tag  $title"
 	else
-		printf "  ➜ %s %s...\n" "$step_tag" "$title"
-		if eval "$*" > "$log_file" 2>&1 </dev/null; then
-			local end_ts
-			end_ts=$(date +%s)
-			local total_elapsed=$((end_ts - start_ts))
-			printf "  ✔ %s %s [%ds]\n" "$step_tag" "$title" "$total_elapsed"
-			rm -f "$log_file"
-		else
-			local exit_code=$?
-			printf "  ✖ %s %s [FAILED with exit code %d]\n" "$step_tag" "$title" "$exit_code"
-			rm -f "$log_file"
-		fi
+		ui_err "$tag  $title (exit code $rc)" 2>&1
+		tail -n 8 "$out" | sed "s/^/      ${UI_D}|${UI_R} /"
+		FAILED_STEPS+=("$title")
+	fi
+	rm -f "$out"
+}
+
+# Backup & Sync took over the old backup/sync Scheduled Tasks; hand them
+# back while core still runs, so uninstalling never leaves a user's old
+# backups switched off. Failing to reach core is reported, not fatal.
+release_backup_tasks() {
+	systemctl stop nivaroos-backup.service >/dev/null 2>&1 || true
+	if ! /usr/bin/nivaroos-backup release-scheduled-tasks; then
+		echo 'Could not hand every Scheduled Task back (is core running?). They stay disabled in schedules.json.' >&2
 	fi
 }
 
-# Backup & Sync took over the old backup/sync Scheduled Tasks (disabled in
-# core, marked migrated_to=backup). Hand them back before anything is
-# removed, so uninstalling never silently leaves a user's old backups off:
-# stop the service first (so it can't take a task back meanwhile), then
-# release while core still runs. Idempotent; failing to reach core is
-# reported, not fatal - the uninstall goes on.
-release_backup_tasks() {
-	run_step "Handing Scheduled Tasks back from Backup & Sync" "
-		systemctl stop nivaroos-backup.service >/dev/null 2>&1 || true
-		if ! /usr/bin/nivaroos-backup release-scheduled-tasks; then
-			echo 'Could not hand every Scheduled Task back (is core running?). They stay disabled in schedules.json.' >&2
+# remove_apps stops and deletes the containers of every app NivaroOS
+# installed (one compose project per folder in APPS_DIR).
+remove_apps() {
+	local d name ids
+	command -v docker >/dev/null 2>&1 || return 0
+	for d in "$APPS_DIR"/*/; do
+		[ -d "$d" ] || continue
+		name="$(basename "$d")"
+		ids="$(docker ps -aq --filter "label=com.docker.compose.project=${name}" 2>/dev/null || true)"
+		if [ -n "$ids" ]; then
+			echo "removing app ${name}"
+			# shellcheck disable=SC2086
+			docker rm -f -v $ids >/dev/null
 		fi
-	"
+	done
+}
+
+# remove_vms removes the libvirt VMs whose disks live in DATA_DIR/VMs.
+remove_vms() {
+	local vm
+	command -v virsh >/dev/null 2>&1 || return 0
+	while IFS= read -r vm; do
+		[ -n "$vm" ] || continue
+		virsh -c qemu:///system dumpxml "$vm" 2>/dev/null | grep -q "${DATA_DIR}/VMs/" || continue
+		echo "removing VM ${vm}"
+		virsh -c qemu:///system destroy "$vm" >/dev/null 2>&1 || true
+		virsh -c qemu:///system undefine --nvram "$vm" >/dev/null 2>&1 || virsh -c qemu:///system undefine "$vm" >/dev/null
+	done < <(virsh -c qemu:///system list --all --name 2>/dev/null)
 }
 
 stop_services() {
-	run_step "Stopping active systemd services & background daemons" "
-		for unit in $ALL_UNITS; do
-			systemctl disable --now \"\$unit\" >/dev/null 2>&1 || true
-		done
-	"
-}
-
-remove_unit_files() {
-	run_step "Removing systemd service definitions & reloading daemon" "
-		if [ -f \"$MANIFEST_FILE\" ]; then
-			while IFS= read -r f; do
-				case \"\$f\" in
-					*.service)
-						rm -f \"\$f\" 2>/dev/null || true
-						;;
-				esac
-			done < \"$MANIFEST_FILE\"
-		fi
-		rm -f \
-			/usr/lib/systemd/system/nivaroos-gateway.service \
-			/usr/lib/systemd/system/nivaroos-gateway.service.buildroot \
-			/usr/lib/systemd/system/nivaroos-message-bus.service \
-			/usr/lib/systemd/system/nivaroos.service \
-			/usr/lib/systemd/system/nivaroos-user-service.service \
-			/usr/lib/systemd/system/nivaroos-app-management.service \
-			/usr/lib/systemd/system/nivaroos-app-management.service.buildroot \
-			/usr/lib/systemd/system/nivaroos-local-storage.service \
-			/usr/lib/systemd/system/nivaroos-gpu-sidecar.service \
-			/usr/lib/systemd/system/nivaroos-fans.service \
-			/etc/modules-load.d/nivaroos-fans.conf \
-			/usr/lib/systemd/system/nivaroos-vm-sidecar.service \
-			/usr/lib/systemd/system/nivaroos-download-sidecar.service \
-			/usr/lib/systemd/system/nivaroos-torrent.service \
-			/usr/lib/systemd/system/nivaroos-ds-browser.socket \
-			/usr/lib/systemd/system/nivaroos-ds-browser.service \
-			/usr/lib/systemd/system/nivaroos-ds-browser-install.service \
-			/usr/lib/systemd/system/nivaroos-backup.service \
-			/usr/lib/systemd/system/nivaroos-host-desktop.service \
-			/usr/lib/systemd/system/rclone.service \
-			/usr/lib/systemd/system/usb-mount@.service \
-			/usr/lib/systemd/system/nivaroos-watchdog.service \
-			/usr/lib/systemd/system/nivaroos-watchdog.timer \
-			/etc/systemd/system/nivaroos* \
-			/etc/udev/rules.d/11-usb-mount.rules \
-			/etc/sysctl.d/99-nivaroos.conf \
-			/etc/systemd/system/docker.service.d/override.conf
-		systemctl daemon-reload
-		udevadm control --reload-rules >/dev/null 2>&1 || true
-	"
-}
-
-# The Download Station browser: its user, and the Chromium/Chrome package
-# only if install-ds-browser.sh installed it (a browser the box already had
-# stays). Runs before remove_binaries deletes the record of that.
-remove_ds_browser() {
-	run_step "Removing the Download Station browser" "
-		rec=/usr/share/nivaroos/ds-browser/installed.txt
-		if [ -f \"\$rec\" ]; then
-			while IFS= read -r line; do
-				case \"\$line\" in
-					package:*)
-						pkg=\"\${line#package:}\"
-						if command -v apt-get >/dev/null 2>&1; then DEBIAN_FRONTEND=noninteractive apt-get remove -y \"\$pkg\" >/dev/null 2>&1 || true
-						elif command -v dnf >/dev/null 2>&1; then dnf remove -y \"\$pkg\" >/dev/null 2>&1 || true
-						elif command -v pacman >/dev/null 2>&1; then pacman -R --noconfirm \"\$pkg\" >/dev/null 2>&1 || true
-						elif command -v zypper >/dev/null 2>&1; then zypper -n rm \"\$pkg\" >/dev/null 2>&1 || true
-						fi ;;
-					file:*) rm -f \"\${line#file:}\" ;;
-					user:*) userdel \"\${line#user:}\" >/dev/null 2>&1 || true ;;
-				esac
-			done < \"\$rec\"
-		fi
-		# The torrent engine: its package only if we installed it.
-		if grep -qx 'package:qbittorrent-nox' /usr/share/nivaroos/torrent/installed.txt 2>/dev/null; then
-			if command -v apt-get >/dev/null 2>&1; then DEBIAN_FRONTEND=noninteractive apt-get remove -y qbittorrent-nox >/dev/null 2>&1 || true
-			elif command -v dnf >/dev/null 2>&1; then dnf remove -y qbittorrent-nox >/dev/null 2>&1 || true
-			elif command -v pacman >/dev/null 2>&1; then pacman -R --noconfirm qbittorrent-nox >/dev/null 2>&1 || true
-			elif command -v zypper >/dev/null 2>&1; then zypper -n rm qbittorrent-nox >/dev/null 2>&1 || true
-			elif command -v apk >/dev/null 2>&1; then apk del qbittorrent-nox >/dev/null 2>&1 || true
-			fi
-		fi
-		rm -rf /usr/share/nivaroos/torrent /var/lib/nivaroos/torrent
-		rm -rf /opt/nivaroos/chromium /usr/share/nivaroos/ds-browser /var/lib/nivaroos/ds-browser /etc/sysctl.d/60-nivaroos-ds-browser.conf
-		if [ -f /etc/apparmor.d/nivaroos-ds-browser ]; then
-			apparmor_parser -R /etc/apparmor.d/nivaroos-ds-browser >/dev/null 2>&1 || true
-			rm -f /etc/apparmor.d/nivaroos-ds-browser
-		fi
-	"
-}
-
-remove_binaries() {
-	run_step "Removing NivaroOS binaries, CLI tools & symlinks" "
-		if [ -f \"$MANIFEST_FILE\" ]; then
-			while IFS= read -r f; do
-				rm -rf \"\$f\" 2>/dev/null || true
-			done < \"$MANIFEST_FILE\"
-		fi
-		rm -f \
-			/usr/bin/nivaroos /usr/bin/nivaroos-gateway /usr/bin/nivaroos-user \
-			/usr/bin/nivaroos-app-management /usr/bin/nivaroos-local-storage \
-			/usr/bin/nivaroos-message-bus /usr/bin/nivaroos-gpu-sidecar /usr/bin/nivaroos-fans \
-			/usr/bin/nivaroos-vm-sidecar /usr/bin/nivaroos-download-sidecar /usr/bin/nivaroos-backup /usr/bin/nivaroos-cli /usr/bin/nivaroos-uninstall \
-			/usr/local/bin/nivaroos /usr/local/bin/nivaroos-cli /usr/local/bin/nivaroos-uninstall \
-			/usr/local/bin/nivaroos-host-desktop.sh \
-			/usr/local/bin/nivaroos-host-desktop-de-install.sh \
-			/etc/lightdm/lightdm.conf.d/60-nivaroos-host-desktop.conf \
-			/etc/sddm.conf.d/60-nivaroos-host-desktop.conf \
-			/etc/X11/xorg.conf.d/10-nivaroos-headless.conf \
-			/run/nivaroos/hostvnc.sock /run/nivaroos/host-desktop.env /run/nivaroos/host-desktop.xauth \
-			/usr/bin/casaos-cli /usr/bin/casaos /usr/bin/casaos-gateway /usr/bin/casaos-user-service \
-			/usr/bin/casaos-app-management /usr/bin/casaos-local-storage /usr/bin/casaos-message-bus 2>/dev/null || true
-		# Safety net: previous/rolled-back builds and its tools.
-		rm -f /usr/bin/nivaroos*.prev /usr/bin/nivaroos*.bad.* \
-			/usr/local/bin/nivaroos-rollback /usr/local/bin/nivaroos-deploy /usr/local/bin/nivaroos-recover 2>/dev/null || true
-		rm -rf /usr/local/lib/nivaroos /var/log/nivaroos/watchdog.log
-		rm -rf /var/lib/nivaroos /var/lib/casaos /var/run/nivaroos /etc/nivaroos /usr/share/nivaroos
-	"
-}
-
-purge_data_if_requested() {
-	if [ "$PURGE_DATA" = "yes" ]; then
-		run_step "Purging all user data & volumes in /DATA" "rm -rf /DATA"
-	else
-		run_step "Preserving user data in /DATA" "true"
-	fi
-}
-
-# install.sh records what it provisioned (format "alongside:<de>" or
-# "replaced:<de>") to DESKTOP_PROVISION_MARKER only when it had to install or
-# swap a desktop environment for Host Desktop streaming - never when the
-# machine already had a working one. Captured here, before remove_binaries
-# deletes /var/lib/nivaroos (and the marker with it), so there is still
-# something to act on afterward.
-PROVISIONED_DESKTOP_INFO=""
-capture_provisioned_desktop_marker() {
-	if [ -f "$DESKTOP_PROVISION_MARKER" ]; then
-		PROVISIONED_DESKTOP_INFO="$(cat "$DESKTOP_PROVISION_MARKER" 2>/dev/null || echo "")"
-	fi
-}
-
-remove_provisioned_desktop_if_requested() {
-	if [ -z "$PROVISIONED_DESKTOP_INFO" ]; then
-		return
-	fi
-	# Only desktops NivaroOS itself installed ("alongside:<de>" /
-	# "replaced:<de>") - anything else (e.g. an X11 companion session added
-	# to the user's own GNOME/Plasma) is never removed.
-	case "$PROVISIONED_DESKTOP_INFO" in
-		alongside:*|replaced:*) ;;
-		*) return ;;
-	esac
-	local de="${PROVISIONED_DESKTOP_INFO#*:}"
-	case "$de" in
-		xfce|cinnamon|mate) ;;
-		*) return ;;
-	esac
-	if [ "$REMOVE_PROVISIONED_DESKTOP" != "yes" ]; then
-		info "A desktop environment (${de}) was installed by NivaroOS for Host Desktop streaming and is being left in place."
-		info "Remove it too with: nivaroos-uninstall --remove-provisioned-desktop"
-		return
-	fi
-	if [ "${PROVISIONED_DESKTOP_INFO%%:*}" = "replaced" ]; then
-		warn "${de} replaced your previous desktop - removing it leaves this machine without a graphical desktop."
-	fi
-	run_step "Removing Desktop Environment Provisioned for Host Desktop (${de})" "
-		if command -v apt-get >/dev/null 2>&1; then
-			case '${de}' in
-				xfce) DEBIAN_FRONTEND=noninteractive apt-get purge -y xfce4 xfce4-terminal >/dev/null 2>&1 || true ;;
-				cinnamon) DEBIAN_FRONTEND=noninteractive apt-get purge -y cinnamon-core cinnamon >/dev/null 2>&1 || true ;;
-				mate) DEBIAN_FRONTEND=noninteractive apt-get purge -y mate-desktop-environment-core mate-desktop-environment >/dev/null 2>&1 || true ;;
-			esac
-			DEBIAN_FRONTEND=noninteractive apt-get autoremove -y >/dev/null 2>&1 || true
-		elif command -v pacman >/dev/null 2>&1; then
-			case '${de}' in
-				xfce) pacman -Rns --noconfirm xfce4 xfce4-goodies >/dev/null 2>&1 || pacman -Rns --noconfirm xfce4 >/dev/null 2>&1 || true ;;
-				cinnamon) pacman -Rns --noconfirm cinnamon >/dev/null 2>&1 || true ;;
-				mate) pacman -Rns --noconfirm mate mate-extra >/dev/null 2>&1 || pacman -Rns --noconfirm mate >/dev/null 2>&1 || true ;;
-			esac
-		elif command -v dnf >/dev/null 2>&1; then
-			dnf remove -y '@${de}-desktop-environment' >/dev/null 2>&1 || dnf group remove -y '${de}-desktop' >/dev/null 2>&1 || true
-		elif command -v zypper >/dev/null 2>&1; then
-			case '${de}' in
-				xfce) zypper --non-interactive remove --clean-deps xfce4-session >/dev/null 2>&1 || true ;;
-				cinnamon) zypper --non-interactive remove --clean-deps cinnamon >/dev/null 2>&1 || true ;;
-				mate) zypper --non-interactive remove --clean-deps mate-session-manager >/dev/null 2>&1 || true ;;
-			esac
-		fi
-	"
-}
-
-# The desktop provisioner records the GDM custom.conf it edited (line 1) and
-# the WaylandEnable= line that was there before (line 2, or "absent").
-# Captured before remove_binaries deletes /var/lib/nivaroos.
-GDM_WAYLAND_MARKER="/var/lib/nivaroos/host-desktop-gdm-wayland"
-GDM_WAYLAND_INFO=""
-capture_host_desktop_markers() {
-	if [ -f "$GDM_WAYLAND_MARKER" ]; then
-		GDM_WAYLAND_INFO="$(cat "$GDM_WAYLAND_MARKER" 2>/dev/null || echo "")"
-	fi
-}
-
-# revert_host_desktop_changes undoes system-wide display tweaks Host Desktop
-# made: GDM's WaylandEnable=false, and the legacy websockify proxy older
-# versions left running on port 28642. (The headless Xorg config and the
-# LightDM/SDDM drop-ins are plain files removed in remove_binaries.)
-revert_host_desktop_changes() {
+	local u
+	for u in $ALL_UNITS $(systemctl list-unit-files --no-legend 'nivaroos*' 'usb-mount@*' 2>/dev/null | awk '{print $1}'); do
+		systemctl disable --now "$u" >/dev/null 2>&1 || true
+	done
+	systemctl stop 'usb-mount@*.service' >/dev/null 2>&1 || true
 	pkill -f 'websockify.*28642.*5900' >/dev/null 2>&1 || true
+}
+
+# is_ours PATH - a manifest entry is only ever deleted inside NivaroOS's own
+# system locations (never /DATA or anything a stray line could point at).
+is_ours() {
+	case "$1" in
+		*..*) return 1 ;;
+		/usr/bin/nivaroos* | /usr/bin/casaos* | /usr/local/bin/nivaroos* | /usr/local/lib/nivaroos | /usr/local/lib/nivaroos/*) return 0 ;;
+		/usr/lib/systemd/system/* | /etc/systemd/system/nivaroos*) return 0 ;;
+		/usr/share/nivaroos/* | /opt/nivaroos | /opt/nivaroos/* | /etc/nivaroos/* | /var/lib/nivaroos/* | /var/log/nivaroos/*) return 0 ;;
+		/etc/sysctl.d/*nivaroos* | /etc/udev/rules.d/11-usb-mount.rules | /etc/avahi/services/nivaroos.service | /etc/apparmor.d/nivaroos-* | /etc/modules-load.d/nivaroos-*) return 0 ;;
+		/etc/systemd/system/docker.service.d/override.conf) return 0 ;;
+	esac
+	return 1
+}
+
+remove_units() {
+	local f
+	if [ -f "$MANIFEST_FILE" ]; then
+		while IFS= read -r f; do
+			case "$f" in *.service | *.socket | *.timer) is_ours "$f" && rm -f "$f" ;; esac
+		done <"$MANIFEST_FILE"
+	fi
+	rm -f /usr/lib/systemd/system/nivaroos*.service /usr/lib/systemd/system/nivaroos*.socket \
+		/usr/lib/systemd/system/nivaroos*.timer /usr/lib/systemd/system/nivaroos*.buildroot \
+		/usr/lib/systemd/system/rclone.service /usr/lib/systemd/system/usb-mount@.service \
+		/etc/udev/rules.d/11-usb-mount.rules /etc/sysctl.d/99-nivaroos.conf \
+		/etc/modules-load.d/nivaroos-fans.conf /etc/avahi/services/nivaroos.service \
+		/etc/systemd/system/docker.service.d/override.conf
+	rm -rf /etc/systemd/system/nivaroos*
+	systemctl daemon-reload
+	udevadm control --reload-rules >/dev/null 2>&1 || true
+	systemctl reload avahi-daemon >/dev/null 2>&1 || true
+}
+
+# The Download Station browser and torrent engine: their packages only if
+# NivaroOS installed them (a browser the box already had stays).
+remove_ds_extras() {
+	local rec=/usr/share/nivaroos/ds-browser/installed.txt line
+	pkg_remove() {
+		if command -v apt-get >/dev/null 2>&1; then DEBIAN_FRONTEND=noninteractive apt-get remove -y "$1" >/dev/null 2>&1 || true
+		elif command -v dnf >/dev/null 2>&1; then dnf remove -y "$1" >/dev/null 2>&1 || true
+		elif command -v pacman >/dev/null 2>&1; then pacman -R --noconfirm "$1" >/dev/null 2>&1 || true
+		elif command -v zypper >/dev/null 2>&1; then zypper -n rm "$1" >/dev/null 2>&1 || true
+		elif command -v apk >/dev/null 2>&1; then apk del "$1" >/dev/null 2>&1 || true
+		fi
+	}
+	if [ -f "$rec" ]; then
+		while IFS= read -r line; do
+			case "$line" in
+				package:*) pkg_remove "${line#package:}" ;;
+				file:*) is_ours "${line#file:}" && rm -f "${line#file:}" ;;
+				user:*) userdel "${line#user:}" >/dev/null 2>&1 || true ;;
+			esac
+		done <"$rec"
+	fi
+	if grep -qx 'package:qbittorrent-nox' /usr/share/nivaroos/torrent/installed.txt 2>/dev/null; then
+		pkg_remove qbittorrent-nox
+	fi
+	if [ -f /etc/apparmor.d/nivaroos-ds-browser ]; then
+		apparmor_parser -R /etc/apparmor.d/nivaroos-ds-browser >/dev/null 2>&1 || true
+	fi
+	rm -f /etc/apparmor.d/nivaroos-ds-browser /etc/sysctl.d/60-nivaroos-ds-browser.conf
+	return 0
+}
+
+# Host Desktop: GDM's WaylandEnable=false back to what it was, and the
+# display drop-ins it wrote.
+revert_host_desktop() {
+	rm -f /usr/local/bin/nivaroos-host-desktop.sh /usr/local/bin/nivaroos-host-desktop-de-install.sh \
+		/etc/lightdm/lightdm.conf.d/60-nivaroos-host-desktop.conf /etc/sddm.conf.d/60-nivaroos-host-desktop.conf \
+		/etc/X11/xorg.conf.d/10-nivaroos-headless.conf
 	[ -n "$GDM_WAYLAND_INFO" ] || return 0
 	local conf orig
 	conf="$(printf '%s\n' "$GDM_WAYLAND_INFO" | sed -n 1p)"
 	orig="$(printf '%s\n' "$GDM_WAYLAND_INFO" | sed -n 2p)"
 	[ -f "$conf" ] || return 0
 	if [ "$orig" = "absent" ] || [ -z "$orig" ]; then
-		sed -i '/^WaylandEnable=false$/d' "$conf" 2>/dev/null || true
+		sed -i '/^WaylandEnable=false$/d' "$conf"
 	else
-		sed -i "s|^WaylandEnable=false\$|${orig}|" "$conf" 2>/dev/null || true
+		sed -i "s|^WaylandEnable=false\$|${orig}|" "$conf"
 	fi
-	info "Restored GDM's Wayland setting in ${conf} (takes effect at the next login screen)."
+	echo "restored GDM's Wayland setting in ${conf} (from the next login screen)"
 }
 
-LEFTOVER_ITEMS=""
-
-# Every previous step is best-effort (`|| true` throughout, matching
-# install.sh's own convention of never letting one missing/already-gone
-# file abort the whole run) - which means nothing so far actually confirms
-# the teardown worked. This is the one step that does: it checks, after
-# the fact, whether every unit and binary this project can create is
-# actually gone, rather than just trusting each removal attempt silently
-# succeeded.
-verify_teardown() {
-	run_step "Verifying Teardown Completed Cleanly" "
-		: > \"$LEFTOVER_FILE\"
-		for u in $ALL_UNITS; do
-			if systemctl list-unit-files \"\$u\" 2>/dev/null | grep -q \"^\$u\"; then
-				echo \"unit still present: \$u\" >> \"$LEFTOVER_FILE\"
-			fi
-			if systemctl is-active --quiet \"\$u\" 2>/dev/null; then
-				echo \"unit still active: \$u\" >> \"$LEFTOVER_FILE\"
-			fi
-		done
-		for b in /usr/bin/nivaroos /usr/bin/nivaroos-gateway /usr/bin/nivaroos-user \
-			/usr/bin/nivaroos-app-management /usr/bin/nivaroos-local-storage \
-			/usr/bin/nivaroos-message-bus /usr/bin/nivaroos-gpu-sidecar /usr/bin/nivaroos-fans \
-			/usr/bin/nivaroos-vm-sidecar /usr/bin/nivaroos-download-sidecar /usr/bin/nivaroos-backup /usr/bin/nivaroos-cli \
-			/usr/local/bin/nivaroos-host-desktop.sh /usr/local/bin/nivaroos-host-desktop-de-install.sh \
-			/etc/X11/xorg.conf.d/10-nivaroos-headless.conf; do
-			if [ -e \"\$b\" ]; then
-				echo \"binary still present: \$b\" >> \"$LEFTOVER_FILE\"
-			fi
-		done
-		if [ -d /var/lib/nivaroos ] || [ -d /etc/nivaroos ]; then
-			echo \"config/state directory still present (/var/lib/nivaroos or /etc/nivaroos)\" >> \"$LEFTOVER_FILE\"
-		fi
-		if [ -s \"$LEFTOVER_FILE\" ]; then
-			echo \"Found \$(wc -l < \"$LEFTOVER_FILE\") leftover item(s) - see summary below.\"
-		else
-			echo 'Nothing left behind - clean teardown confirmed.'
-		fi
-	"
-	if [ -s "$LEFTOVER_FILE" ]; then
-		LEFTOVER_ITEMS="$(cat "$LEFTOVER_FILE")"
+remove_files() {
+	local f
+	if [ -f "$MANIFEST_FILE" ]; then
+		while IFS= read -r f; do
+			is_ours "$f" && rm -rf "$f"
+		done <"$MANIFEST_FILE"
 	fi
-	rm -f "$LEFTOVER_FILE"
+	rm -f /usr/bin/nivaroos /usr/bin/nivaroos.* /usr/bin/nivaroos-* /usr/bin/casaos-cli \
+		/usr/local/bin/nivaroos /usr/local/bin/nivaroos-* /usr/local/bin/nivaroos-gpu-driver-install.sh
+	rm -rf /usr/local/lib/nivaroos /usr/share/nivaroos /etc/nivaroos /var/log/nivaroos /run/nivaroos /var/run/nivaroos /opt/nivaroos /var/lib/casaos
+	if [ "$DEL_APPS" = yes ] || [ ! -d "$APPS_DIR" ]; then
+		rm -rf /var/lib/nivaroos
+	else
+		# Kept apps keep their compose files, so a reinstall picks them up.
+		find /var/lib/nivaroos -mindepth 1 -maxdepth 1 ! -name apps -exec rm -rf {} +
+	fi
+}
+
+provisioned_desktop_de() {
+	case "$PROVISIONED_DESKTOP_INFO" in
+		alongside:* | replaced:*) ;;
+		*) return 1 ;;
+	esac
+	case "${PROVISIONED_DESKTOP_INFO#*:}" in
+		xfce | cinnamon | mate) echo "${PROVISIONED_DESKTOP_INFO#*:}" ;;
+		*) return 1 ;;
+	esac
+}
+
+remove_provisioned_desktop() {
+	local de="$1"
+	if command -v apt-get >/dev/null 2>&1; then
+		case "$de" in
+			xfce) apt-get purge -y xfce4 xfce4-terminal ;;
+			cinnamon) apt-get purge -y cinnamon-core cinnamon ;;
+			mate) apt-get purge -y mate-desktop-environment-core mate-desktop-environment ;;
+		esac
+		apt-get autoremove -y
+	elif command -v pacman >/dev/null 2>&1; then
+		case "$de" in
+			xfce) pacman -Rns --noconfirm xfce4 xfce4-goodies || pacman -Rns --noconfirm xfce4 ;;
+			cinnamon) pacman -Rns --noconfirm cinnamon ;;
+			mate) pacman -Rns --noconfirm mate mate-extra || pacman -Rns --noconfirm mate ;;
+		esac
+	elif command -v dnf >/dev/null 2>&1; then
+		dnf remove -y "@${de}-desktop-environment" || dnf group remove -y "${de}-desktop"
+	elif command -v zypper >/dev/null 2>&1; then
+		case "$de" in
+			xfce) zypper --non-interactive remove --clean-deps xfce4-session ;;
+			cinnamon) zypper --non-interactive remove --clean-deps cinnamon ;;
+			mate) zypper --non-interactive remove --clean-deps mate-session-manager ;;
+		esac
+	fi
+}
+
+delete_data() {
+	local p
+	if [ "$DEL_APPS" = yes ]; then safe_rm "${DATA_DIR}/AppData"; fi
+	if [ "$DEL_VMS" = yes ]; then safe_rm "${DATA_DIR}/VMs"; fi
+	if [ "$DEL_FILES" = yes ] && [ -d "$DATA_DIR" ]; then
+		for p in "$DATA_DIR"/* "$DATA_DIR"/.[!.]*; do
+			case "$p" in "${DATA_DIR}/AppData" | "${DATA_DIR}/VMs") continue ;; esac
+			safe_rm "$p"
+		done
+		rmdir "$DATA_DIR" 2>/dev/null || true
+	fi
+	return 0
+}
+
+verify_teardown() {
+	local u b
+	: >"$LEFT_FILE"
+	for u in $ALL_UNITS; do
+		systemctl is-active --quiet "$u" 2>/dev/null && echo "still running: $u" >>"$LEFT_FILE"
+		[ -n "$(systemctl list-unit-files --no-legend "$u" 2>/dev/null)" ] && echo "unit still installed: $u" >>"$LEFT_FILE"
+	done
+	for b in /usr/bin/nivaroos* /usr/local/bin/nivaroos* /etc/nivaroos /opt/nivaroos; do
+		[ -e "$b" ] && echo "still present: $b" >>"$LEFT_FILE"
+	done
+	return 0
 }
 
 print_summary() {
-	local end_ts
-	end_ts=$(date +%s)
-	local total_duration=$((end_ts - START_TIME))
-
-	get_term_size
-	local box_width=$((TERM_COLS - 2))
-	if [ "$box_width" -lt 40 ]; then box_width=40; fi
-	local inner_width=$((box_width - 6))
-
-	local bot_dashes=""
-	for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
-
-	local summary_color="$COLOR_GREEN"
-	local top_title=" ✔  NivaroOS Successfully Uninstalled! (completed in ${total_duration}s) "
-	if [ -n "$LEFTOVER_ITEMS" ]; then
-		summary_color="$COLOR_YELLOW"
-		top_title=" ⚠  Uninstall Completed With Leftovers (completed in ${total_duration}s) "
-	fi
-	local top_dashes_len=$((box_width - ${#top_title} - 4))
-	if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
-	local top_dashes=""
-	for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
-
-	printf "\n"
-	printf '%b\n' "${summary_color}╭──${COLOR_BOLD}${summary_color}${top_title}${COLOR_RESET}${summary_color}${top_dashes}╮${COLOR_RESET}"
-	
-	render_unsum_line() {
-		local text="$1"
-		local plain
-		plain="$(strip_ansi "$text")"
-		if [ "${#plain}" -gt "$inner_width" ]; then
-			plain="${plain:0:$inner_width}"
-		fi
-		local pad_len=$((inner_width - ${#plain}))
-		local pad=""
-		if [ "$pad_len" -gt 0 ]; then
-			pad="$(printf '%*s' "$pad_len" '')"
-		fi
-		printf '%b\n' "${summary_color}│${COLOR_RESET}  ${text}${pad}  ${summary_color}│${COLOR_RESET}"
-	}
-
-	render_unsum_line ""
-	render_unsum_line "• All systemd background services have been stopped and disabled."
-	render_unsum_line "• System binaries, management tools, and web assets have been removed."
-	if [ "$PURGE_DATA" = "yes" ]; then
-		render_unsum_line "• ${COLOR_RED}/DATA directory was completely purged.${COLOR_RESET}"
+	local p
+	printf '\n'
+	if [ -n "$LEFTOVER_ITEMS" ] || [ "${#FAILED_STEPS[@]}" -gt 0 ]; then
+		ui_warn "${UI_B}NivaroOS is uninstalled, with leftovers${UI_R}"
+		while IFS= read -r p; do [ -n "$p" ] && ui_kv "left" "$p"; done <<<"$LEFTOVER_ITEMS"
+		for p in "${FAILED_STEPS[@]}"; do ui_kv "failed" "$p"; done
+		ui_kv "log" "$LOG_FILE"
+		ui_kv "retry" "running the uninstaller again is safe"
 	else
-		render_unsum_line "• ${COLOR_GREEN}/DATA directory was preserved safely.${COLOR_RESET}"
+		ui_ok "${UI_B}NivaroOS is uninstalled${UI_R}"
 	fi
-	if [ -n "$LEFTOVER_ITEMS" ]; then
-		render_unsum_line ""
-		render_unsum_line "${COLOR_YELLOW}• Some items could not be confirmed removed:${COLOR_RESET}"
-		while IFS= read -r item; do
-			[ -z "$item" ] && continue
-			render_unsum_line "  ${COLOR_YELLOW}- ${item}${COLOR_RESET}"
-		done <<< "$LEFTOVER_ITEMS"
-		render_unsum_line "${COLOR_MUTED}  Check for a stuck process or an unwritable path; a repeat run of this uninstaller is safe.${COLOR_RESET}"
-	fi
-	render_unsum_line ""
-	render_unsum_line "${COLOR_MUTED}Thank you for using NivaroOS!${COLOR_RESET}"
-	render_unsum_line ""
-	printf '%b\n\n' "${summary_color}╰${bot_dashes}╯${COLOR_RESET}"
+	ui_head "Data"
+	if [ "$DEL_APPS" = yes ]; then ui_kv "apps" "deleted"; else ui_kv "apps" "kept (containers, ${DATA_DIR}/AppData, ${APPS_DIR})"; fi
+	if [ "$DEL_VMS" = yes ]; then ui_kv "VMs" "deleted"; else ui_kv "VMs" "kept (${DATA_DIR}/VMs)"; fi
+	if [ "$DEL_FILES" = yes ]; then ui_kv "files" "deleted"; else ui_kv "files" "kept (${DATA_DIR})"; fi
+	for p in "${SKIPPED_PATHS[@]}"; do ui_kv "on a drive" "$p (not deleted)"; done
+	printf '    %sDocker, Go and other system packages stay installed.%s\n\n' "$UI_D" "$UI_R"
+	[ -z "$LEFTOVER_ITEMS" ] && [ "${#FAILED_STEPS[@]}" -eq 0 ]
 }
 
 main() {
-	START_TIME=$(date +%s)
-	check_root
 	parse_args "$@"
-	print_banner
-	confirm_uninstall
-
-	capture_provisioned_desktop_marker
-	capture_host_desktop_markers
-	if [ -n "$PROVISIONED_DESKTOP_INFO" ] && [ "$REMOVE_PROVISIONED_DESKTOP" = "yes" ]; then
-		TOTAL_STEPS=$((TOTAL_STEPS + 1))
+	check_root "$@"
+	ui_banner "uninstaller" "Removes NivaroOS; asks before deleting data"
+	if [ ! -e /usr/bin/nivaroos ] && [ ! -e /etc/nivaroos ] && [ ! -e /var/lib/nivaroos ]; then
+		ui_info "NivaroOS does not look installed here - removing any leftovers."
 	fi
-	TOTAL_STEPS=$((TOTAL_STEPS + 1)) # verify_teardown
-	TOTAL_STEPS=$((TOTAL_STEPS + 1)) # remove_ds_browser
-	if [ -x /usr/bin/nivaroos-backup ]; then
-		TOTAL_STEPS=$((TOTAL_STEPS + 1)) # release_backup_tasks
+	choose_data
+	confirm
+	if [ -n "$DRY_RUN" ]; then
+		ui_info "Dry run - nothing was changed."
+		exit 0
 	fi
 
-	info "Beginning NivaroOS teardown..."
-	printf "\n"
+	: >>"$LOG_FILE" 2>/dev/null || LOG_FILE=/dev/null
+	SKIP_FILE="$(mktemp)"
+	LEFT_FILE="$(mktemp)"
+	[ -f "$DESKTOP_PROVISION_MARKER" ] && PROVISIONED_DESKTOP_INFO="$(cat "$DESKTOP_PROVISION_MARKER")"
+	[ -f "$GDM_WAYLAND_MARKER" ] && GDM_WAYLAND_INFO="$(cat "$GDM_WAYLAND_MARKER")"
+	local de=""
+	de="$(provisioned_desktop_de || true)"
 
-	if [ -x /usr/bin/nivaroos-backup ]; then
-		release_backup_tasks
+	local steps=()
+	[ -x /usr/bin/nivaroos-backup ] && steps+=("Handing Scheduled Tasks back from Backup & Sync:release_backup_tasks")
+	[ "$DEL_APPS" = yes ] && steps+=("Removing installed apps:remove_apps")
+	[ "$DEL_VMS" = yes ] && steps+=("Removing virtual machines:remove_vms")
+	steps+=(
+		"Stopping services:stop_services"
+		"Removing units and drop-ins:remove_units"
+		"Reverting Host Desktop changes:revert_host_desktop"
+		"Removing Download Station's browser and torrent engine:remove_ds_extras"
+		"Removing binaries, dashboard, config and state:remove_files"
+	)
+	[ "$DEL_APPS$DEL_VMS$DEL_FILES" != nonono ] && steps+=("Deleting the data you chose:delete_data")
+	[ -n "$de" ] && [ "$REMOVE_PROVISIONED_DESKTOP" = yes ] && steps+=("Removing the ${de} desktop NivaroOS installed:remove_provisioned_desktop $de")
+	steps+=("Checking nothing is left:verify_teardown")
+	TOTAL_STEPS=${#steps[@]}
+
+	ui_head "Uninstalling"
+	local s
+	for s in "${steps[@]}"; do
+		run_step "${s%%:*}" "${s#*:}"
+	done
+
+	mapfile -t SKIPPED_PATHS <"$SKIP_FILE"
+	LEFTOVER_ITEMS="$(cat "$LEFT_FILE")"
+	rm -f "$SKIP_FILE" "$LEFT_FILE"
+	if [ -n "$de" ] && [ "$REMOVE_PROVISIONED_DESKTOP" != yes ]; then
+		ui_info "The ${de} desktop NivaroOS installed for Host Desktop stays. Remove it with --remove-provisioned-desktop."
 	fi
-	stop_services
-	remove_unit_files
-	revert_host_desktop_changes
-	remove_ds_browser
-	remove_binaries
-	purge_data_if_requested
-	remove_provisioned_desktop_if_requested
-	verify_teardown
-
-	print_summary
+	print_summary || exit 1
 }
 
 main "$@"

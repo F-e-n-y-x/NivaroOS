@@ -15,6 +15,7 @@
 NV_SYSTEMCTL="${NIVAROOS_SYSTEMCTL:-systemctl}"
 NV_BIN_DIR="${NIVAROOS_BIN_DIR:-/usr/bin}"
 NV_WWW_DIR="${NIVAROOS_WWW_DIR:-/var/lib/nivaroos/www}"
+# shellcheck disable=SC2034 # used by nivaroos-watchdog
 NV_STATE_DIR="${NIVAROOS_WATCHDOG_STATE:-/var/lib/nivaroos/watchdog}"
 NV_LOG_FILE="${NIVAROOS_SAFETY_LOG:-/var/log/nivaroos/watchdog.log}"
 NV_PAUSE_FILE="${NIVAROOS_WATCHDOG_PAUSE:-/run/nivaroos/watchdog.pause}"
@@ -134,7 +135,7 @@ nv_swap_prev() {
 	local bin="$1"
 	nv_has_prev "$bin" || return 1
 	cp -p "$bin" "$bin.swap.tmp.$$" || return 1
-	cp -p "$bin.prev" "$bin.restore.tmp.$$" && mv -f "$bin.restore.tmp.$$" "$bin" || { rm -f "$bin.swap.tmp.$$"; return 1; }
+	{ cp -p "$bin.prev" "$bin.restore.tmp.$$" && mv -f "$bin.restore.tmp.$$" "$bin"; } || { rm -f "$bin.swap.tmp.$$"; return 1; }
 	mv -f "$bin.swap.tmp.$$" "$bin.prev"
 }
 
@@ -186,3 +187,35 @@ nv_restart() {
 	"$NV_SYSTEMCTL" reset-failed "$1" >/dev/null 2>&1 || true
 	"$NV_SYSTEMCTL" restart "$1" >/dev/null 2>&1
 }
+
+# >>> nivaroos-ui - one block, copied verbatim into install.sh, uninstall.sh
+# and nivaroos-safety-lib.sh (installer/tests/ui-block-test.sh keeps the
+# copies identical; change it here, then copy). Ink and greys like the
+# app's Rack style; colour only for status. No colour when stdout is not a
+# terminal, NO_COLOR is set, or TERM=dumb; ASCII without a UTF-8 locale.
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != dumb ]; then
+	UI_B=$'\033[1m' UI_D=$'\033[2m' UI_R=$'\033[0m'
+	UI_OK=$'\033[38;5;36m' UI_WARN=$'\033[38;5;178m' UI_ERR=$'\033[38;5;167m' UI_MINT=$'\033[38;5;122m'
+else
+	UI_B='' UI_D='' UI_R='' UI_OK='' UI_WARN='' UI_ERR='' UI_MINT=''
+fi
+case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+	*[Uu][Tt][Ff]-8* | *[Uu][Tt][Ff]8*) UI_I_OK='✓' UI_I_ERR='✗' UI_I_DOT='●' UI_N1='█▀▄  █' UI_N2='█  ▀▄█' ;;
+	*) UI_I_OK='ok' UI_I_ERR='x' UI_I_DOT='o' UI_N1='|\   |' UI_N2='|  \ |' ;;
+esac
+# ui_banner TITLE [SUBTITLE] - the "Ni" mark (an N whose last stroke is the
+# stem of an i, mint dot on top) with the title beside it.
+ui_banner() {
+	printf '\n       %s%s%s\n' "$UI_MINT" "$UI_I_DOT" "$UI_R"
+	printf '  %s   %sNivaroOS%s %s\n' "$UI_N1" "$UI_B" "$UI_R" "$1"
+	printf '  %s   %s%s%s\n' "$UI_N2" "$UI_D" "${2:-}" "$UI_R"
+}
+ui_head() { printf '\n  %s%s%s\n' "$UI_B" "$1" "$UI_R"; }
+ui_ok() { printf '  %s%s%s %s\n' "$UI_OK" "$UI_I_OK" "$UI_R" "$1"; }
+ui_info() { printf '  %s-%s %s\n' "$UI_D" "$UI_R" "$1"; }
+ui_warn() { printf '  %s!%s %s\n' "$UI_WARN" "$UI_R" "$1" >&2; }
+ui_err() { printf '  %s%s%s %s\n' "$UI_ERR" "$UI_I_ERR" "$UI_R" "$1" >&2; }
+ui_die() { ui_err "$1"; exit "${2:-1}"; }
+# ui_kv KEY VALUE - one aligned "key  value" row.
+ui_kv() { printf '    %s%-12s%s %s\n' "$UI_D" "$1" "$UI_R" "$2"; }
+# <<< nivaroos-ui

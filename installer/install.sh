@@ -1,38 +1,33 @@
 #!/usr/bin/env bash
 # ==============================================================================
-#  NivaroOS Installer & Updater Script
-#  Modern Self-Hosted Personal Cloud & Container Platform
-#  GitHub: https://github.com/F-e-n-y-x/NivaroOS
-# ==============================================================================
+#  NivaroOS installer and updater
+#  https://github.com/F-e-n-y-x/NivaroOS
 #
-# Supported Environments:
-#   Debian 11+, Ubuntu 20.04+, Linux Mint, Pop!_OS, Raspberry Pi OS,
-#   CentOS/RHEL/Rocky/AlmaLinux 8+, Fedora 38+, Arch Linux, openSUSE
-#   (Alpine Linux: packages install fine, but service management is
-#   systemd-only for now - see check_distro's warning)
+#  Install or update with one command:
+#    curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash
+#  With flags:   ... | sudo bash -s -- -y --without-vm
+#  Options:      ... | sudo bash -s -- --help
 #
-# Quick Install / Update:
-#   curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash
+#  Supported: Debian 12/13 and Ubuntu 22.04/24.04/26.04 on amd64 or arm64.
+#  Other Debian/Ubuntu derivatives, Fedora/RHEL, Arch and openSUSE are
+#  best effort. systemd is required.
+#
+#  Safe to re-run: every step is idempotent, so a failed or interrupted run
+#  is resumed by running the same command again, and an update is the same
+#  command too. Everything is defined first and only `main` at the very end
+#  runs, so a truncated download never runs half a script.
 # ==============================================================================
 
-# Ensure bash execution
 if [ -z "${BASH_VERSION:-}" ]; then
 	exec bash "$0" "$@"
 fi
 
-# -E (errtrace) is the fix for a silent-death class of bug: without it, a
-# `trap ... ERR` is NOT inherited into shell functions, command
-# substitutions, or subshells - it only fires for a failing command at the
-# script's own top level. Nearly everything here (every step, every helper)
-# runs inside a function, so any unexpected failure inside one would just
-# exit immediately via `set -e` with the ERR trap never firing at all - no
-# on_fatal_error message, nothing - which looks exactly like the installer
-# quietly dying mid-run for no visible reason.
+# -E (errtrace): without it the ERR trap is not inherited by functions, and
+# nearly everything here runs in one, so a failure would exit silently.
 set -Eeuo pipefail
-shopt -s checkwinsize 2>/dev/null || true
 
 # ------------------------------------------------------------------------------
-# Configuration & Constants
+# Configuration
 # ------------------------------------------------------------------------------
 REPO_URL="https://github.com/F-e-n-y-x/NivaroOS.git"
 BRANCH="master"
@@ -45,15 +40,16 @@ fi
 OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"
 # Go toolchain installed to /usr/local/go when the one on PATH is missing or
 # older than the highest `go` directive in services/*/go.mod + cli/go.mod
-# (computed after cloning - see ensure_go_toolchain in clone_or_update_repo;
-# GO_MIN_VERSION is only the floor used if that can't be read). Bump
-# GO_VERSION whenever a go.mod needs a newer release.
+# (see clone_or_update_repo; GO_MIN_VERSION is the floor if that can't be
+# read). Bump GO_VERSION whenever a go.mod needs a newer release.
 GO_VERSION="1.27.1"
 GO_MIN_VERSION="1.26.0"
 MIN_RECOMMENDED_MEMORY_MB="1024"
 MIN_REQUIRED_MEMORY_MB="384"
-MIN_RECOMMENDED_DISK_GB="5"
-MIN_REQUIRED_DISK_GB="1"
+# Building from source needs room for the Go toolchain and module cache,
+# node_modules and Docker.
+MIN_RECOMMENDED_DISK_GB="10"
+MIN_REQUIRED_DISK_GB="3"
 
 CUSTOM_PORT=""
 DETECTED_PORT="80"
@@ -67,103 +63,87 @@ WITH_BACKUP=""
 FORCE=""
 YES=""
 DEBUG=""
+DRY_RUN=""
 CLI_WIDTH=""
-CLI_HEIGHT=""
-BASE_STEPS=12
 STEP_NUM=0
-TOTAL_STEPS=$BASE_STEPS
+TOTAL_STEPS=0
 CURRENT_STEP_TITLE=""
 CURRENT_STEP_PID=""
-IN_ALT_SCREEN="false"
 START_TIME=0
 DATE_TAG="$(date +'%Y%m%d-%H%M%S')"
+INSTALL_CMD="curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash"
 
 LOG_DIR="/var/log/nivaroos"
 INSTALL_LOG="${LOG_DIR}/install-${DATE_TAG}.log"
 LATEST_LOG="${LOG_DIR}/install.log"
 MANIFEST_FILE="/var/lib/nivaroos/manifest"
+LOCK_FILE="/run/lock/nivaroos-install.lock"
 
-# ------------------------------------------------------------------------------
-# Whether checking/fixing X11 vs. Wayland compatibility for Host Desktop
-# streaming happens during install at all - it doesn't. That check (and
-# the desktop-install prompt if it's needed) now happens reactively, the
-# first time Host Desktop is opened in the dashboard, via
-# services/vm-sidecar/hostdesktop/host-desktop-de-install.sh - see select_components()'s comment
-# for why. KVM_AVAILABLE is unrelated to any of that (VM Manager's own
-# hardware-acceleration detection) but lives here for the same reason it
-# always has: it's install-time system state, decided once up front.
-# ------------------------------------------------------------------------------
+# VM Manager's hardware acceleration, decided once up front. (Whether there
+# is an X11 desktop for Host Desktop to stream is checked later, from the
+# dashboard - see select_components.)
 KVM_AVAILABLE="no"
 
-# Checkbox-menu widget state (see checkbox_menu()) - deliberately global so a
-# caller can populate them, invoke the widget, and read the results back.
+# Checkbox-menu widget state (see checkbox_menu()).
 CBM_LABELS=()
 CBM_DESCS=()
 CBM_STATE=()
 
 export PATH="/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 # Builds must use the toolchain this script installed - never silently
-# download a different one from the network mid-build.
+# download a different one mid-build.
 export GOTOOLCHAIN=local
+export GOWORK=off
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 
-# ------------------------------------------------------------------------------
-# Terminal & Color Formatting
-# ------------------------------------------------------------------------------
-IS_TTY="false"
-if [ -t 1 ] && [ "${TERM:-}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
-	IS_TTY="true"
+# >>> nivaroos-ui - one block, copied verbatim into install.sh, uninstall.sh
+# and nivaroos-safety-lib.sh (installer/tests/ui-block-test.sh keeps the
+# copies identical; change it here, then copy). Ink and greys like the
+# app's Rack style; colour only for status. No colour when stdout is not a
+# terminal, NO_COLOR is set, or TERM=dumb; ASCII without a UTF-8 locale.
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != dumb ]; then
+	UI_B=$'\033[1m' UI_D=$'\033[2m' UI_R=$'\033[0m'
+	UI_OK=$'\033[38;5;36m' UI_WARN=$'\033[38;5;178m' UI_ERR=$'\033[38;5;167m' UI_MINT=$'\033[38;5;122m'
+else
+	UI_B='' UI_D='' UI_R='' UI_OK='' UI_WARN='' UI_ERR='' UI_MINT=''
 fi
+case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+	*[Uu][Tt][Ff]-8* | *[Uu][Tt][Ff]8*) UI_I_OK='✓' UI_I_ERR='✗' UI_I_DOT='●' UI_N1='█▀▄  █' UI_N2='█  ▀▄█' ;;
+	*) UI_I_OK='ok' UI_I_ERR='x' UI_I_DOT='o' UI_N1='|\   |' UI_N2='|  \ |' ;;
+esac
+# ui_banner TITLE [SUBTITLE] - the "Ni" mark (an N whose last stroke is the
+# stem of an i, mint dot on top) with the title beside it.
+ui_banner() {
+	printf '\n       %s%s%s\n' "$UI_MINT" "$UI_I_DOT" "$UI_R"
+	printf '  %s   %sNivaroOS%s %s\n' "$UI_N1" "$UI_B" "$UI_R" "$1"
+	printf '  %s   %s%s%s\n' "$UI_N2" "$UI_D" "${2:-}" "$UI_R"
+}
+ui_head() { printf '\n  %s%s%s\n' "$UI_B" "$1" "$UI_R"; }
+ui_ok() { printf '  %s%s%s %s\n' "$UI_OK" "$UI_I_OK" "$UI_R" "$1"; }
+ui_info() { printf '  %s-%s %s\n' "$UI_D" "$UI_R" "$1"; }
+ui_warn() { printf '  %s!%s %s\n' "$UI_WARN" "$UI_R" "$1" >&2; }
+ui_err() { printf '  %s%s%s %s\n' "$UI_ERR" "$UI_I_ERR" "$UI_R" "$1" >&2; }
+ui_die() { ui_err "$1"; exit "${2:-1}"; }
+# ui_kv KEY VALUE - one aligned "key  value" row.
+ui_kv() { printf '    %s%-12s%s %s\n' "$UI_D" "$1" "$UI_R" "$2"; }
+# <<< nivaroos-ui
 
-# Whether we can actually run an interactive prompt/menu. This is
-# deliberately NOT "[ -t 0 ]" (is stdin a terminal) - the documented
-# `curl -fsSL ... | sudo bash` install method pipes the script itself into
-# bash, so stdin is always the curl pipe and always fails that check, even
-# though the user is sitting at a real terminal watching stdout and could
-# answer prompts just fine. Every prompt in this script already reads from
-# /dev/tty directly for exactly this reason - so what actually matters is
-# whether /dev/tty is there to read from and stdout is a real terminal to
-# print the menu to, not what stdin happens to be connected to.
+# Prompts read /dev/tty, not stdin: with `curl ... | sudo bash` stdin is the
+# script itself, yet the user is at a real terminal and can answer.
 INTERACTIVE_TTY="false"
-if [ "$IS_TTY" = "true" ] && [ -e /dev/tty ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+if [ -t 1 ] && { : </dev/tty; } 2>/dev/null; then
 	INTERACTIVE_TTY="true"
 fi
+# Unattended (-y, or nobody at a terminal): take every default, never ask.
+unattended() { [ -n "$YES" ] || [ "$INTERACTIVE_TTY" != "true" ]; }
 
-if [ "$IS_TTY" = "true" ]; then
-	COLOR_RESET='\033[0m'
-	COLOR_BOLD='\033[1m'
-	COLOR_DIM='\033[2m'
-	COLOR_CYAN='\033[38;5;51m'
-	COLOR_BLUE='\033[38;5;39m'
-	COLOR_GREEN='\033[38;5;48m'
-	COLOR_YELLOW='\033[38;5;220m'
-	COLOR_RED='\033[38;5;196m'
-	COLOR_PURPLE='\033[38;5;141m'
-	COLOR_MUTED='\033[38;5;244m'
-	COLOR_WHITE='\033[38;5;255m'
-else
-	COLOR_RESET=''
-	COLOR_BOLD=''
-	COLOR_DIM=''
-	COLOR_CYAN=''
-	COLOR_BLUE=''
-	COLOR_GREEN=''
-	COLOR_YELLOW=''
-	COLOR_RED=''
-	COLOR_PURPLE=''
-	COLOR_MUTED=''
-	COLOR_WHITE=''
-fi
+# Old helper names, still used inside the steps.
+info() { ui_info "$1"; }
+success() { ui_ok "$1"; }
+warn() { ui_warn "$1"; }
+error() { ui_err "$1"; }
 
-SPINNER_FRAMES=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
-
-info()    { printf '%b\n' "${COLOR_CYAN}ℹ${COLOR_RESET}  ${COLOR_WHITE}$1${COLOR_RESET}"; }
-success() { printf '%b\n' "${COLOR_GREEN}✔${COLOR_RESET}  ${COLOR_GREEN}$1${COLOR_RESET}"; }
-warn()    { printf '%b\n' "${COLOR_YELLOW}⚠${COLOR_RESET}  ${COLOR_YELLOW}$1${COLOR_RESET}" >&2; }
-error()   { printf '%b\n' "${COLOR_RED}✖${COLOR_RESET}  ${COLOR_RED}$1${COLOR_RESET}" >&2; }
-
-# Initialize logging system
 init_logging() {
 	mkdir -p "$LOG_DIR" 2>/dev/null || true
 	touch "$INSTALL_LOG" 2>/dev/null || true
@@ -172,23 +152,24 @@ init_logging() {
 
 log_raw() {
 	if [ -w "$INSTALL_LOG" ]; then
-		printf '[%s] %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$*" >> "$INSTALL_LOG"
+		printf '[%s] %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$*" >>"$INSTALL_LOG"
 	fi
 }
 
+# One installer at a time: two runs building into /usr/bin at once would
+# leave a mix of both.
+take_lock() {
+	mkdir -p "$(dirname "$LOCK_FILE")" 2>/dev/null || true
+	exec 9>"$LOCK_FILE"
+	if command -v flock >/dev/null 2>&1 && ! flock -n 9; then
+		ui_die "Another NivaroOS install or update is already running (lock: ${LOCK_FILE})."
+	fi
+}
 
-# Kills a process and every descendant of it. A step's command is often a
-# pipeline or a multi-command chain running as children of the subshell
-# run_step backgrounds - killing just that subshell's own PID does not stop
-# them (bash does not forward a signal from a killed subshell to its own
-# children), which left orphaned processes running after a cancelled step.
+# Kills a process and every descendant: a step is a subshell whose children
+# (pipelines, builds) a signal to the subshell alone would leave running.
 kill_tree() {
-	local pid="$1"
-	local sig="${2:-TERM}"
-	local child children
-	# A leaf process has no children, so `pgrep -P` exits 1 (its normal
-	# "found nothing" status) - guard the substitution itself, not just
-	# uses of its output, or the script's own ERR trap misfires here.
+	local pid="$1" sig="${2:-TERM}" child children
 	children="$(pgrep -P "$pid" 2>/dev/null || true)"
 	for child in $children; do
 		kill_tree "$child" "$sig"
@@ -197,447 +178,315 @@ kill_tree() {
 }
 
 cleanup_on_exit() {
-	if [ "$IN_ALT_SCREEN" = "true" ]; then
-		printf "\033[?1049l"
-		IN_ALT_SCREEN="false"
-	fi
-	if [ "$IS_TTY" = "true" ]; then
-		printf "\033[?25h" # Restore cursor
-	fi
+	if [ -t 1 ]; then printf '\033[?25h'; fi
 }
 trap cleanup_on_exit EXIT
 
-# Previously, INT/TERM were routed through cleanup_on_exit too - which only
-# restores the cursor and does not exit. Bash does not terminate a script on
-# a trapped signal unless the handler says so, so pressing Ctrl+C (or the
-# installer receiving SIGTERM) did *nothing visible*: the spinner kept
-# running against a step whose background job might itself be gone, forever,
-# with no message and no way to cancel short of killing the whole terminal/
-# session from outside - which is indistinguishable from "the installer
-# crashed silently". This handler actually stops the run, kills whatever
-# step was still in flight, and says so.
+# Ctrl+C / SIGTERM: stop the step in flight and say where it stopped. (A
+# trap that doesn't exit would leave the spinner running forever.)
 handle_interrupt() {
-	local sig="$1"
 	if [ -n "$CURRENT_STEP_PID" ] && kill -0 "$CURRENT_STEP_PID" 2>/dev/null; then
 		kill_tree "$CURRENT_STEP_PID" TERM
 		sleep 0.3
 		kill_tree "$CURRENT_STEP_PID" KILL
 	fi
-	if [ "$IN_ALT_SCREEN" = "true" ]; then
-		printf "\033[?1049l"
-		IN_ALT_SCREEN="false"
-	fi
-	if [ "$IS_TTY" = "true" ]; then
-		printf "\033[?25h\n"
-	else
-		printf "\n"
-	fi
+	if [ -t 1 ]; then printf '\r\033[K\033[?25h'; fi
+	printf '\n'
 	if [ -n "$CURRENT_STEP_TITLE" ]; then
-		warn "Installation cancelled (${sig}) during step ${STEP_NUM}/${TOTAL_STEPS}: ${CURRENT_STEP_TITLE}"
+		ui_warn "Cancelled ($1) during step ${STEP_NUM}/${TOTAL_STEPS}: ${CURRENT_STEP_TITLE}"
 	else
-		warn "Installation cancelled (${sig})."
+		ui_warn "Cancelled ($1)."
 	fi
-	info "Nothing further will run. Log so far: ${INSTALL_LOG}"
-	info "Re-run this script to resume/retry - completed steps are safe to repeat."
+	ui_kv "log" "$INSTALL_LOG"
+	ui_kv "resume" "run the same command again - finished steps are safe to repeat"
 	exit 130
 }
 trap 'handle_interrupt INT' INT
 trap 'handle_interrupt TERM' TERM
 
+on_fatal_error() {
+	local exit_code=$? line_no="$1"
+	if [ "$exit_code" -ne 0 ]; then
+		log_raw "Fatal error at line ${line_no} (exit code ${exit_code})"
+		ui_err "The installer stopped unexpectedly at line ${line_no} (exit code ${exit_code})."
+		ui_kv "log" "$INSTALL_LOG"
+	fi
+	exit "$exit_code"
+}
+trap 'on_fatal_error "$LINENO"' ERR
+
 strip_ansi() {
-	printf '%b' "$1" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\033\[[0-9;]*[a-zA-Z]//g' | tr '\r\t' '  '
+	printf '%s' "$1" | sed -E 's/\x1b\[[0-9;?]*[a-zA-Z]//g' | tr '\r\t' '  '
 }
 
-# ------------------------------------------------------------------------------
-# Real-Time Terminal Dimension Detection & CPR Hardware Probing
-# ------------------------------------------------------------------------------
-TERM_COLS=80
-TERM_ROWS=24
-
-get_term_size() {
-	if [ -n "${CLI_WIDTH:-}" ] && [ "$CLI_WIDTH" -ge 40 ] 2>/dev/null; then
-		TERM_COLS="$CLI_WIDTH"
-		TERM_ROWS="${CLI_HEIGHT:-24}"
+term_cols() {
+	local c=""
+	if [ -n "$CLI_WIDTH" ] && [ "$CLI_WIDTH" -ge 40 ] 2>/dev/null; then
+		echo "$CLI_WIDTH"
 		return
 	fi
-	if [ -n "${WIDTH:-}" ] && [ "$WIDTH" -ge 40 ] 2>/dev/null; then
-		TERM_COLS="$WIDTH"
-		TERM_ROWS="${HEIGHT:-24}"
-		return
-	fi
-
-	local rows=0 cols=0
-
-	# 1. Probe terminal emulator directly via ANSI CPR (Cursor Position Report)
-	if [ "$IS_TTY" = "true" ] && [ -e /dev/tty ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
-		if command -v stty >/dev/null 2>&1; then
-			local old_stty
-			old_stty="$(stty -g </dev/tty 2>/dev/null || true)"
-			if [ -n "$old_stty" ]; then
-				stty raw -echo min 0 time 0 </dev/tty 2>/dev/null || true
-				printf "\0337\033[9999;9999H\033[6n\0338" >/dev/tty 2>/dev/null || true
-				local resp=""
-				read -r -t 0.08 -d 'R' resp </dev/tty 2>/dev/null || true
-				stty "$old_stty" </dev/tty 2>/dev/null || true
-				if [[ "$resp" =~ \[([0-9]+)\;([0-9]+) ]]; then
-					rows="${BASH_REMATCH[1]}"
-					cols="${BASH_REMATCH[2]}"
-				fi
-			fi
-		fi
-	fi
-
-	# 2. Fallback to stty size on /dev/tty
-	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
-		if [ -e /dev/tty ]; then
-			local stty_out
-			stty_out="$( { stty size </dev/tty; } 2>/dev/null || true)"
-			if [ -n "$stty_out" ]; then
-				rows="$(echo "$stty_out" | awk '{print $1}')"
-				cols="$(echo "$stty_out" | awk '{print $2}')"
-			fi
-		fi
-	fi
-
-	# 3. Fallback to stty size on stdin
-	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
-		if [ -t 0 ] || [ -t 1 ]; then
-			local stty_out
-			stty_out="$(stty size 2>/dev/null || true)"
-			if [ -n "$stty_out" ]; then
-				rows="$(echo "$stty_out" | awk '{print $1}')"
-				cols="$(echo "$stty_out" | awk '{print $2}')"
-			fi
-		fi
-	fi
-
-	# 4. Fallback to tput
-	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
-		if command -v tput >/dev/null 2>&1; then
-			cols="$(tput cols 2>/dev/null || true)"
-			rows="$(tput lines 2>/dev/null || true)"
-		fi
-	fi
-
-	# 5. Fallback to environment variables
-	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
-		cols="${COLUMNS:-80}"
-		rows="${LINES:-24}"
-	fi
-
-	if [ "$cols" -lt 40 ] 2>/dev/null; then cols=80; fi
-	if [ "$rows" -lt 10 ] 2>/dev/null; then rows=24; fi
-
-	# Sync kernel tty driver if CPR found a larger width
-	if [ "$cols" -gt 0 ] && [ "$rows" -gt 0 ] && [ -e /dev/tty ]; then
-		{ stty rows "$rows" cols "$cols" </dev/tty; } 2>/dev/null || true
-	fi
-
-	TERM_COLS="$cols"
-	TERM_ROWS="$rows"
-}
-
-get_terminal_width() {
-	get_term_size
-	echo "$TERM_COLS"
-}
-
-get_terminal_height() {
-	get_term_size
-	echo "$TERM_ROWS"
+	c="$({ stty size </dev/tty; } 2>/dev/null | awk '{print $2}')" || true
+	[ -n "$c" ] && [ "$c" -ge 20 ] 2>/dev/null || c="${COLUMNS:-80}"
+	echo "$c"
 }
 
 # ------------------------------------------------------------------------------
-# Banner & Diagnostics Display
-# ------------------------------------------------------------------------------
-print_banner() {
-	if [ "$IS_TTY" = "true" ] && [ -z "${NO_CLEAR:-}" ]; then
-		clear 2>/dev/null || true
-	fi
-	printf "\n"
-	printf '%b' "${COLOR_BOLD}${COLOR_CYAN}"
-	cat <<'EOF'
-    _   _ _                         ___  ____
-   | \ | (_)_   ____ _ _ __ ___    / _ \/ ___|
-   |  \| | \ \ / / _` | '__/ _ \  | | | \___ \
-   | |\  | |\ V / (_| | | | (_) | | |_| |___) |
-   |_| \_|_| \_/ \__,_|_|  \___/   \___/|____/
-EOF
-	printf '%b\n' "${COLOR_RESET}"
-	printf '%b\n\n' "   ${COLOR_PURPLE}✦${COLOR_RESET} ${COLOR_BOLD}Modern Self-Hosted Personal Cloud & Container Platform${COLOR_RESET} ${COLOR_PURPLE}✦${COLOR_RESET}"
-}
-
-print_diagnostics_card() {
-	get_term_size
-	local box_width=$((TERM_COLS - 2))
-	if [ "$box_width" -lt 40 ]; then box_width=40; fi
-	local inner_width=$((box_width - 6))
-
-	local os_name="Linux"
-	if [ -f "$OS_RELEASE_FILE" ]; then
-		# shellcheck disable=SC1090
-		. "$OS_RELEASE_FILE"
-		os_name="${PRETTY_NAME:-$ID}"
-	fi
-
-	local arch kernel
-	arch="$(uname -m)"
-	kernel="$(uname -r)"
-
-	local mem_mb="0" mem_gb_str="Unknown"
-	if [ -f /proc/meminfo ]; then
-		mem_mb="$(awk '/MemTotal:/ { print int($2/1024) }' /proc/meminfo 2>/dev/null || echo "0")"
-	fi
-	if [ -z "$mem_mb" ] || [ "$mem_mb" -eq 0 ]; then
-		mem_mb="$(LC_ALL=C free -m 2>/dev/null | awk '/^Mem:/ { print $2 }' || echo "0")"
-	fi
-	if [ -n "$mem_mb" ] && [ "$mem_mb" -gt 0 ]; then
-		mem_gb_str="$(awk "BEGIN {printf \"%.1f GB\", $mem_mb/1024}")"
-	fi
-
-	local disk_gb_str="Unknown" disk_mb
-	disk_mb="$(LC_ALL=C df -m / 2>/dev/null | tail -n 1 | awk '{print $4}' || echo "0")"
-	if [ -n "$disk_mb" ] && [ "$disk_mb" -gt 0 ]; then
-		disk_gb_str="$(awk "BEGIN {printf \"%.1f GB\", $disk_mb/1024}")"
-	fi
-
-	local kvm_status="Supported (KVM Acceleration Available)"
-	if [ ! -e /dev/kvm ]; then
-		kvm_status="Not Detected (Emulation Only)"
-	fi
-
-	local docker_status="Not Installed (Auto-installs during setup)"
-	if command -v docker >/dev/null 2>&1; then
-		local d_ver
-		d_ver="$(docker version --format '{{.Server.Version}}' 2>/dev/null || docker -v 2>/dev/null | awk '{print $3}' | tr -d ',' || echo 'installed')"
-		docker_status="Installed (v${d_ver})"
-	fi
-
-	local title_tag=" System Diagnostics "
-	local top_dashes_len=$((box_width - ${#title_tag} - 4))
-	if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
-	local top_dashes=""
-	for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
-
-	local bot_dashes=""
-	for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
-
-	printf '%b\n' "${COLOR_MUTED}╭──${COLOR_BOLD}${COLOR_WHITE}${title_tag}${COLOR_RESET}${COLOR_MUTED}${top_dashes}╮${COLOR_RESET}"
-
-	render_diag_line() {
-		local label="$1" val="$2"
-		local prefix="• ${label}: "
-		# The old version computed a truncated preview just to size the
-		# padding, then printed the ORIGINAL untruncated label/value anyway -
-		# so a long value (a long docker version string, a long distro
-		# name) sailed straight past the box's right border instead of
-		# actually being cut to fit, breaking the border exactly like the
-		# "Docker Engine" line did.
-		local avail=$((inner_width - ${#prefix}))
-		if [ "$avail" -lt 1 ]; then avail=1; fi
-		if [ "${#val}" -gt "$avail" ]; then
-			if [ "$avail" -gt 1 ]; then
-				val="${val:0:$((avail - 1))}…"
-			else
-				val="${val:0:$avail}"
-			fi
-		fi
-		local clean_text="${prefix}${val}"
-		local pad_len=$((inner_width - ${#clean_text}))
-		local pad=""
-		if [ "$pad_len" -gt 0 ]; then
-			pad="$(printf '%*s' "$pad_len" '')"
-		fi
-		printf '%b\n' "${COLOR_MUTED}│${COLOR_RESET}  ${COLOR_CYAN}•${COLOR_RESET} ${COLOR_MUTED}${label}:${COLOR_RESET} ${COLOR_WHITE}${val}${COLOR_RESET}${pad}  ${COLOR_MUTED}│${COLOR_RESET}"
-	}
-
-	render_diag_line "Operating System" "${os_name} (${arch})"
-	render_diag_line "Linux Kernel    " "${kernel}"
-	render_diag_line "System Memory   " "${mem_gb_str}"
-	render_diag_line "Free Disk on /  " "${disk_gb_str}"
-	render_diag_line "Virtualization  " "${kvm_status}"
-	render_diag_line "Docker Engine   " "${docker_status}"
-
-	printf '%b\n\n' "${COLOR_MUTED}╰${bot_dashes}╯${COLOR_RESET}"
-}
-
-# ------------------------------------------------------------------------------
-# Pre-flight Checks & Elevation
+# Preflight
 # ------------------------------------------------------------------------------
 check_root() {
-	if [ "$(id -u)" -ne 0 ]; then
-		if [ ! -f "$0" ]; then
-			error "NivaroOS installer requires root privileges. Please run with sudo:"
-			printf '%b\n' "   ${COLOR_CYAN}curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash${COLOR_RESET}\n"
-			exit 1
-		fi
-		if command -v sudo >/dev/null 2>&1; then
-			info "Root privileges required. Elevating with sudo..."
-			exec sudo -E bash "$0" "$@"
-		else
-			error "NivaroOS installer must be run as root."
-			printf '%b\n' "   ${COLOR_MUTED}Please login as root or install sudo.${COLOR_RESET}"
-			exit 1
-		fi
+	[ "$(id -u)" -eq 0 ] && return 0
+	[ -n "$DRY_RUN" ] && return 0
+	if [ ! -f "$0" ]; then
+		ui_err "The installer needs root. Run it with sudo:"
+		printf '\n    %s\n\n' "$INSTALL_CMD"
+		exit 1
 	fi
+	if command -v sudo >/dev/null 2>&1; then
+		ui_info "Root privileges required - asking sudo."
+		exec sudo -E bash "$0" "$@"
+	fi
+	ui_die "The installer must run as root (log in as root or install sudo)."
 }
 
-check_distro() {
-	if [ ! -f "$OS_RELEASE_FILE" ]; then
-		warn "$OS_RELEASE_FILE not found, distribution family cannot be verified."
-		return 0
-	fi
-	# shellcheck disable=SC1090
-	. "$OS_RELEASE_FILE"
-	local family="${ID:-} ${ID_LIKE:-}"
-	case " $family " in
-		*" debian "*|*" ubuntu "*|*" raspbian "*|*" armbian "*|*" pop "*|*" mint "*|*" zorin "*|*" kali "*) ;;
-		*" rhel "*|*" centos "*|*" fedora "*|*" rocky "*|*" almalinux "*|*" amzn "*) ;;
-		*" arch "*|*" manjaro "*|*" endeavouros "*) ;;
-		*" opensuse "*|*" sles "*) ;;
-		*" alpine "*)
-			warn "Alpine Linux uses OpenRC, not systemd - this installer only knows how to create/enable/health-check systemd services, so NivaroOS's services will need to be started and supervised manually after this script finishes. Installation will continue, but expect to see 'inactive' services until you set that up yourself."
-			;;
-		*)
-			warn "Distribution '${ID:-unknown}' has not been fully validated, but installation will continue."
-			;;
-	esac
+mem_mb() {
+	awk '/MemTotal:/ { print int($2/1024) }' /proc/meminfo 2>/dev/null || echo 0
 }
 
-check_resources() {
-	local mem_mb="0" disk_gb
-	if [ -f /proc/meminfo ]; then
-		mem_mb="$(awk '/MemTotal:/ { print int($2/1024) }' /proc/meminfo 2>/dev/null || echo "0")"
-	fi
-	if [ -z "$mem_mb" ] || [ "$mem_mb" -eq 0 ]; then
-		mem_mb="$(LC_ALL=C free -m 2>/dev/null | awk '/^Mem:/ { print $2 }' || echo "0")"
-	fi
-
-	local disk_kb
-	disk_kb="$(LC_ALL=C df -P / 2>/dev/null | tail -n 1 | awk '{print $4}')"
-	if [ -n "$disk_kb" ] && [ "$disk_kb" -eq "$disk_kb" ] 2>/dev/null; then
-		disk_gb=$((disk_kb / 1024 / 1024))
-	else
-		disk_gb=0
-	fi
-
-	if [ -n "$mem_mb" ] && [ "$mem_mb" -gt 0 ]; then
-		if [ "$mem_mb" -lt "$MIN_REQUIRED_MEMORY_MB" ]; then
-			error "Only ${mem_mb}MB of memory detected - NivaroOS requires at least ${MIN_REQUIRED_MEMORY_MB}MB to install."
-			exit 1
-		elif [ "$mem_mb" -lt "$MIN_RECOMMENDED_MEMORY_MB" ]; then
-			warn "Only ${mem_mb}MB of memory detected - ${MIN_RECOMMENDED_MEMORY_MB}MB+ is recommended for optimal performance."
-		fi
-	fi
-	if [ -n "$disk_gb" ] && [ "$disk_gb" -gt 0 ]; then
-		if [ "$disk_gb" -lt "$MIN_REQUIRED_DISK_GB" ]; then
-			error "Only ${disk_gb}GB of free disk space on / - NivaroOS requires at least ${MIN_REQUIRED_DISK_GB}GB."
-			exit 1
-		elif [ "$disk_gb" -lt "$MIN_RECOMMENDED_DISK_GB" ]; then
-			warn "Only ${disk_gb}GB of free disk space on / - ${MIN_RECOMMENDED_DISK_GB}GB+ is recommended."
-		fi
-	fi
+disk_free_gb() {
+	LC_ALL=C df -Pk / 2>/dev/null | awk 'NR==2 { print int($4/1024/1024) }'
 }
 
-# ------------------------------------------------------------------------------
-# Port Conflict & Existing Installation Detection
-# ------------------------------------------------------------------------------
+# is_port_in_use PORT - `ss` when present, else a plain TCP connect (bash's
+# /dev/tcp), which works on a minimal system without iproute2.
 is_port_in_use() {
 	local port="$1"
 	if command -v ss >/dev/null 2>&1; then
-		ss -tuln 2>/dev/null | grep -qE ":${port}\s" && return 0
-	elif command -v netstat >/dev/null 2>&1; then
-		netstat -tuln 2>/dev/null | grep -qE ":${port}\s" && return 0
-	elif command -v lsof >/dev/null 2>&1; then
-		lsof -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1 && return 0
+		ss -tln 2>/dev/null | grep -qE "[:.]${port}[[:space:]]" && return 0
+		return 1
 	fi
-	return 1
+	(exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null
 }
 
 find_process_on_port() {
-	local port="$1"
-	local proc="unknown"
+	local port="$1" proc=""
 	if command -v ss >/dev/null 2>&1; then
-		proc="$(ss -tulnp 2>/dev/null | grep -E ":${port}\s" | awk '{print $NF}' | head -1 || echo "")"
-	elif command -v lsof >/dev/null 2>&1; then
-		proc="$(lsof -iTCP:"${port}" -sTCP:LISTEN -F c 2>/dev/null | sed 's/^c//' | head -1 || echo "")"
+		proc="$(ss -tlnp 2>/dev/null | grep -E "[:.]${port}[[:space:]]" | grep -o '(("[^"]*"' | head -1 | tr -d '("')" || true
 	fi
-	echo "$proc"
+	echo "${proc:-another program}"
 }
 
+# net_ok HOST - HTTPS to HOST works (curl, or a bare TCP connect without it).
+net_ok() {
+	if command -v curl >/dev/null 2>&1; then
+		curl -fsS -m 15 -o /dev/null "https://$1" 2>/dev/null
+	else
+		timeout 15 bash -c "exec 3<>/dev/tcp/$1/443" 2>/dev/null
+	fi
+}
+
+casaos_installed() {
+	local d
+	for d in /etc/systemd/system /usr/lib/systemd/system /lib/systemd/system; do
+		[ -f "$d/casaos.service" ] && return 0
+	done
+	return 1
+}
+
+# preflight checks everything up front and lists the result, so a box that
+# can't take NivaroOS is told why before anything is changed. Problems that
+# make the install fail are collected and reported together.
+preflight() {
+	local fatal=() os_name="Linux" id="" ver="" like="" arch mem disk
+
+	ui_head "Preflight"
+
+	if [ -f "$OS_RELEASE_FILE" ]; then
+		# shellcheck disable=SC1090
+		. "$OS_RELEASE_FILE"
+		os_name="${PRETTY_NAME:-${ID:-Linux}}"
+		id="${ID:-}"
+		ver="${VERSION_ID:-}"
+		like="${ID_LIKE:-}"
+	fi
+	arch="$(uname -m)"
+	case "$id:$ver" in
+		debian:12* | debian:13* | ubuntu:22.04 | ubuntu:24.04 | ubuntu:26.04)
+			ui_ok "System       ${os_name}, ${arch}" ;;
+		debian:* | ubuntu:*)
+			ui_warn "System       ${os_name} is not a tested release (Debian 12/13, Ubuntu 22.04/24.04/26.04) - continuing" ;;
+		*)
+			case " $id $like " in
+				*" debian "* | *" ubuntu "*) ui_warn "System       ${os_name} (Debian-based, not tested) - continuing" ;;
+				*" rhel "* | *" fedora "* | *" centos "* | *" arch "* | *" opensuse "* | *" suse "*)
+					ui_warn "System       ${os_name} is best effort - continuing" ;;
+				*) ui_warn "System       ${os_name} has not been validated - continuing" ;;
+			esac
+			;;
+	esac
+
+	case "$arch" in
+		x86_64 | aarch64 | arm64) ;;
+		armv7l | armhf) ui_warn "Architecture ${arch} is best effort (amd64 and arm64 are supported)" ;;
+		*) fatal+=("Architecture ${arch} is not supported (amd64 or arm64)") ;;
+	esac
+
+	if [ -d /run/systemd/system ]; then
+		ui_ok "Init         systemd"
+	else
+		fatal+=("systemd is not running - NivaroOS runs as systemd services")
+	fi
+
+	mem="$(mem_mb)"
+	if [ "${mem:-0}" -gt 0 ]; then
+		if [ "$mem" -lt "$MIN_REQUIRED_MEMORY_MB" ]; then
+			fatal+=("Only ${mem} MB of memory - at least ${MIN_REQUIRED_MEMORY_MB} MB is needed")
+		elif [ "$mem" -lt "$MIN_RECOMMENDED_MEMORY_MB" ]; then
+			ui_warn "Memory       ${mem} MB (${MIN_RECOMMENDED_MEMORY_MB} MB or more recommended)"
+		else
+			ui_ok "Memory       $(awk "BEGIN { printf \"%.1f GB\", ${mem}/1024 }")"
+		fi
+	fi
+
+	disk="$(disk_free_gb)"
+	if [ -n "$disk" ]; then
+		if [ "$disk" -lt "$MIN_REQUIRED_DISK_GB" ]; then
+			fatal+=("Only ${disk} GB free on / - at least ${MIN_REQUIRED_DISK_GB} GB is needed to build NivaroOS")
+		elif [ "$disk" -lt "$MIN_RECOMMENDED_DISK_GB" ]; then
+			ui_warn "Disk         ${disk} GB free on / (${MIN_RECOMMENDED_DISK_GB} GB or more recommended)"
+		else
+			ui_ok "Disk         ${disk} GB free on /"
+		fi
+	fi
+
+	if net_ok github.com; then
+		ui_ok "Network      github.com reachable"
+	else
+		fatal+=("github.com is not reachable - check this machine's internet connection and DNS")
+	fi
+
+	if casaos_installed; then
+		fatal+=("CasaOS is installed. NivaroOS replaces it and uses the same port and paths - remove it first (casaos-uninstall), then run this again")
+	fi
+
+	resolve_port_conflict
+	if [ "$IS_UPGRADE" = "true" ]; then
+		ui_ok "Existing     NivaroOS found - updating in place, data and settings are kept"
+	fi
+
+	if [ -e /dev/kvm ]; then
+		ui_ok "KVM          available"
+	else
+		ui_info "KVM          not available - virtual machines would use slow emulation"
+	fi
+	if command -v docker >/dev/null 2>&1; then
+		ui_ok "Docker       $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo installed)"
+	else
+		ui_info "Docker       not installed yet - the installer adds it"
+	fi
+
+	if [ "${#fatal[@]}" -gt 0 ]; then
+		printf '\n'
+		local f
+		for f in "${fatal[@]}"; do ui_err "$f"; done
+		printf '\n'
+		ui_die "Nothing was changed."
+	fi
+}
+
+# Picks the dashboard port. An existing install keeps its port; a port held
+# by another program moves to the next free one (or asks).
 resolve_port_conflict() {
-	# Check if existing NivaroOS configuration exists. This is checked
-	# independent of whatever port is actually requested/free right now -
-	# otherwise re-running with a different --port than a prior install
-	# used (which is now sitting free, since the old install owns its own
-	# port) would misclassify a genuine upgrade as a fresh install below.
-	if [ -f /etc/nivaroos/gateway.ini ]; then
+	# Checked regardless of whether the requested port is free: re-running
+	# with another --port than a prior install used is still an upgrade.
+	if [ -f /etc/nivaroos/gateway.ini ] || [ -x /usr/bin/nivaroos-gateway ]; then
 		IS_UPGRADE="true"
 		local saved_port
 		saved_port="$(awk -F '=' '/^[[:space:]]*port[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2}' /etc/nivaroos/gateway.ini 2>/dev/null || echo "")"
-		if [ -n "$saved_port" ]; then
-			DETECTED_PORT="$saved_port"
-		fi
+		[ -n "$saved_port" ] && DETECTED_PORT="$saved_port"
 	fi
 
 	local target_port="${CUSTOM_PORT:-$DETECTED_PORT}"
-
-	# Check if port is in use
-	if is_port_in_use "$target_port"; then
-		local conflict_proc
-		conflict_proc="$(find_process_on_port "$target_port")"
-
-		# If port is in use by NivaroOS itself, this is an upgrade/reinstall
-		if [[ "$conflict_proc" =~ nivaroos || "$conflict_proc" =~ casaos ]]; then
-			IS_UPGRADE="true"
-			DETECTED_PORT="$target_port"
-			info "Existing NivaroOS installation detected on Port ${target_port}. Performing in-place upgrade..."
-			return 0
-		fi
-
-		# If in use by another third-party process
-		local alt_port=8080
-		while [ "$alt_port" -le 65535 ]; do
-			if ! is_port_in_use "$alt_port"; then
-				break
-			fi
-			alt_port=$((alt_port + 1))
-		done
-
-		if [ -n "$CUSTOM_PORT" ]; then
-			warn "Requested port ${CUSTOM_PORT} is already bound by ${conflict_proc}."
-			if [ -n "$YES" ] || [ "$INTERACTIVE_TTY" != "true" ]; then
-				DETECTED_PORT="$CUSTOM_PORT"
-				return 0
-			fi
-		else
-			warn "Port 80 is currently in use by ${conflict_proc}."
-		fi
-
-		if [ -n "$YES" ] || [ "$INTERACTIVE_TTY" != "true" ]; then
-			info "Non-interactive mode: Automatically assigning free port ${alt_port}."
-			DETECTED_PORT="$alt_port"
-			return 0
-		fi
-
-		printf '%b\n' "  ${COLOR_PURPLE}◆${COLOR_RESET} Port 80 is occupied. You can use available port ${COLOR_CYAN}${alt_port}${COLOR_RESET} or specify a custom port."
-		local user_port=""
-		printf '%b' "  ${COLOR_CYAN}?${COLOR_RESET} ${COLOR_BOLD}HTTP Dashboard Port [${alt_port}]:${COLOR_RESET} "
-		read -r user_port </dev/tty || user_port=""
-		if [ -z "$user_port" ]; then
-			DETECTED_PORT="$alt_port"
-		else
-			DETECTED_PORT="$user_port"
-		fi
-		printf '%b\n\n' "  ${COLOR_GREEN}✔${COLOR_RESET} Selected Dashboard Port: ${COLOR_BOLD}${DETECTED_PORT}${COLOR_RESET}"
-	else
+	if ! is_port_in_use "$target_port"; then
 		DETECTED_PORT="$target_port"
+		ui_ok "Port         ${DETECTED_PORT} free for the dashboard"
+		return 0
 	fi
+
+	local conflict_proc
+	conflict_proc="$(find_process_on_port "$target_port")"
+	if [[ "$conflict_proc" =~ nivaroos ]] || { [ "$IS_UPGRADE" = "true" ] && [ "$target_port" = "$DETECTED_PORT" ]; }; then
+		DETECTED_PORT="$target_port"
+		ui_ok "Port         ${DETECTED_PORT} (NivaroOS's own)"
+		return 0
+	fi
+
+	local alt_port=8080
+	while [ "$alt_port" -le 65535 ] && is_port_in_use "$alt_port"; do
+		alt_port=$((alt_port + 1))
+	done
+
+	if [ -n "$CUSTOM_PORT" ] && unattended; then
+		# An explicit --port is respected even if something holds it now.
+		ui_warn "Port         ${CUSTOM_PORT} is in use by ${conflict_proc} - using it anyway (--port)"
+		DETECTED_PORT="$CUSTOM_PORT"
+		return 0
+	fi
+	if unattended; then
+		ui_warn "Port         ${target_port} is in use by ${conflict_proc} - using ${alt_port}"
+		DETECTED_PORT="$alt_port"
+		return 0
+	fi
+
+	ui_warn "Port         ${target_port} is in use by ${conflict_proc}"
+	local user_port=""
+	printf '  ? Dashboard port [%s]: ' "$alt_port"
+	read -r user_port </dev/tty || user_port=""
+	case "$user_port" in
+		'') DETECTED_PORT="$alt_port" ;;
+		*[!0-9]*) ui_die "'${user_port}' is not a port number." 2 ;;
+		*) DETECTED_PORT="$user_port" ;;
+	esac
+	ui_ok "Port         ${DETECTED_PORT}"
 }
 
 # ------------------------------------------------------------------------------
-# CLI Arguments & Options
+# Arguments
 # ------------------------------------------------------------------------------
+usage() {
+	ui_banner "installer" "Install or update - safe to re-run"
+	cat <<EOF
+
+  Usage
+    ${INSTALL_CMD}
+    ... | sudo bash -s -- [options]
+    sudo bash installer/install.sh [options]          (from a checkout)
+
+  Options
+    -y, --yes                     Unattended: take the defaults, ask nothing
+    --dry-run                     Run the checks and show the plan; change nothing
+    --with-vm, --without-vm       VM Manager: QEMU/KVM, libvirt, web console
+                                  (default: on when KVM is available)
+    --with-host-desktop           Stream this machine's own desktop (needs VM Manager)
+    --without-host-desktop        (default)
+    --with-download-station       Downloads, torrents, browser, ad blocker (default)
+    --without-download-station
+    --without-ds-browser          Keep Download Station's browser in Lite mode (no Chromium)
+    --without-ds-torrent          No qbittorrent-nox (torrents use the built-in engine)
+    --with-backup                 Backup & Sync (default)
+    --without-backup
+    --port <port>                 Dashboard port (default: 80, or the next free one)
+    --branch <ref>                Branch or tag to install (default: master)
+    --repo <url>                  Git repository to install from
+    --force                       Update even while a backup is running (it is retried after)
+    --debug                       Show every step's full output
+    --width <cols>                Fixed output width (default: the terminal's)
+    -h, --help                    Show this help
+
+  Logs   ${LOG_DIR}/install.log
+  Exit   0 done, 1 failed (the step and its log are shown), 2 bad option, 130 cancelled
+EOF
+}
+
 parse_args() {
 	while [ $# -gt 0 ]; do
 		case "$1" in
@@ -652,236 +501,153 @@ parse_args() {
 			--with-backup) WITH_BACKUP=yes ;;
 			--without-backup) WITH_BACKUP=no ;;
 			--force) FORCE=yes ;;
+			--dry-run | -n) DRY_RUN=yes ;;
 			--port=*) CUSTOM_PORT="${1#*=}" ;;
 			--port)
 				shift
 				CUSTOM_PORT="${1:-}"
 				;;
 			--width=*) CLI_WIDTH="${1#*=}" ;;
-			--width|-w)
+			--width | -w)
 				shift
 				CLI_WIDTH="${1:-}"
 				;;
 			--branch=*) BRANCH="${1#*=}" ;;
-			--branch|-b)
+			--branch | -b)
 				shift
 				BRANCH="${1:-master}"
 				;;
 			--repo=*) REPO_URL="${1#*=}" ;;
-			--yes|-y|--unattended) YES=yes ;;
+			--repo)
+				shift
+				REPO_URL="${1:-$REPO_URL}"
+				;;
+			--yes | -y | --unattended) YES=yes ;;
 			--debug) DEBUG=yes ;;
-			--help|-h)
-				print_banner
-				printf '%b\n' "${COLOR_BOLD}Usage:${COLOR_RESET} install.sh [options]\n"
-				printf '%b\n' "${COLOR_BOLD}Options:${COLOR_RESET}"
-				printf '%b\n' "  ${COLOR_CYAN}-y, --yes${COLOR_RESET}                    Automatic non-interactive installation (accept all defaults, skips the selection menu)"
-				printf '%b\n' "  ${COLOR_CYAN}--with-vm${COLOR_RESET}                    Install VM Manager with QEMU/KVM, libvirt & web console"
-				printf '%b\n' "  ${COLOR_CYAN}--without-vm${COLOR_RESET}                 Skip VM Manager installation (can be enabled later via CLI)"
-				printf '%b\n' "  ${COLOR_CYAN}--with-host-desktop${COLOR_RESET}          Stream this machine's own desktop over VNC (requires VM Manager)"
-				printf '%b\n' "  ${COLOR_CYAN}--without-host-desktop${COLOR_RESET}       Skip Host Desktop streaming installation"
-				printf '%b\n' "  ${COLOR_CYAN}--with-download-station${COLOR_RESET}      Install Download Station (multi-connection downloads, lite browser, ad blocker) [default]"
-				printf '%b\n' "  ${COLOR_CYAN}--without-download-station${COLOR_RESET}   Skip Download Station installation"
-				printf '%b\n' "  ${COLOR_CYAN}--without-ds-browser${COLOR_RESET}         Keep Download Station's browser in Lite mode (no Chromium)"
-				printf '%b\n' "  ${COLOR_CYAN}--without-ds-torrent${COLOR_RESET}         Don't install qbittorrent-nox (torrents then use the built-in engine)"
-				printf '%b\n' "  ${COLOR_CYAN}--with-backup${COLOR_RESET}                Install Backup & Sync (scheduled backups and sync to any storage or cloud) [default]"
-				printf '%b\n' "  ${COLOR_CYAN}--without-backup${COLOR_RESET}             Skip Backup & Sync installation"
-				printf '%b\n' "  ${COLOR_CYAN}--force${COLOR_RESET}                      Upgrade even while a backup is running (it is stopped and retried after the upgrade)"
-				printf '%b\n' "  ${COLOR_CYAN}--port <port>${COLOR_RESET}                Custom HTTP dashboard port (default: 80 or next free port)"
-				printf '%b\n' "  ${COLOR_CYAN}--width <cols>${COLOR_RESET}               Force specific terminal box width (default: auto-detect)"
-				printf '%b\n' "  ${COLOR_CYAN}--branch <branch>${COLOR_RESET}            Git branch or tag to install (default: master)"
-				printf '%b\n' "  ${COLOR_CYAN}--debug${COLOR_RESET}                      Show detailed verbose logs during installation"
-				printf '%b\n' "  ${COLOR_CYAN}-h, --help${COLOR_RESET}                   Display this help message and exit"
-				printf '\n'
+			--help | -h)
+				usage
 				exit 0
 				;;
 			*)
-				error "Unknown argument '$1'. Run with --help to see available options."
-				exit 1
+				ui_err "Unknown option '$1' - see --help."
+				exit 2
 				;;
 		esac
-		# The two-token flags above (--port, --width/-w, --branch/-b)
-		# already shift once themselves to consume their value - if that
-		# value was the last argument on the command
-		# line, $# is already 0 here, and an unconditional shift would fail
-		# ("shift count out of range"), which set -e turns into the whole
-		# installer aborting over a missing flag value instead of just
-		# falling back to its default.
+		# A two-token flag given last has already shifted its value away.
 		[ $# -eq 0 ] || shift
 	done
+	case "$CUSTOM_PORT" in
+		'') ;;
+		*[!0-9]*) ui_die "--port needs a number, not '${CUSTOM_PORT}'." 2 ;;
+	esac
 }
 
 # ------------------------------------------------------------------------------
-# Interactive Checkbox Multi-Select Widget
-#
-# Populate the global CBM_LABELS/CBM_DESCS/CBM_STATE arrays (same length,
-# CBM_STATE holding "0"/"1"), then call checkbox_menu "<title>". On return,
-# CBM_STATE holds the user's final choices. Space toggles, up/down (or j/k)
-# moves, Enter confirms, Ctrl+C cancels the whole installation cleanly.
-# Only ever call this when already known to be an interactive TTY - callers
-# are responsible for the "$YES"/"$INTERACTIVE_TTY" non-interactive fallback.
+# Interactive checkbox list. Populate CBM_LABELS/CBM_DESCS/CBM_STATE (same
+# length, CBM_STATE "0"/"1"), call checkbox_menu "<title>", read CBM_STATE.
+# Space toggles, up/down or j/k move, Enter confirms, Ctrl+C cancels. Only
+# call it when interactive (see unattended).
 # ------------------------------------------------------------------------------
 checkbox_menu() {
-	local title="$1"
-	local n=${#CBM_LABELS[@]}
-	local cur=0
-	local key="" rest=""
-	local old_stty=""
+	local title="$1" n=${#CBM_LABELS[@]} cur=0 key="" rest="" old_stty=""
 	old_stty="$(stty -g </dev/tty 2>/dev/null || true)"
 	stty raw -echo </dev/tty 2>/dev/null || true
-	printf "\033[?25l"
+	printf '\033[?25l'
 
-	local first_draw=true
-	local drawn_lines=0
-	local i out
-
+	local first_draw=true drawn_lines=0 i out
 	while true; do
-		out=""
-		out+="\r\n  ${COLOR_BOLD}${COLOR_WHITE}${title}${COLOR_RESET}\r\n"
-		out+="  ${COLOR_MUTED}up/down or j/k move   space toggle   enter confirm${COLOR_RESET}\r\n\r\n"
-		for ((i=0; i<n; i++)); do
-			local box="[ ]"
-			local label_color="${COLOR_WHITE}"
-			if [ "${CBM_STATE[$i]}" = "1" ]; then
-				box="[x]"
-				label_color="${COLOR_GREEN}"
-			fi
-			local pointer="   "
-			if [ "$i" -eq "$cur" ]; then
-				pointer="${COLOR_CYAN} > ${COLOR_RESET}"
-			fi
-			out+="  ${pointer}${COLOR_BOLD}${box}${COLOR_RESET} ${label_color}${CBM_LABELS[$i]}${COLOR_RESET}\r\n"
-			if [ -n "${CBM_DESCS[$i]:-}" ]; then
-				out+="      ${COLOR_MUTED}${CBM_DESCS[$i]}${COLOR_RESET}\r\n"
-			fi
+		out="\r\n  ${UI_B}${title}${UI_R}\r\n  ${UI_D}up/down move   space toggle   enter confirm${UI_R}\r\n\r\n"
+		for ((i = 0; i < n; i++)); do
+			local box="[ ]" pointer="  "
+			[ "${CBM_STATE[$i]}" = "1" ] && box="[${UI_OK}x${UI_R}]"
+			[ "$i" -eq "$cur" ] && pointer="${UI_B}>${UI_R} "
+			out+="  ${pointer}${box} ${CBM_LABELS[$i]}\r\n"
+			[ -n "${CBM_DESCS[$i]:-}" ] && out+="        ${UI_D}${CBM_DESCS[$i]}${UI_R}\r\n"
 		done
-
-		if [ "$first_draw" = "false" ]; then
-			printf "\033[%dA" "$drawn_lines"
-		fi
+		[ "$first_draw" = "false" ] && printf '\033[%dA' "$drawn_lines"
 		first_draw=false
 		printf '%b' "$out"
 		drawn_lines="$(printf '%b' "$out" | wc -l)"
 
 		key=""
 		IFS= read -rsn1 key </dev/tty || true
-		if [ "$key" = "$(printf '\033')" ]; then
+		if [ "$key" = $'\033' ]; then
 			rest=""
 			IFS= read -rsn2 -t 0.01 rest </dev/tty || true
 			key="${key}${rest}"
 		fi
-
 		case "$key" in
-			$'\033[A'|k|K) cur=$(( (cur - 1 + n) % n )) ;;
-			$'\033[B'|j|J) cur=$(( (cur + 1) % n )) ;;
-			' ')
-				if [ "${CBM_STATE[$cur]}" = "1" ]; then
-					CBM_STATE[$cur]=0
-				else
-					CBM_STATE[$cur]=1
-				fi
-				;;
-			"$(printf '\003')")
+			$'\033[A' | k | K) cur=$(((cur - 1 + n) % n)) ;;
+			$'\033[B' | j | J) cur=$(((cur + 1) % n)) ;;
+			' ') if [ "${CBM_STATE[$cur]}" = "1" ]; then CBM_STATE[cur]=0; else CBM_STATE[cur]=1; fi ;;
+			$'\003')
 				stty "$old_stty" </dev/tty 2>/dev/null || true
-				printf "\033[?25h\n"
-				warn "Installation cancelled."
+				printf '\033[?25h\n'
+				ui_warn "Cancelled - nothing was changed."
 				exit 130
 				;;
-			"")
-				break
-				;;
-			*) : ;;
+			'') break ;;
 		esac
 	done
-
-	printf "\033[?25h"
-	if [ -n "$old_stty" ]; then
-		stty "$old_stty" </dev/tty 2>/dev/null || true
-	fi
-	printf "\r\n"
+	printf '\033[?25h'
+	[ -n "$old_stty" ] && stty "$old_stty" </dev/tty 2>/dev/null
+	printf '\r\n'
 }
 
-
 # ------------------------------------------------------------------------------
-# Component Selection
+# Components
 # ------------------------------------------------------------------------------
 compute_default_selections() {
 	if [ -e /dev/kvm ]; then KVM_AVAILABLE="yes"; else KVM_AVAILABLE="no"; fi
-
 	if [ -z "$WITH_VM" ]; then
 		if [ "$KVM_AVAILABLE" = "yes" ]; then WITH_VM=yes; else WITH_VM=no; fi
 	fi
-	# NOT "[ -z "$WITH_HOST_DESKTOP" ] && WITH_HOST_DESKTOP=no" - when
-	# WITH_HOST_DESKTOP is already non-empty (e.g. --with-host-desktop was
-	# passed), that test is false, && short-circuits without running the
-	# assignment, and the whole compound statement's exit status becomes
-	# the failed test's (1) - as the last statement in this function, that
-	# return code would abort the entire installer under set -e the moment
-	# this function is called with the flag already set.
+	# `if`, not `[ -z ] && x=...`: as a function's last statement a false
+	# test would be its exit status and abort the installer under set -e.
 	if [ -z "$WITH_HOST_DESKTOP" ]; then
 		WITH_HOST_DESKTOP=no
 	fi
-	# On by default: it's a single pure-Go service with no system packages
-	# to pull in, unlike VM Manager (QEMU/libvirt) or Host Desktop (x11vnc).
+	# On by default: single pure-Go services with no system packages.
 	if [ -z "$WITH_DOWNLOAD_STATION" ]; then
 		WITH_DOWNLOAD_STATION=yes
 	fi
-	# On by default for the same reason: one pure-Go service (rclone is
-	# linked in), no system packages.
 	if [ -z "$WITH_BACKUP" ]; then
 		WITH_BACKUP=yes
 	fi
 }
 
-# Samba and mDNS are core parts of NivaroOS (Network Shares and mobile-app
-# discovery are always-on dashboard features, not add-ons) - they always
-# install, with no flag to skip them, the same as Docker or the web
-# dashboard itself. Only VM Manager and Host Desktop are optional enough to
-# warrant a selection screen: VM Manager pulls in QEMU/KVM/libvirt, and Host
-# Desktop pulls in x11vnc. Samba/mDNS are neither.
+# Samba and mDNS are core (Network Shares and mobile-app discovery are
+# always-on features) and always install, like Docker and the dashboard.
+# Only VM Manager (QEMU/libvirt), Host Desktop (x11vnc), Download Station
+# and Backup & Sync are choices.
 #
-# Host Desktop here only ever installs the streaming service itself -
-# whether there's a compatible (X11) desktop for it to actually stream is a
-# separate question, deliberately not answered or acted on during install.
-# Detecting "is there a Wayland-only or missing desktop" and offering to
-# fix it (add an X11 session, install one alongside, or replace one) used
-# to happen here, blocking on a multi-choice prompt and a package install
-# before the rest of setup could even continue - for a machine that might
-# not even have anyone sitting at its physical console yet. That check now
-# happens reactively instead: opening Host Desktop in the dashboard runs
-# the desktop provisioner (services/vm-sidecar/hostdesktop/host-desktop-de-install.sh) --status itself and prompts for a
-# desktop choice right there, with the exact same options, only when and
-# if it's actually needed.
+# Host Desktop here only installs the streaming service. Whether there is
+# an X11 desktop to stream is checked when Host Desktop is first opened in
+# the dashboard (services/vm-sidecar/hostdesktop/host-desktop-de-install.sh
+# --status), which offers to set one up then - not here, where it used to
+# block the install on a prompt for a box that may have no one at its
+# console yet.
 select_components() {
 	compute_default_selections
 
-	if [ -n "$YES" ] || [ "$INTERACTIVE_TTY" != "true" ]; then
-		: # Respect flags/detected defaults as-is, no menu.
-	else
-		printf '%b\n' "${COLOR_BOLD}${COLOR_WHITE}Select Optional Components:${COLOR_RESET}"
-		printf '%b\n' "  ${COLOR_MUTED}Core Platform (Dashboard, Gateway, App Store, File Manager, Samba File${COLOR_RESET}"
-		printf '%b\n\n' "  ${COLOR_MUTED}Sharing, mDNS Discovery) always installs.${COLOR_RESET}"
-
-		local vm_desc hd_desc ds_desc bk_desc
+	if ! unattended; then
+		local vm_desc
 		if [ "$KVM_AVAILABLE" = "yes" ]; then
 			vm_desc="KVM hardware acceleration detected on this CPU."
 		else
-			vm_desc="No KVM acceleration detected - VMs would use slower software emulation."
+			vm_desc="No KVM acceleration - VMs would use slower software emulation."
 		fi
-		hd_desc="Requires VM Manager (shares its vm-sidecar). Streams this machine's own physical desktop."
-		ds_desc="IDM-style downloader and torrents (qbittorrent-nox, started only while a torrent is active), a browser and uBlock Origin filter lists."
-		bk_desc="Scheduled and plug-in backups, mirrors and archives to any drive, share or cloud account. No extra packages."
-
 		CBM_LABELS=(
-			"VM Manager - QEMU/KVM, Libvirt, Web Console, VirtIO-FS"
-			"Host Desktop Streaming - stream this machine's own desktop over VNC"
-			"Download Station - multi-connection downloads, lite browser, ad blocker"
-			"Backup & Sync - scheduled backups and sync to drives, shares and clouds"
+			"VM Manager          QEMU/KVM, libvirt, web console, VirtIO-FS"
+			"Host Desktop        stream this machine's own desktop"
+			"Download Station    multi-connection downloads, torrents, browser, ad blocker"
+			"Backup & Sync       scheduled backups and sync to drives, shares and clouds"
 		)
 		CBM_DESCS=(
 			"$vm_desc"
-			"$hd_desc"
-			"$ds_desc"
-			"$bk_desc"
+			"Needs VM Manager (shares its vm-sidecar)."
+			"qbittorrent-nox runs only while a torrent is active; uBlock Origin filter lists."
+			"Plug-in backups, mirrors and archives. No extra packages."
 		)
 		CBM_STATE=(
 			"$([ "$WITH_VM" = "yes" ] && echo 1 || echo 0)"
@@ -889,9 +655,8 @@ select_components() {
 			"$([ "$WITH_DOWNLOAD_STATION" = "yes" ] && echo 1 || echo 0)"
 			"$([ "$WITH_BACKUP" = "yes" ] && echo 1 || echo 0)"
 		)
-
-		checkbox_menu "Select Optional Components"
-
+		printf '\n  %sDashboard, gateway, App Store, files, Samba shares and mDNS always install.%s' "$UI_D" "$UI_R"
+		checkbox_menu "Optional components"
 		WITH_VM="$([ "${CBM_STATE[0]}" = "1" ] && echo yes || echo no)"
 		WITH_HOST_DESKTOP="$([ "${CBM_STATE[1]}" = "1" ] && echo yes || echo no)"
 		WITH_DOWNLOAD_STATION="$([ "${CBM_STATE[2]}" = "1" ] && echo yes || echo no)"
@@ -899,390 +664,117 @@ select_components() {
 	fi
 
 	if [ "$WITH_HOST_DESKTOP" = "yes" ] && [ "$WITH_VM" != "yes" ]; then
-		printf '%b\n\n' "  ${COLOR_YELLOW}ℹ Host Desktop requires VM Manager (shares its vm-sidecar) - enabling VM Manager too.${COLOR_RESET}"
+		ui_info "Host Desktop needs VM Manager - turning VM Manager on too."
 		WITH_VM=yes
 	fi
 
-	TOTAL_STEPS=$BASE_STEPS
-	[ "$WITH_VM" = "yes" ] && TOTAL_STEPS=$((TOTAL_STEPS + 1))
-	[ "$WITH_HOST_DESKTOP" = "yes" ] && TOTAL_STEPS=$((TOTAL_STEPS + 1))
-	[ "$WITH_DOWNLOAD_STATION" = "yes" ] && TOTAL_STEPS=$((TOTAL_STEPS + 1))
-	[ "$WITH_BACKUP" = "yes" ] && TOTAL_STEPS=$((TOTAL_STEPS + 1))
-
-	printf '%b\n' "${COLOR_BOLD}${COLOR_WHITE}Selected Components:${COLOR_RESET}"
-	local mark_vm="${COLOR_MUTED}○ VM Manager (off)${COLOR_RESET}"
-	local mark_hd="${COLOR_MUTED}○ Host Desktop (off)${COLOR_RESET}"
-	local mark_ds="${COLOR_MUTED}○ Download Station (off)${COLOR_RESET}"
-	local mark_bk="${COLOR_MUTED}○ Backup & Sync (off)${COLOR_RESET}"
-	[ "$WITH_VM" = "yes" ] && mark_vm="${COLOR_GREEN}✔ VM Manager${COLOR_RESET}"
-	[ "$WITH_HOST_DESKTOP" = "yes" ] && mark_hd="${COLOR_GREEN}✔ Host Desktop${COLOR_RESET}"
-	[ "$WITH_DOWNLOAD_STATION" = "yes" ] && mark_ds="${COLOR_GREEN}✔ Download Station${COLOR_RESET}"
-	[ "$WITH_BACKUP" = "yes" ] && mark_bk="${COLOR_GREEN}✔ Backup & Sync${COLOR_RESET}"
-	printf '%b\n' "  ${mark_vm}"
-	printf '%b\n' "  ${mark_hd}"
-	printf '%b\n' "  ${mark_ds}"
-	printf '%b\n\n' "  ${mark_bk}"
+	ui_head "Components"
+	local name val
+	for name in "VM Manager:$WITH_VM" "Host Desktop:$WITH_HOST_DESKTOP" "Download Station:$WITH_DOWNLOAD_STATION" "Backup & Sync:$WITH_BACKUP"; do
+		val="${name##*:}"
+		if [ "$val" = "yes" ]; then ui_ok "${name%:*}"; else ui_info "${UI_D}${name%:*} (off)${UI_R}"; fi
+	done
 }
 
 # ------------------------------------------------------------------------------
-# Error Handling & Reporting
+# Step runner. Each step runs in a subshell with its output going to its own
+# log (appended to the install log afterwards). On a terminal one line shows
+# the step, a timer and the step's latest output line; --debug streams the
+# whole output; without a terminal (CI, a pipe to a file) a start and a
+# result line are printed. A failed step shows its last log lines and stops.
 # ------------------------------------------------------------------------------
-print_error_card() {
-	local title="$1"
-	local exit_code="$2"
-	local log_file="$3"
-
-	get_term_size
-	local box_width=$((TERM_COLS - 2))
-	if [ "$box_width" -lt 40 ]; then box_width=40; fi
-	local inner_width=$((box_width - 6))
-
-	local title_tag=" Installation Failed "
-	local top_dashes_len=$((box_width - ${#title_tag} - 4))
-	if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
-	local top_dashes=""
-	for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
-
-	local bot_dashes=""
-	for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
-
-	printf "\n"
-	printf '%b\n' "${COLOR_RED}╭──${COLOR_BOLD}${title_tag}${COLOR_RESET}${COLOR_RED}${top_dashes}╮${COLOR_RESET}"
-
-	render_err_line() {
-		local text="$1"
-		local plain
-		plain="$(strip_ansi "$text")"
-		if [ "${#plain}" -gt "$inner_width" ]; then
-			plain="${plain:0:$inner_width}"
-		fi
-		local pad_len=$((inner_width - ${#plain}))
-		local pad=""
-		if [ "$pad_len" -gt 0 ]; then
-			pad="$(printf '%*s' "$pad_len" '')"
-		fi
-		printf '%b\n' "${COLOR_RED}│${COLOR_RESET}  ${plain}${pad}  ${COLOR_RED}│${COLOR_RESET}"
-	}
-
-	render_err_line "✖ Step Failed: ${title}"
-	render_err_line "✖ Exit Code  : ${exit_code}"
-	render_err_line ""
-	render_err_line "Recent Log Output:"
-	printf '%b\n' "${COLOR_RED}├${bot_dashes}┤${COLOR_RESET}"
-
-	if [ -f "$log_file" ] && [ -s "$log_file" ]; then
-		while IFS= read -r line; do
-			render_err_line "$line"
-		done < <(tail -n 14 "$log_file")
+print_failure() {
+	local title="$1" exit_code="$2" log_file="$3"
+	printf '\n'
+	ui_err "Step ${STEP_NUM}/${TOTAL_STEPS} failed: ${title} (exit code ${exit_code})"
+	printf '\n    %sLast lines of its output%s\n' "$UI_D" "$UI_R"
+	if [ -s "$log_file" ]; then
+		tail -n 20 "$log_file" | while IFS= read -r line; do
+			printf '    %s|%s %s\n' "$UI_D" "$UI_R" "$(strip_ansi "$line")"
+		done
 	else
-		render_err_line "(No detailed log output captured)"
+		printf '    %s|%s (no output)\n' "$UI_D" "$UI_R"
 	fi
-
-	printf '%b\n' "${COLOR_RED}├${bot_dashes}┤${COLOR_RESET}"
-	render_err_line "Troubleshooting Tips:"
-	render_err_line "• Full installation log: ${INSTALL_LOG}"
-	render_err_line "• Verify internet connectivity and package mirrors."
-	render_err_line "• Report issues: https://github.com/F-e-n-y-x/NivaroOS/issues"
-	printf '%b\n\n' "${COLOR_RED}╰${bot_dashes}╯${COLOR_RESET}"
+	printf '\n'
+	ui_kv "full log" "$INSTALL_LOG"
+	ui_kv "retry" "run the same command again - it picks up from here"
+	ui_kv "report" "https://github.com/F-e-n-y-x/NivaroOS/issues"
+	printf '\n'
 }
 
-on_fatal_error() {
-	local exit_code=$?
-	local line_no="$1"
-	# If this fires while a step's live spinner loop is mid-frame (e.g. an
-	# unexpected error in the renderer itself, not a step command failure -
-	# those are handled separately and already close this first), we're
-	# still on the alternate screen buffer. Printing the error there and
-	# then exiting - which restores the real screen via cleanup_on_exit's
-	# EXIT trap - would silently discard the very message just printed,
-	# leaving the terminal looking like nothing happened at all instead of
-	# showing why it stopped.
-	if [ "$IN_ALT_SCREEN" = "true" ]; then
-		printf "\033[?1049l\033[?25h"
-		IN_ALT_SCREEN="false"
-	fi
-	if [ "$exit_code" -ne 0 ]; then
-		log_raw "Fatal error at line ${line_no} (exit code ${exit_code})"
-		error "Installation terminated unexpectedly at line ${line_no} (exit code ${exit_code})."
-	fi
-	exit "$exit_code"
-}
-trap 'on_fatal_error "$LINENO"' ERR
-
-# ------------------------------------------------------------------------------
-# Full-Width Responsive Split-Pane Live Stream Step Runner
-# ------------------------------------------------------------------------------
 run_step() {
 	local title="$1"
 	shift
 	STEP_NUM=$((STEP_NUM + 1))
 	CURRENT_STEP_TITLE="$title"
-	local step_tag="[${STEP_NUM}/${TOTAL_STEPS}]"
-	local start_ts
+	local tag start_ts log_file exit_code elapsed
+	tag="$(printf '%*d/%d' "${#TOTAL_STEPS}" "$STEP_NUM" "$TOTAL_STEPS")"
 	start_ts=$(date +%s)
-
 	log_raw ">>> START STEP ${STEP_NUM}/${TOTAL_STEPS}: ${title}"
+	log_file="$(mktemp /tmp/nivaroos-install-step-XXXXXX.log)"
 
-	local log_file
-	log_file=$(mktemp /tmp/nivaroos-install-step-XXXXXX.log)
+	# The installer's own traps would report a failing command inside the
+	# step as if the installer itself had died; the step reports through
+	# its exit status instead.
+	(
+		trap - ERR INT TERM EXIT
+		eval "$*"
+	) >"$log_file" 2>&1 </dev/null &
+	CURRENT_STEP_PID=$!
 
 	if [ "$DEBUG" = "yes" ]; then
-		printf '%b\n' "  ${COLOR_CYAN}➜${COLOR_RESET} ${COLOR_BOLD}${COLOR_BLUE}${step_tag}${COLOR_RESET} ${COLOR_WHITE}${title}${COLOR_RESET} (verbose)..."
-		if ! (
-			export PATH="/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-			export DEBIAN_FRONTEND=noninteractive
-			export NEEDRESTART_MODE=a
-			export GOWORK=off
-			export GOTOOLCHAIN=local
-			eval "$*"
-		) 2>&1 | tee -a "$INSTALL_LOG"; then
-			local exit_code=$?
-			log_raw "<<< FAILED STEP ${STEP_NUM}: ${title} (exit code ${exit_code})"
-			error "Step ${STEP_NUM} failed: ${title}"
-			exit "$exit_code"
-		fi
-		local end_ts
-		end_ts=$(date +%s)
-		local elapsed=$((end_ts - start_ts))
+		printf '  %s%s%s  %s\n' "$UI_D" "$tag" "$UI_R" "$title"
+		tail -n +1 -f --pid="$CURRENT_STEP_PID" "$log_file" 2>/dev/null | sed 's/^/      /' || true
+	elif [ -t 1 ]; then
+		local frames i=0 cols last line room
+		if [ "$UI_I_OK" = "ok" ]; then frames='-\|/'; else frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'; fi
+		printf '\033[?25l'
+		while kill -0 "$CURRENT_STEP_PID" 2>/dev/null; do
+			elapsed=$(($(date +%s) - start_ts))
+			cols="$(term_cols)"
+			line="  ${frames:i%${#frames}:1} ${tag}  ${title}  ${elapsed}s"
+			room=$((cols - ${#line} - 3))
+			last=""
+			if [ "$room" -gt 8 ]; then
+				last="$(tail -n 1 "$log_file" 2>/dev/null || true)"
+				last="$(strip_ansi "$last")"
+				[ "${#last}" -gt "$room" ] && last="${last:0:$((room - 1))}…"
+			fi
+			if [ "${#line}" -ge "$cols" ]; then line="${line:0:$((cols - 1))}"; fi
+			printf '\r\033[K%s  %s%s%s' "$line" "$UI_D" "$last" "$UI_R"
+			i=$((i + 1))
+			sleep 0.1
+		done
+		printf '\r\033[K\033[?25h'
+	else
+		printf '  - %s  %s ...\n' "$tag" "$title"
+	fi
+
+	# `wait` returns the step's status; under set -e plus the ERR trap
+	# (errtrace fires regardless of errexit) a failure would abort right
+	# here, before it can be reported. Suspend both for this one call.
+	trap '' ERR
+	set +e
+	wait "$CURRENT_STEP_PID"
+	exit_code=$?
+	set -e
+	trap 'on_fatal_error "$LINENO"' ERR
+	CURRENT_STEP_PID=""
+	elapsed=$(($(date +%s) - start_ts))
+	cat "$log_file" >>"$INSTALL_LOG" 2>/dev/null || true
+
+	if [ "$exit_code" -eq 0 ]; then
 		log_raw "<<< COMPLETED STEP ${STEP_NUM}: ${title} [${elapsed}s]"
-		printf '%b\n' "  ${COLOR_GREEN}✔${COLOR_RESET} ${COLOR_BOLD}${COLOR_BLUE}${step_tag}${COLOR_RESET} ${COLOR_WHITE}${title}${COLOR_RESET} ${COLOR_MUTED}[${elapsed}s]${COLOR_RESET}"
+		printf '  %s%s%s %s  %s  %s%ss%s\n' "$UI_OK" "$UI_I_OK" "$UI_R" "$tag" "$title" "$UI_D" "$elapsed" "$UI_R"
 		rm -f "$log_file"
+		CURRENT_STEP_TITLE=""
 		return 0
 	fi
-
-	if [ "$IS_TTY" = "true" ]; then
-		(
-			export PATH="/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-			export DEBIAN_FRONTEND=noninteractive
-			export NEEDRESTART_MODE=a
-			export GOWORK=off
-			export GOTOOLCHAIN=local
-			eval "$*"
-		) > "$log_file" 2>&1 </dev/null &
-		local cmd_pid=$!
-		CURRENT_STEP_PID="$cmd_pid"
-
-		local frame_idx=0
-		local num_frames=${#SPINNER_FRAMES[@]}
-
-		# Draw the live spinner+log box on the terminal's ALTERNATE screen
-		# buffer, not the normal scrolling one. The previous approach drew
-		# in the normal buffer and returned to the top of its own box each
-		# frame with a relative "cursor up N lines" - which only stays
-		# correct as long as nothing has caused the terminal to scroll
-		# since the last frame. A long-running step (like compiling all the
-		# Go services) renders hundreds of frames, and the moment any of
-		# them pushed the box against the bottom of the terminal and the
-		# terminal scrolled, "up N lines" started landing one or more rows
-		# above where the box's top actually was - so every subsequent
-		# frame got printed as a brand new set of lines instead of
-		# overwriting, which is exactly the "[5/14] ... repeated many
-		# times" behavior. The alternate screen buffer never scrolls (it's
-		# always exactly the terminal's current size) and "\033[H" (home)
-		# is an absolute position, not a relative one - so this can't
-		# desync regardless of how long the step runs or how the terminal
-		# gets resized mid-step. Leaving the alternate buffer (\033[?1049l)
-		# restores the real screen exactly as it looked before entering,
-		# so none of these frames ever touch real scrollback - only the
-		# final one-line result (printed after leaving, below) does.
-		printf "\033[?1049h\033[?25l"
-		IN_ALT_SCREEN="true"
-
-		while kill -0 "$cmd_pid" 2>/dev/null; do
-			local current_ts
-			current_ts=$(date +%s)
-			local elapsed=$((current_ts - start_ts))
-			local frame="${SPINNER_FRAMES[$frame_idx]}"
-
-			# Dynamically re-query terminal size EVERY frame in real-time
-			get_term_size
-			local box_width=$((TERM_COLS - 2))
-			if [ "$box_width" -lt 38 ]; then box_width=38; fi
-			local inner_width=$((box_width - 6))
-
-			# The box is drawn from the absolute top of the (alternate)
-			# screen every frame, so its total height must never exceed
-			# the terminal's CURRENT row count or it gets clipped/overlaps
-			# at the bottom - unlike the old scrolling-buffer approach,
-			# there's no scrollback to fall back on here. Reserve 3 rows
-			# for the spinner/header line plus the box's own top and
-			# bottom borders, and fit the log lines into whatever's left,
-			# recomputed every frame so a live terminal resize (SIGWINCH)
-			# is honored immediately rather than only at the next step.
-			local reserved_lines=3
-			local available_lines=$((TERM_ROWS - reserved_lines))
-			# Use however much vertical space is actually there instead of
-			# a fixed 10/14-line box that leaves most of a large terminal
-			# blank - capped only so an absurdly tall terminal doesn't turn
-			# this into an unreasonably long scrolling wall of log lines.
-			local max_log_lines=30
-			local num_log_lines="$available_lines"
-			if [ "$num_log_lines" -gt "$max_log_lines" ]; then
-				num_log_lines="$max_log_lines"
-			fi
-
-			printf "\033[H"
-
-			if [ "$available_lines" -lt 3 ]; then
-				# Even the minimum useful box (3 log lines + header + top/
-				# bottom borders = 6 rows) doesn't fit a terminal this
-				# short. Rather than draw something guaranteed to overflow
-				# it, fall back to a single status line - still absolutely
-				# positioned and cleared with \033[J, so it stays fully
-				# adaptive with no leftover content regardless of size.
-				local status_line="  ${frame} ${step_tag} ${title} (${elapsed}s)"
-				local clean_status
-				clean_status="$(strip_ansi "$status_line")"
-				if [ "${#clean_status}" -gt "$TERM_COLS" ]; then
-					clean_status="${clean_status:0:$TERM_COLS}"
-				fi
-				printf "\033[2K%b%s%b\r\n" "${COLOR_CYAN}" "$clean_status" "${COLOR_RESET}"
-				printf "\033[J"
-				frame_idx=$(( (frame_idx + 1) % num_frames ))
-				sleep 0.08
-				continue
-			fi
-
-			if [ "$num_log_lines" -lt 3 ]; then
-				num_log_lines=3
-			fi
-
-			# Top Half: Progress Header with Animated Spinner & Live Timer
-			printf "\033[2K  %b %b %b %b(%ds)%b\r\n" \
-				"${COLOR_CYAN}${frame}${COLOR_RESET}" \
-				"${COLOR_BOLD}${COLOR_BLUE}${step_tag}${COLOR_RESET}" \
-				"${COLOR_WHITE}${title}${COLOR_RESET}" \
-				"${COLOR_MUTED}" "${elapsed}" "${COLOR_RESET}"
-
-			# Bottom Half: Fully Enclosed, Laser-Aligned Live Activity Box
-			local title_tag=" Live Activity "
-			local top_dashes_len=$((box_width - ${#title_tag} - 4))
-			if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
-			local top_dashes=""
-			for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
-
-			printf "\033[2K%b╭──%b%s%b%s╮%b\r\n" \
-				"${COLOR_MUTED}" "${COLOR_CYAN}" "${title_tag}" "${COLOR_MUTED}" "${top_dashes}" "${COLOR_RESET}"
-
-			local lines=()
-			if [ -f "$log_file" ] && [ -s "$log_file" ]; then
-				mapfile -t lines < <(tail -n "$num_log_lines" "$log_file" 2>/dev/null || true)
-			fi
-
-			local pad_count=$((num_log_lines - ${#lines[@]}))
-			for ((p=0; p<pad_count; p++)); do
-				local empty_pad=""
-				if [ "$inner_width" -gt 3 ]; then
-					empty_pad="$(printf '%*s' "$((inner_width - 3))" '')"
-				fi
-				printf "\033[2K%b│%b  ...%s  %b│%b\r\n" "${COLOR_MUTED}" "${COLOR_MUTED}" "$empty_pad" "${COLOR_MUTED}" "${COLOR_RESET}"
-			done
-
-			for l in "${lines[@]}"; do
-				local clean_l
-				clean_l="$(strip_ansi "$l")"
-				if [ "${#clean_l}" -gt "$inner_width" ]; then
-					clean_l="${clean_l:0:$inner_width}"
-				fi
-				local pad_len=$((inner_width - ${#clean_l}))
-				local pad=""
-				if [ "$pad_len" -gt 0 ]; then
-					pad="$(printf '%*s' "$pad_len" '')"
-				fi
-				printf "\033[2K%b│%b  %s%s  %b│%b\r\n" \
-					"${COLOR_MUTED}" "${COLOR_WHITE}" "$clean_l" "$pad" "${COLOR_MUTED}" "${COLOR_RESET}"
-			done
-
-			local bot_dashes=""
-			for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
-			printf "\033[2K%b╰%s╯%b\r\n" "${COLOR_MUTED}" "${bot_dashes}" "${COLOR_RESET}"
-
-			# Erase anything left over below this frame from a taller
-			# previous one (e.g. the terminal just got shrunk).
-			printf "\033[J"
-
-			frame_idx=$(( (frame_idx + 1) % num_frames ))
-			sleep 0.08
-		done
-
-		# `wait` for a specific PID returns that job's own exit status - if
-		# it's nonzero, `wait` itself counts as a failing command under
-		# set -e, which aborts the WHOLE SCRIPT right here, before any of
-		# the code below (which exists specifically to handle a failed
-		# step gracefully - print_error_card, the log tail, etc.) ever
-		# runs. Every failed step has always died silently at this exact
-		# line instead of showing why.
-		#
-		# `set +e` alone is not enough to fix this: the ERR trap fires
-		# based on errtrace (-E), independent of whether errexit is
-		# currently on, so on_fatal_error would still run (and still
-		# unconditionally exit) even with errexit off. Both the trap AND
-		# errexit have to be suspended around this one call, then both
-		# restored, for `wait`'s result to actually be inspectable instead
-		# of immediately fatal.
-		trap '' ERR
-		set +e
-		wait "$cmd_pid"
-		local exit_code=$?
-		set -e
-		trap 'on_fatal_error "$LINENO"' ERR
-		CURRENT_STEP_PID=""
-		local end_ts
-		end_ts=$(date +%s)
-		local total_elapsed=$((end_ts - start_ts))
-
-		cat "$log_file" >> "$INSTALL_LOG" 2>/dev/null || true
-
-		# Leave the alternate screen - this restores the real screen
-		# exactly as it was before entering, with none of the spinner
-		# frames ever having touched it.
-		printf "\033[?1049l\033[?25h"
-		IN_ALT_SCREEN="false"
-
-		if [ "$exit_code" -eq 0 ]; then
-			log_raw "<<< COMPLETED STEP ${STEP_NUM}: ${title} [${total_elapsed}s]"
-			printf "\r\033[2K  %b %b %b %b[%ds]%b\n" \
-				"${COLOR_GREEN}✔${COLOR_RESET}" \
-				"${COLOR_BOLD}${COLOR_BLUE}${step_tag}${COLOR_RESET}" \
-				"${COLOR_WHITE}${title}${COLOR_RESET}" \
-				"${COLOR_MUTED}" "${total_elapsed}" "${COLOR_RESET}"
-			rm -f "$log_file"
-		else
-			log_raw "<<< FAILED STEP ${STEP_NUM}: ${title} [${total_elapsed}s, exit code ${exit_code}]"
-			printf "\r\033[2K  %b %b %b %b[%ds - FAILED]%b\n" \
-				"${COLOR_RED}✖${COLOR_RESET}" \
-				"${COLOR_BOLD}${COLOR_RED}${step_tag}${COLOR_RESET}" \
-				"${COLOR_WHITE}${title}${COLOR_RESET}" \
-				"${COLOR_RED}" "${total_elapsed}" "${COLOR_RESET}"
-			print_error_card "$title" "$exit_code" "$log_file"
-			exit "$exit_code"
-		fi
-	else
-		printf "  ➜ %s %s...\n" "$step_tag" "$title"
-		if (
-			export PATH="/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-			export DEBIAN_FRONTEND=noninteractive
-			export NEEDRESTART_MODE=a
-			export GOWORK=off
-			export GOTOOLCHAIN=local
-			eval "$*"
-		) > "$log_file" 2>&1 </dev/null; then
-			local end_ts
-			end_ts=$(date +%s)
-			local total_elapsed=$((end_ts - start_ts))
-			cat "$log_file" >> "$INSTALL_LOG" 2>/dev/null || true
-			log_raw "<<< COMPLETED STEP ${STEP_NUM}: ${title} [${total_elapsed}s]"
-			printf "  ✔ %s %s [%ds]\n" "$step_tag" "$title" "$total_elapsed"
-			rm -f "$log_file"
-		else
-			local exit_code=$?
-			cat "$log_file" >> "$INSTALL_LOG" 2>/dev/null || true
-			log_raw "<<< FAILED STEP ${STEP_NUM}: ${title} (exit code ${exit_code})"
-			printf "  ✖ %s %s [FAILED with exit code %d]\n" "$step_tag" "$title" "$exit_code"
-			print_error_card "$title" "$exit_code" "$log_file"
-			exit "$exit_code"
-		fi
-	fi
+	log_raw "<<< FAILED STEP ${STEP_NUM}: ${title} [${elapsed}s, exit code ${exit_code}]"
+	printf '  %s%s%s %s  %s  %s%ss%s\n' "$UI_ERR" "$UI_I_ERR" "$UI_R" "$tag" "$title" "$UI_D" "$elapsed" "$UI_R"
+	print_failure "$title" "$exit_code" "$log_file"
+	rm -f "$log_file"
+	exit 1
 }
 
 # ------------------------------------------------------------------------------
@@ -1290,7 +782,7 @@ run_step() {
 # ------------------------------------------------------------------------------
 pkg_update() {
 	if command -v apt-get >/dev/null 2>&1; then
-		apt-get update -qq
+		apt-get -o DPkg::Lock::Timeout=600 update -qq
 	elif command -v dnf >/dev/null 2>&1; then
 		dnf check-update || true
 	elif command -v yum >/dev/null 2>&1; then
@@ -1307,7 +799,7 @@ pkg_update() {
 pkg_install() {
 	local pkgs=("$@")
 	if command -v apt-get >/dev/null 2>&1; then
-		apt-get install -y --no-install-recommends "${pkgs[@]}"
+		apt-get -o DPkg::Lock::Timeout=600 install -y --no-install-recommends "${pkgs[@]}"
 	elif command -v dnf >/dev/null 2>&1; then
 		dnf install -y "${pkgs[@]}"
 	elif command -v yum >/dev/null 2>&1; then
@@ -1360,7 +852,7 @@ install_core_dependencies() {
 	run_step "Installing Core System Dependencies" "
 		pkg_update
 		if command -v apt-get >/dev/null 2>&1; then
-			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted build-essential rsync
+			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted build-essential rsync iproute2 procps
 			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g 'exfatprogs|exfat-utils' dosfstools fdisk e2fsprogs mergerfs lm-sensors '7zip|p7zip-full'
 		elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
 			pkg_install curl wget git tar ca-certificates systemd-udev util-linux pciutils smartmontools parted make gcc rsync
@@ -1412,7 +904,19 @@ UDEVEOF
 check_docker() {
 	run_step "Verifying & Configuring Container Runtime (Docker)" "
 		if ! command -v docker >/dev/null 2>&1; then
-			curl -fsSL https://get.docker.com | sh
+			# Downloaded in full before it runs. A release get.docker.com
+			# doesn't know yet (a brand-new Ubuntu) falls back to the
+			# distro's own Docker package.
+			if ! { curl -fsSL https://get.docker.com -o /tmp/nivaroos-get-docker.sh && sh /tmp/nivaroos-get-docker.sh; }; then
+				echo 'get.docker.com could not install Docker here - trying the distro package.' >&2
+				if command -v apt-get >/dev/null 2>&1; then
+					pkg_install docker.io
+					pkg_install_each docker-compose-v2
+				else
+					exit 1
+				fi
+			fi
+			rm -f /tmp/nivaroos-get-docker.sh
 		fi
 
 		mkdir -p /etc/systemd/system/docker.service.d
@@ -1471,13 +975,16 @@ clone_or_update_repo() {
 				git config remote.origin.partialclonefilter blob:none || true
 				git sparse-checkout set --no-cone '/*' '!/mobile/' 2>/dev/null || true
 			fi
-			git fetch --all --tags --prune
+			# Fetch exactly the requested branch or tag (works on the shallow
+			# single-branch clone too, and when --branch or --repo changed).
+			git remote set-url origin \"$REPO_URL\"
+			git fetch --prune --depth 1 origin \"$BRANCH\"
 			# reset --hard + clean (not checkout + pull) so a dirty tree -
 			# left behind by a previous crashed run, or a manual edit made
 			# while debugging - can never hard-abort this step. This is an
 			# unattended installer/updater, not a workspace the running
 			# user is expected to have made their own changes in.
-			git reset --hard \"origin/$BRANCH\"
+			git reset --hard FETCH_HEAD
 			git clean -fdx
 		else
 			if [ -d \"$SRC_DIR\" ] && [ \"\$(ls -A \"$SRC_DIR\" 2>/dev/null)\" ]; then
@@ -1524,6 +1031,9 @@ clone_or_update_repo() {
 				armv7l|armhf) go_arch=\"armv6l\" ;;
 			esac
 			wget -q \"https://go.dev/dl/go${GO_VERSION}.linux-\${go_arch}.tar.gz\" -O /tmp/go.tar.gz
+			# Checked against Google's published SHA-256 before it is used.
+			go_sum=\"\$(curl -fsSL \"https://dl.google.com/go/go${GO_VERSION}.linux-\${go_arch}.tar.gz.sha256\")\"
+			echo \"\${go_sum%% *}  /tmp/go.tar.gz\" | sha256sum -c -
 			rm -rf /usr/local/go
 			tar -C /usr/local -xzf /tmp/go.tar.gz
 			rm -f /tmp/go.tar.gz
@@ -1796,7 +1306,9 @@ install_vm_manager() {
 		# without it a VM can't start. xorriso (libisoburn on Arch) builds
 		# the NivaroOS Guest Tools disc.
 		if command -v apt-get >/dev/null 2>&1; then
-			pkg_install qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients virtinst bridge-utils ovmf cloud-image-utils virtiofsd xorriso pkg-config libvirt-dev
+			pkg_install qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients virtinst bridge-utils ovmf cloud-image-utils xorriso pkg-config libvirt-dev
+			# Its own package from Debian 12 / Ubuntu 23.10; part of qemu before.
+			pkg_install_each virtiofsd
 		elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
 			pkg_install qemu-kvm qemu-img libvirt libvirt-client virt-install bridge-utils edk2-ovmf virtiofsd xorriso pkgconf-pkg-config libvirt-devel
 		elif command -v pacman >/dev/null 2>&1; then
@@ -1854,11 +1366,13 @@ VMEOF
 		# just skips it.
 		if [ ! -f /DATA/VMs/ISOs/virtio-win.iso ]; then
 			echo 'Downloading virtio-win.iso (Windows guest drivers) - this can take a while...'
-			curl -fL --connect-timeout 15 --max-time 900 \
+			# At most 5 minutes per run; a partial download is kept and
+			# resumed (-C -) by the next run instead of starting over.
+			curl -fL -C - --connect-timeout 15 --max-time 300 \
 				-o /DATA/VMs/ISOs/.virtio-win.iso.part \
 				https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso \
 				&& mv /DATA/VMs/ISOs/.virtio-win.iso.part /DATA/VMs/ISOs/virtio-win.iso \
-				|| { echo 'Could not download virtio-win.iso now - NivaroOS downloads it the first time you set up Guest Tools in a VM.' >&2; rm -f /DATA/VMs/ISOs/.virtio-win.iso.part; }
+				|| echo 'virtio-win.iso is not fully downloaded yet - the next update resumes it, or NivaroOS fetches it the first time you set up Guest Tools in a VM.' >&2
 		fi
 
 		systemctl daemon-reload >/dev/null 2>&1 || true
@@ -2054,27 +1568,26 @@ check_running_backups() {
 
 	local names
 	names="$(running_backup_names)"
-	printf '%b\n' "${COLOR_BOLD}${COLOR_YELLOW}Backups are running right now:${COLOR_RESET}"
+	ui_warn "Backups are running right now:"
 	while IFS= read -r n; do
-		[ -n "$n" ] && printf '%b\n' "  • ${n}"
+		[ -n "$n" ] && printf '      %s\n' "${n}"
 	done <<< "$names"
-	printf '\n'
 
-	if [ -n "$YES" ] || [ "$INTERACTIVE_TTY" != "true" ]; then
+	if unattended; then
 		wait_for_running_backups
 		return 0
 	fi
 
 	local choice=""
-	printf '%b\n' "  ${COLOR_CYAN}1${COLOR_RESET}) Wait for them to finish (default)"
-	printf '%b\n' "  ${COLOR_CYAN}2${COLOR_RESET}) Cancel them now (each job runs again at its next scheduled time)"
-	printf '%b\n' "  ${COLOR_CYAN}3${COLOR_RESET}) Abort the upgrade"
-	printf '%b' "  ${COLOR_CYAN}?${COLOR_RESET} ${COLOR_BOLD}Choice [1]:${COLOR_RESET} "
+	printf '    %s1%s  Wait for them to finish (default)\n' "$UI_B" "$UI_R"
+	printf '    %s2%s  Cancel them now (each job runs again at its next scheduled time)\n' "$UI_B" "$UI_R"
+	printf '    %s3%s  Abort the update\n' "$UI_B" "$UI_R"
+	printf '  ? Choice [1]: '
 	read -r choice </dev/tty || choice=""
 	case "$choice" in
 		2) cancel_running_backups ;;
 		3)
-			info "Upgrade aborted; nothing was changed."
+			info "Update aborted; nothing was changed."
 			exit 0
 			;;
 		*) wait_for_running_backups ;;
@@ -2213,10 +1726,12 @@ ensure_node_toolchain() {
 		# absent) for a modern Vite/Vue build - NodeSource's setup script is
 		# the standard way to get a current LTS on apt/dnf/yum systems.
 		if command -v apt-get >/dev/null 2>&1; then
-			curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null 2>&1 || true
+			{ curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nivaroos-nodesource.sh && bash /tmp/nivaroos-nodesource.sh >/dev/null 2>&1; } || true
+			rm -f /tmp/nivaroos-nodesource.sh
 			pkg_install nodejs
 		elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
-			curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - >/dev/null 2>&1 || true
+			{ curl -fsSL https://rpm.nodesource.com/setup_22.x -o /tmp/nivaroos-nodesource.sh && bash /tmp/nivaroos-nodesource.sh >/dev/null 2>&1; } || true
+			rm -f /tmp/nivaroos-nodesource.sh
 			pkg_install nodejs
 		elif command -v pacman >/dev/null 2>&1; then
 			pkg_install nodejs npm
@@ -2482,214 +1997,126 @@ list_vpn_ips() {
 }
 
 # ------------------------------------------------------------------------------
-# Summary Card Display
+# Summary
 # ------------------------------------------------------------------------------
+# svc_line LABEL UNIT... - ok when any of the units is active.
+svc_line() {
+	local label="$1" u
+	shift
+	for u in "$@"; do
+		if systemctl is-active --quiet "$u" 2>/dev/null; then
+			ui_ok "$label"
+			return 0
+		fi
+	done
+	ui_err "$label  ${UI_D}(not running: journalctl -u $1 -n 50)${UI_R}" 2>&1
+}
+
 print_summary() {
-	local end_ts
-	end_ts=$(date +%s)
-	local total_duration=$((end_ts - START_TIME))
+	local total=$(($(date +%s) - START_TIME)) port_suffix="" ip iface
+	[ -n "$DETECTED_PORT" ] && [ "$DETECTED_PORT" != "80" ] && port_suffix=":${DETECTED_PORT}"
 
-	get_term_size
-	local box_width=$((TERM_COLS - 2))
-	if [ "$box_width" -lt 40 ]; then box_width=40; fi
-	local inner_width=$((box_width - 6))
-
-	local bot_dashes=""
-	for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
-
-	local action_title="🎉  NivaroOS Installed Successfully!"
+	printf '\n'
 	if [ "$IS_UPGRADE" = "true" ]; then
-		action_title="🎉  NivaroOS Updated Successfully!"
-	fi
-	local top_title=" ${action_title} (completed in ${total_duration}s) "
-	local top_dashes_len=$((box_width - ${#top_title} - 4))
-	if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
-	local top_dashes=""
-	for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
-
-	printf "\n"
-	printf '%b\n' "${COLOR_GREEN}╭──${COLOR_BOLD}${COLOR_GREEN}${top_title}${COLOR_RESET}${COLOR_GREEN}${top_dashes}╮${COLOR_RESET}"
-
-	render_sum_line() {
-		local text="$1"
-		local plain
-		plain="$(strip_ansi "$text")"
-		if [ "${#plain}" -gt "$inner_width" ]; then
-			plain="${plain:0:$inner_width}"
-		fi
-		local pad_len=$((inner_width - ${#plain}))
-		local pad=""
-		if [ "$pad_len" -gt 0 ]; then
-			pad="$(printf '%*s' "$pad_len" '')"
-		fi
-		printf '%b\n' "${COLOR_GREEN}│${COLOR_RESET}  ${text}${pad}  ${COLOR_GREEN}│${COLOR_RESET}"
-	}
-
-	render_sum_line ""
-	render_sum_line "${COLOR_BOLD}${COLOR_WHITE}Access your Web Dashboard at:${COLOR_RESET}"
-
-	local port_suffix=""
-	if [ -n "$DETECTED_PORT" ] && [ "$DETECTED_PORT" != "80" ]; then
-		port_suffix=":${DETECTED_PORT}"
-	fi
-
-	local ips
-	ips="$(list_reachable_ips)"
-	if [ -n "$ips" ]; then
-		while read -r ip iface; do
-			[ -z "$ip" ] && continue
-			local url="http://${ip}${port_suffix}"
-			render_sum_line "${COLOR_CYAN}➜${COLOR_RESET}  ${COLOR_BOLD}${url}${COLOR_RESET} ${COLOR_MUTED}(${iface})${COLOR_RESET}"
-		done <<< "$ips"
-	fi
-
-	local vpn_ips
-	vpn_ips="$(list_vpn_ips)"
-	if [ -n "$vpn_ips" ]; then
-		while read -r vip viface; do
-			[ -z "$vip" ] && continue
-			local vurl="http://${vip}${port_suffix}"
-			render_sum_line "${COLOR_PURPLE}➜${COLOR_RESET}  ${COLOR_BOLD}${vurl}${COLOR_RESET} ${COLOR_MUTED}(${viface} VPN)${COLOR_RESET}"
-		done <<< "$vpn_ips"
-	fi
-
-	render_sum_line "${COLOR_CYAN}➜${COLOR_RESET}  ${COLOR_BOLD}http://localhost${port_suffix}${COLOR_RESET} ${COLOR_MUTED}(local)${COLOR_RESET}"
-	render_sum_line ""
-	render_sum_line "${COLOR_BOLD}${COLOR_WHITE}System Services Status:${COLOR_RESET}"
-
-	local s_core="${COLOR_GREEN}✔ Core Engine${COLOR_RESET}"
-	local s_gw="${COLOR_GREEN}✔ Gateway${COLOR_RESET}"
-	local s_mb="${COLOR_GREEN}✔ Message Bus${COLOR_RESET}"
-	local s_app="${COLOR_GREEN}✔ App Management${COLOR_RESET}"
-	local s_ls="${COLOR_GREEN}✔ Local Storage${COLOR_RESET}"
-	local s_usr="${COLOR_GREEN}✔ User Service${COLOR_RESET}"
-	local s_gpu="${COLOR_GREEN}✔ GPU Sidecar${COLOR_RESET}"
-
-	if ! systemctl is-active --quiet nivaroos.service 2>/dev/null; then s_core="${COLOR_RED}✖ Core Engine${COLOR_RESET}"; fi
-	if ! systemctl is-active --quiet nivaroos-gateway.service 2>/dev/null; then s_gw="${COLOR_RED}✖ Gateway${COLOR_RESET}"; fi
-	if ! systemctl is-active --quiet nivaroos-message-bus.service 2>/dev/null; then s_mb="${COLOR_RED}✖ Message Bus${COLOR_RESET}"; fi
-	if ! systemctl is-active --quiet nivaroos-app-management.service 2>/dev/null; then s_app="${COLOR_RED}✖ App Management${COLOR_RESET}"; fi
-	if ! systemctl is-active --quiet nivaroos-local-storage.service 2>/dev/null; then s_ls="${COLOR_RED}✖ Local Storage${COLOR_RESET}"; fi
-	if ! systemctl is-active --quiet nivaroos-user-service.service 2>/dev/null; then s_usr="${COLOR_RED}✖ User Service${COLOR_RESET}"; fi
-	if ! systemctl is-active --quiet nivaroos-gpu-sidecar.service 2>/dev/null; then s_gpu="${COLOR_RED}✖ GPU Sidecar${COLOR_RESET}"; fi
-	local s_fans="${COLOR_GREEN}✔ Fan Control${COLOR_RESET}"
-	if ! systemctl is-active --quiet nivaroos-fans.service 2>/dev/null; then s_fans="${COLOR_RED}✖ Fan Control${COLOR_RESET}"; fi
-
-	render_sum_line "${s_core}    ${s_gw}    ${s_mb}"
-	render_sum_line "${s_app}    ${s_ls}    ${s_usr}"
-	render_sum_line "${s_fans}"
-
-	if [ "$WITH_VM" = "yes" ]; then
-		local s_vm="${COLOR_GREEN}✔ VM Virtualization${COLOR_RESET}"
-		if ! systemctl is-active --quiet nivaroos-vm-sidecar.service 2>/dev/null; then s_vm="${COLOR_RED}✖ VM Virtualization${COLOR_RESET}"; fi
-		render_sum_line "${s_gpu}    ${s_vm}"
+		ui_ok "${UI_B}NivaroOS is updated${UI_R}  ${UI_D}$((total / 60))m $((total % 60))s${UI_R}"
 	else
-		render_sum_line "${s_gpu}    ${COLOR_MUTED}○ VM Virtualization (Off)${COLOR_RESET}"
+		ui_ok "${UI_B}NivaroOS is installed${UI_R}  ${UI_D}$((total / 60))m $((total % 60))s${UI_R}"
 	fi
 
+	ui_head "Open the dashboard"
+	while read -r ip iface; do
+		[ -n "$ip" ] && ui_kv "$iface" "http://${ip}${port_suffix}"
+	done <<<"$(list_reachable_ips)"
+	while read -r ip iface; do
+		[ -n "$ip" ] && ui_kv "$iface" "http://${ip}${port_suffix}  ${UI_D}(VPN)${UI_R}"
+	done <<<"$(list_vpn_ips)"
+	ui_kv "local" "http://localhost${port_suffix}"
+	[ "$IS_UPGRADE" = "true" ] || printf '    %sCreate your account on first visit.%s\n' "$UI_D" "$UI_R"
+
+	ui_head "Services"
+	svc_line "Core" nivaroos.service
+	svc_line "Gateway" nivaroos-gateway.service
+	svc_line "Message bus" nivaroos-message-bus.service
+	svc_line "Apps" nivaroos-app-management.service
+	svc_line "Storage" nivaroos-local-storage.service
+	svc_line "Users" nivaroos-user-service.service
+	svc_line "GPU" nivaroos-gpu-sidecar.service
+	svc_line "Fan control" nivaroos-fans.service
+	svc_line "Samba shares" smbd smb samba
+	svc_line "mDNS discovery" avahi-daemon
+	[ "$WITH_VM" = "yes" ] && svc_line "VM Manager" nivaroos-vm-sidecar.service
 	if [ "$WITH_HOST_DESKTOP" = "yes" ]; then
-		local s_hd="${COLOR_GREEN}✔ Host Desktop${COLOR_RESET}"
-		if ! systemctl is-active --quiet nivaroos-host-desktop.service 2>/dev/null; then s_hd="${COLOR_RED}✖ Host Desktop${COLOR_RESET}"; fi
-		render_sum_line "${s_hd}"
-		render_sum_line "  ${COLOR_MUTED}If it shows a blank screen, open it in the dashboard - it will offer${COLOR_RESET}"
-		render_sum_line "  ${COLOR_MUTED}to set up a compatible desktop if one isn't already running.${COLOR_RESET}"
-	else
-		render_sum_line "${COLOR_MUTED}○ Host Desktop (Off)${COLOR_RESET}"
+		svc_line "Host Desktop" nivaroos-host-desktop.service
+		printf '      %sA blank screen? Open it in the dashboard - it offers to set up a desktop.%s\n' "$UI_D" "$UI_R"
 	fi
+	[ "$WITH_DOWNLOAD_STATION" = "yes" ] && svc_line "Download Station" nivaroos-download-sidecar.service
+	[ "$WITH_BACKUP" = "yes" ] && svc_line "Backup & Sync" nivaroos-backup.service
 
-	if [ "$WITH_DOWNLOAD_STATION" = "yes" ]; then
-		local s_ds="${COLOR_GREEN}✔ Download Station${COLOR_RESET}"
-		if ! systemctl is-active --quiet nivaroos-download-sidecar.service 2>/dev/null; then s_ds="${COLOR_RED}✖ Download Station${COLOR_RESET}"; fi
-		render_sum_line "${s_ds}"
-	else
-		render_sum_line "${COLOR_MUTED}○ Download Station (Off)${COLOR_RESET}"
-	fi
-
-	if [ "$WITH_BACKUP" = "yes" ]; then
-		local s_bk="${COLOR_GREEN}✔ Backup & Sync${COLOR_RESET}"
-		if ! systemctl is-active --quiet nivaroos-backup.service 2>/dev/null; then s_bk="${COLOR_RED}✖ Backup & Sync${COLOR_RESET}"; fi
-		render_sum_line "${s_bk}"
-	else
-		render_sum_line "${COLOR_MUTED}○ Backup & Sync (Off)${COLOR_RESET}"
-	fi
-
-	local s_smb="${COLOR_GREEN}✔ Samba File Sharing${COLOR_RESET}"
-	if ! (systemctl is-active --quiet smbd 2>/dev/null || systemctl is-active --quiet smb 2>/dev/null || systemctl is-active --quiet samba 2>/dev/null); then
-		s_smb="${COLOR_RED}✖ Samba File Sharing${COLOR_RESET}"
-	fi
-	local s_mdns="${COLOR_GREEN}✔ mDNS Discovery${COLOR_RESET}"
-	if ! systemctl is-active --quiet avahi-daemon 2>/dev/null; then
-		s_mdns="${COLOR_RED}✖ mDNS Discovery${COLOR_RESET}"
-	fi
-	render_sum_line "${s_smb}    ${s_mdns}"
-
-	render_sum_line ""
-	render_sum_line "${COLOR_BOLD}${COLOR_WHITE}Quick Start Commands:${COLOR_RESET}"
-	render_sum_line "• Management CLI:     ${COLOR_CYAN}nivaroos --help${COLOR_RESET}"
-	render_sum_line "• System Status:      ${COLOR_CYAN}nivaroos healthcheck${COLOR_RESET}"
-	render_sum_line "• View Live Logs:     ${COLOR_CYAN}journalctl -u nivaroos -f${COLOR_RESET}"
-	render_sum_line "• Service Controls:   ${COLOR_CYAN}systemctl restart nivaroos-gateway${COLOR_RESET}"
-	render_sum_line "• Uninstall NivaroOS: ${COLOR_CYAN}nivaroos-uninstall${COLOR_RESET}"
-	render_sum_line ""
-	printf '%b\n\n' "${COLOR_GREEN}╰${bot_dashes}╯${COLOR_RESET}"
+	ui_head "Next"
+	ui_kv "manage" "nivaroos-cli --help"
+	ui_kv "status" "sudo nivaroos-recover status"
+	ui_kv "undo" "sudo nivaroos-rollback      (the previous build is kept)"
+	ui_kv "update" "run the install command again"
+	ui_kv "remove" "sudo nivaroos-uninstall"
+	ui_kv "log" "$INSTALL_LOG"
+	printf '\n'
 }
 
 # ------------------------------------------------------------------------------
-# Main Execution Pipeline
+# Main
 # ------------------------------------------------------------------------------
+# plan_steps prints the step functions this run will call, in order. The
+# step count shown as [n/total] is this list's length.
+plan_steps() {
+	echo install_core_dependencies tune_system_limits check_docker clone_or_update_repo install_core_services install_fan_control install_samba
+	[ "$WITH_VM" = "yes" ] && echo install_vm_manager
+	[ "$WITH_HOST_DESKTOP" = "yes" ] && echo install_host_desktop
+	[ "$WITH_DOWNLOAD_STATION" = "yes" ] && echo install_download_station
+	[ "$WITH_BACKUP" = "yes" ] && echo install_backup
+	echo install_ui start_core_services verify_health install_uninstall_wrapper install_safety_net install_mdns_advertisement
+}
+
 main() {
 	START_TIME=$(date +%s)
 	parse_args "$@"
 	check_root "$@"
-	init_logging
-	check_distro
-	check_resources
-	print_banner
-	print_diagnostics_card
-	resolve_port_conflict
+	ui_banner "installer" "Branch ${BRANCH} - log ${LATEST_LOG}"
+	if [ -z "$DRY_RUN" ]; then
+		take_lock
+		init_logging
+		log_raw "NivaroOS installer: branch ${BRANCH}, repo ${REPO_URL}, args: $*"
+	fi
+	preflight
 	select_components
 
-	if [ "$IS_UPGRADE" = "true" ]; then
-		info "Starting NivaroOS automated upgrade pipeline..."
-	else
-		info "Starting NivaroOS automated installation pipeline..."
+	local steps=() s
+	read -r -a steps <<<"$(plan_steps | tr '\n' ' ')"
+	TOTAL_STEPS=${#steps[@]}
+
+	if [ -n "$DRY_RUN" ]; then
+		ui_head "Plan (dry run - nothing is changed)"
+		local n=0
+		for s in "${steps[@]}"; do
+			n=$((n + 1))
+			ui_kv "$n/${TOTAL_STEPS}" "$s"
+		done
+		printf '\n'
+		exit 0
 	fi
-	printf "\n"
+
+	if [ "$IS_UPGRADE" = "true" ]; then
+		ui_head "Updating"
+	else
+		ui_head "Installing"
+	fi
 
 	check_running_backups
 	remove_backup_module
 	pause_backup_service
 
-	install_core_dependencies
-	tune_system_limits
-	check_docker
-	clone_or_update_repo
-	install_core_services
-	install_fan_control
-	install_samba
-
-	if [ "$WITH_VM" = "yes" ]; then
-		install_vm_manager
-	fi
-
-	if [ "$WITH_HOST_DESKTOP" = "yes" ]; then
-		install_host_desktop
-	fi
-
-	if [ "$WITH_DOWNLOAD_STATION" = "yes" ]; then
-		install_download_station
-	fi
-
-	if [ "$WITH_BACKUP" = "yes" ]; then
-		install_backup
-	fi
-
-	install_ui
-	start_core_services
-	verify_health
-	install_uninstall_wrapper
-	install_safety_net
-	install_mdns_advertisement
+	for s in "${steps[@]}"; do
+		"$s"
+	done
 
 	print_summary
 }

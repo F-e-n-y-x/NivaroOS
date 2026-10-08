@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2016,SC2034 # check() evals its single-quoted test, which reads out/rc
 # Tests for the safety net: nivaroos-watchdog, nivaroos-rollback and
 # nivaroos-deploy, run against a temp directory and a fake systemctl (no
 # real unit is touched). Run: bash installer/tests/safety-net-test.sh
@@ -65,7 +66,7 @@ EOF
 chmod +x "$T/curl"
 
 reset_env() {
-	rm -rf "$T/sd" "$T/bin" "$T/state" "$T/www" "$T/www.prev" "$T/log" "$T/pause"
+	rm -rf "${T:?}/sd" "${T:?}/bin" "$T/state" "$T/www" "$T/www.prev" "$T/log" "$T/pause"
 	mkdir -p "$T/sd" "$T/bin" "$T/state"
 	export FAKE_SD="$T/sd"
 	export NIVAROOS_SYSTEMCTL="$T/systemctl"

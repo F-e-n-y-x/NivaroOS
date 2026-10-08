@@ -25,15 +25,15 @@ if [ -t 1 ] && [ "${TERM:-}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
 	IS_TTY="true"
 fi
 if [ "$IS_TTY" = "true" ]; then
-	C_RESET='\033[0m'; C_CYAN='\033[38;5;51m'
-	C_GREEN='\033[38;5;48m'; C_YELLOW='\033[38;5;220m'; C_RED='\033[38;5;196m'
+	C_RESET='\033[0m'; C_CYAN='\033[2m'
+	C_GREEN='\033[38;5;36m'; C_YELLOW='\033[38;5;178m'; C_RED='\033[38;5;167m'
 else
 	C_RESET=''; C_CYAN=''; C_GREEN=''; C_YELLOW=''; C_RED=''
 fi
-info()    { printf '%b\n' "${C_CYAN}i${C_RESET}  $1"; }
-success() { printf '%b\n' "${C_GREEN}OK${C_RESET}  $1"; }
-warn()    { printf '%b\n' "${C_YELLOW}!${C_RESET}  $1" >&2; }
-error()   { printf '%b\n' "${C_RED}x${C_RESET}  $1" >&2; }
+info()    { printf '%b\n' "  ${C_CYAN}-${C_RESET} $1"; }
+success() { printf '%b\n' "  ${C_GREEN}ok${C_RESET} $1"; }
+warn()    { printf '%b\n' "  ${C_YELLOW}!${C_RESET} $1" >&2; }
+error()   { printf '%b\n' "  ${C_RED}x${C_RESET} $1" >&2; }
 
 STATUS_ONLY="false"
 FORCE_VENDOR=""

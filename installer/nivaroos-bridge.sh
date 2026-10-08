@@ -50,15 +50,15 @@ if [ -t 1 ] && [ "${TERM:-}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
 	IS_TTY="true"
 fi
 if [ "$IS_TTY" = "true" ]; then
-	C_RESET='\033[0m'; C_CYAN='\033[38;5;51m'; C_BOLD='\033[1m'
-	C_GREEN='\033[38;5;48m'; C_YELLOW='\033[38;5;220m'; C_RED='\033[38;5;196m'
+	C_RESET='\033[0m'; C_CYAN='\033[2m'; C_BOLD='\033[1m'
+	C_GREEN='\033[38;5;36m'; C_YELLOW='\033[38;5;178m'; C_RED='\033[38;5;167m'
 else
 	C_RESET=''; C_CYAN=''; C_BOLD=''; C_GREEN=''; C_YELLOW=''; C_RED=''
 fi
-info()    { printf '%b\n' "${C_CYAN}i${C_RESET}  $1"; }
-success() { printf '%b\n' "${C_GREEN}OK${C_RESET}  $1"; }
-warn()    { printf '%b\n' "${C_YELLOW}!${C_RESET}  $1" >&2; }
-error()   { printf '%b\n' "${C_RED}x${C_RESET}  $1" >&2; }
+info()    { printf '%b\n' "  ${C_CYAN}-${C_RESET} $1"; }
+success() { printf '%b\n' "  ${C_GREEN}ok${C_RESET} $1"; }
+warn()    { printf '%b\n' "  ${C_YELLOW}!${C_RESET} $1" >&2; }
+error()   { printf '%b\n' "  ${C_RED}x${C_RESET} $1" >&2; }
 log()     { printf '%s  %s\n' "$(date -Iseconds)" "$1" >> "$LOG_FILE"; }
 
 BACKUP_ROOT="/var/backups/nivaroos-bridge"
@@ -340,6 +340,7 @@ start_watchdog() {
 
 latest_pending_backup() {
 	local d
+	# shellcheck disable=SC2045 # timestamped folder names, newest first
 	for d in $(ls -1dt "$BACKUP_ROOT"/*/ 2>/dev/null); do
 		d="${d%/}"
 		if [ ! -f "$d/confirmed" ] && [ ! -f "$d/rolled-back" ]; then
@@ -351,6 +352,7 @@ latest_pending_backup() {
 }
 
 latest_backup() {
+	# shellcheck disable=SC2012 # timestamped folder names, newest first
 	ls -1dt "$BACKUP_ROOT"/*/ 2>/dev/null | head -n1 | sed 's:/$::'
 }
 
@@ -382,6 +384,7 @@ action_status() {
 		local name mac
 		name="$(basename "$(dirname "$br")")"
 		mac="$(cat "$(dirname "$br")/address" 2>/dev/null)"
+		# shellcheck disable=SC2012 # interface names
 		printf '  %-10s mac %s  ports: %s\n' "$name" "$mac" "$(ls "$(dirname "$br")/brif" 2>/dev/null | tr '\n' ' ')"
 	done
 	[ "$found" = "false" ] && echo "  (none)"
@@ -419,7 +422,10 @@ action_rollback() {
 	if [ -z "$dir" ]; then
 		dir="$(latest_backup)" || { error "No nivaroos-bridge backup found to roll back to."; exit 1; }
 	fi
-	[ -d "$dir" ] && [ -f "$dir/rollback.sh" ] || { error "No rollback script at $dir"; exit 1; }
+	if [ ! -d "$dir" ] || [ ! -f "$dir/rollback.sh" ]; then
+		error "No rollback script at $dir"
+		exit 1
+	fi
 	warn "Rolling back to the network config backed up at $dir ..."
 	bash "$dir/rollback.sh"
 	touch "$dir/rolled-back"
@@ -480,7 +486,8 @@ action_wizard() {
 		exit 1
 	fi
 
-	local backup_dir="$BACKUP_ROOT/$(date +%Y%m%d-%H%M%S)"
+	local backup_dir
+	backup_dir="$BACKUP_ROOT/$(date +%Y%m%d-%H%M%S)"
 	backup_current_config "$BACKEND" "$nic" "$backup_dir"
 	log "backup written to $backup_dir for nic=$nic backend=$BACKEND bridge=$BRIDGE_NAME"
 

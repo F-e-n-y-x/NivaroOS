@@ -27,38 +27,54 @@ for a in "$@"; do
 	case "$a" in
 		-n | --dry-run) DRY=1 ;;
 		-h | --help)
-			sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+			ui_banner "rollback" "Put the previous build back"
+			cat <<'EOF'
+
+  Usage
+    sudo nivaroos-rollback                  list what can be rolled back
+    sudo nivaroos-rollback all              every binary with a different previous build
+    sudo nivaroos-rollback <component>      one: gateway, core, nivaroos-user-service ...
+    sudo nivaroos-rollback www              the web dashboard
+    sudo nivaroos-rollback --dry-run ...    say what would happen
+
+  A rollback swaps <binary> and <binary>.prev and restarts the units that
+  run it, so running the same rollback again undoes it.
+
+  Exit   0 done, 1 something could not be rolled back, 2 bad usage
+EOF
 			exit 0
+			;;
+		-*)
+			ui_err "Unknown option '$a' - see --help."
+			exit 2
 			;;
 		*) ARGS+=("$a") ;;
 	esac
 done
 
 if [ -z "${NIVAROOS_ALLOW_NONROOT:-}" ] && [ "$(id -u)" -ne 0 ]; then
-	echo "nivaroos-rollback: run as root (sudo nivaroos-rollback ...)" >&2
-	exit 1
+	ui_die "nivaroos-rollback needs root: sudo nivaroos-rollback ..."
 fi
 
 fmt_time() { date -d "@$1" '+%Y-%m-%d %H:%M' 2>/dev/null || echo "$1"; }
 
 list() {
 	local bin any=""
-	echo "Binaries with a previous build (<binary>.prev):"
+	ui_head "Previous builds"
 	while IFS= read -r bin; do
 		[ -f "$bin.prev" ] || continue
 		any=1
 		if nv_has_prev "$bin"; then
-			printf '  %-32s current %s   previous %s\n' "$(basename "$bin")" "$(fmt_time "$(nv_changed_at "$bin")")" "$(fmt_time "$(stat -c %Y "$bin.prev")")"
+			printf '    %-30s %scurrent%s %s   %sprevious%s %s\n' "$(basename "$bin")" "$UI_D" "$UI_R" "$(fmt_time "$(nv_changed_at "$bin")")" "$UI_D" "$UI_R" "$(fmt_time "$(stat -c %Y "$bin.prev")")"
 		else
-			printf '  %-32s (previous is identical - nothing to roll back)\n' "$(basename "$bin")"
+			printf '    %-30s %s(previous is identical - nothing to roll back)%s\n' "$(basename "$bin")" "$UI_D" "$UI_R"
 		fi
 	done < <(nv_binaries)
-	[ -n "$any" ] || echo "  (none)"
+	[ -n "$any" ] || printf '    %s(none)%s\n' "$UI_D" "$UI_R"
 	if [ -f "$NV_WWW_DIR.prev/index.html" ]; then
-		echo "Web dashboard: previous build at $NV_WWW_DIR.prev ($(fmt_time "$(stat -c %Y "$NV_WWW_DIR.prev")")) - 'nivaroos-rollback www'"
+		printf '    %-30s %sprevious%s %s\n' "www (dashboard)" "$UI_D" "$UI_R" "$(fmt_time "$(stat -c %Y "$NV_WWW_DIR.prev")")"
 	fi
-	echo
-	echo "Usage: nivaroos-rollback all | www | <component> ...   (--dry-run to preview)"
+	printf '\n    %snivaroos-rollback all | www | <component>   (--dry-run to preview)%s\n\n' "$UI_D" "$UI_R"
 }
 
 # resolve NAME -> binary path. Accepts the binary name (nivaroos-gateway),
@@ -80,22 +96,22 @@ resolve() {
 rollback_bin() {
 	local bin="$1" u units rc=0
 	if ! nv_has_prev "$bin"; then
-		echo "$(basename "$bin"): no different previous build to roll back to" >&2
+		ui_err "$(basename "$bin"): no different previous build to roll back to"
 		return 1
 	fi
 	units="$(nv_units_for_binary "$bin")"
 	if [ -n "$DRY" ]; then
-		echo "would swap $bin <-> $bin.prev and restart: ${units:-(no unit)}"
+		ui_info "would swap $bin <-> $bin.prev and restart: ${units:-(no unit)}"
 		return 0
 	fi
-	nv_swap_prev "$bin" || { echo "$(basename "$bin"): swap failed" >&2; return 1; }
+	nv_swap_prev "$bin" || { ui_err "$(basename "$bin"): swap failed"; return 1; }
 	nv_log "manual rollback: $bin <- $bin.prev (the replaced build is now $bin.prev)"
-	echo "$(basename "$bin"): previous build restored (run again to undo)"
+	ui_ok "$(basename "$bin"): previous build restored  ${UI_D}(run again to undo)${UI_R}"
 	for u in $units; do
 		if nv_restart "$u"; then
-			echo "  restarted $u"
+			ui_kv "restarted" "$u"
 		else
-			echo "  restart of $u FAILED - see: journalctl -u $u -n 50" >&2
+			ui_err "restart of $u failed - journalctl -u $u -n 50"
 			rc=1
 		fi
 	done
@@ -104,16 +120,16 @@ rollback_bin() {
 
 rollback_www() {
 	if [ ! -f "$NV_WWW_DIR.prev/index.html" ]; then
-		echo "web dashboard: no previous build at $NV_WWW_DIR.prev" >&2
+		ui_err "Web dashboard: no previous build at $NV_WWW_DIR.prev"
 		return 1
 	fi
 	if [ -n "$DRY" ]; then
-		echo "would swap $NV_WWW_DIR <-> $NV_WWW_DIR.prev"
+		ui_info "would swap $NV_WWW_DIR <-> $NV_WWW_DIR.prev"
 		return 0
 	fi
-	nv_swap_www || { echo "web dashboard: swap failed" >&2; return 1; }
+	nv_swap_www || { ui_err "Web dashboard: swap failed"; return 1; }
 	nv_log "manual rollback: web dashboard <- $NV_WWW_DIR.prev"
-	echo "web dashboard: previous build restored (reload the page; run again to undo)"
+	ui_ok "Web dashboard: previous build restored  ${UI_D}(reload the page; run again to undo)${UI_R}"
 }
 
 if [ ${#ARGS[@]} -eq 0 ] || [ "${ARGS[0]}" = list ]; then
@@ -135,14 +151,14 @@ for a in "${ARGS[@]}"; do
 				done_any=1
 				rollback_bin "$bin" || rc=1
 			done < <(nv_binaries)
-			[ -n "$done_any" ] || echo "nothing to roll back"
+			[ -n "$done_any" ] || ui_info "Nothing to roll back"
 			;;
 		www | web | ui) rollback_www || rc=1 ;;
 		*)
 			if bin="$(resolve "$a")"; then
 				rollback_bin "$bin" || rc=1
 			else
-				echo "unknown component '$a' - run nivaroos-rollback with no arguments for the list" >&2
+				ui_err "Unknown component '$a' - run nivaroos-rollback with no arguments for the list"
 				rc=1
 			fi
 			;;
