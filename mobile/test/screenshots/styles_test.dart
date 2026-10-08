@@ -24,6 +24,9 @@ const _signature = {
   DesignDirection.rack: AccentColor.ember,
   DesignDirection.tonal: AccentColor.violet,
   DesignDirection.console: AccentColor.lime,
+  DesignDirection.soft: AccentColor.teal,
+  DesignDirection.terminal: AccentColor.amber,
+  DesignDirection.bold: AccentColor.rose,
 };
 
 class _Components extends StatefulWidget {

@@ -39,7 +39,11 @@ Color _on(Color c, Color bg) => Color.alphaBlend(c, bg);
   final filledBg = _on(filled.backgroundColor!.resolve(_none)!, page);
   final filledFg = filled.foregroundColor!.resolve(_none)!;
   final outlinedFg = theme.outlinedButtonTheme.style?.foregroundColor?.resolve(_none) ?? s.primary;
-  final outlinedSide = theme.outlinedButtonTheme.style?.side?.resolve(_none)?.color ?? s.outline;
+  final outlinedStyle = theme.outlinedButtonTheme.style;
+  final outlinedEdge = outlinedStyle?.side?.resolve(_none);
+  // Soft's quiet button is a grey fill with no edge: its label is checked
+  // on that fill, and there is no edge to check.
+  final outlinedFill = outlinedStyle?.backgroundColor?.resolve(_none);
 
   final chip = theme.chipTheme;
   final chipFill = _on(chip.color!.resolve(_selected)!, page);
@@ -89,7 +93,7 @@ Color _on(Color c, Color bg) => Color.alphaBlend(c, bg);
   return (
     text: [
       ('filled button label', filledFg, filledBg),
-      ('outlined button label', outlinedFg, page),
+      ('outlined button label', outlinedFg, outlinedFill == null ? page : _on(outlinedFill, page)),
       ('text button label', s.primary, page),
       ('selected chip label', chipLabel, chipFill),
       ('unselected chip label', chipIdleLabel, chipIdle),
@@ -124,7 +128,7 @@ Color _on(Color c, Color bg) => Color.alphaBlend(c, bg);
       ('checkbox: check on fill', check, checkFill),
       ('checkbox: empty box on page', checkEdge, page),
       ('radio: selected on page', radio, page),
-      ('outlined button edge', outlinedSide, page),
+      if (outlinedEdge?.style != BorderStyle.none) ('outlined button edge', outlinedEdge?.color ?? s.outline, page),
       ('FAB icon', fabFg, fabBg),
       ('navigation icon, selected', navIcon, nav.indicatorColor!),
       ('navigation icon', navIdleIcon, navBg),

@@ -102,7 +102,10 @@ class AppearanceScreen extends StatelessWidget {
   static String _blackNote(DesignDirection d) => switch (d) {
         DesignDirection.tonal => 'Cards keep their tonal colour, dimmed.',
         DesignDirection.console => 'Panels are ruled off by hairlines, like a terminal.',
-        _ => 'Cards keep their graphite fill and hairline edge.',
+        DesignDirection.soft => 'Cards stay soft grey islands, with no edges.',
+        DesignDirection.terminal => 'Nothing is filled: panels are black, drawn by their rules.',
+        DesignDirection.bold => 'Cards stay solid slabs, with the numbers in heavy white.',
+        DesignDirection.v2 || DesignDirection.rack => 'Cards keep their graphite fill and hairline edge.',
       };
 }
 
@@ -178,8 +181,9 @@ class _Controls extends StatelessWidget {
   }
 }
 
-/// The directions side by side, each drawn in its own theme: a small card
-/// with its type, number and line. Selection is an outline plus a check.
+/// The directions as a 3 × 2 grid, each drawn in its own theme: a small
+/// card with its type, number and line. Selection is an outline plus a
+/// check.
 class _StyleRow extends StatelessWidget {
   const _StyleRow({required this.appearance, required this.onPick});
 
@@ -188,52 +192,66 @@ class _StyleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    const perRow = 3;
+    const all = DesignDirection.selectable;
+    return Column(
       children: [
-        for (final d in DesignDirection.selectable) ...[
-          if (d != DesignDirection.selectable.first) const SizedBox(width: Space.sm),
-          Expanded(
-            child: Semantics(
-              button: true,
-              selected: appearance.direction == d,
-              label: '${d.label} design. ${d.description}${d == DesignDirection.defaultDirection ? '. Recommended' : ''}',
-              excludeSemantics: true,
-              child: InkWell(
-                onTap: () => onPick(d),
-                borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.lg),
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: Space.xs),
-                  child: Column(
-                    children: [
-                      _StyleSample(direction: d, appearance: appearance, selected: appearance.direction == d),
-                      const SizedBox(height: Space.sm),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          if (appearance.direction == d) ...[Icon(Icons.check, size: 16, color: scheme.primary), const SizedBox(width: 2)],
-                          Flexible(
-                            child: Text(
-                              d.label,
-                              style: text.labelLarge?.copyWith(color: appearance.direction == d ? scheme.primary : scheme.onSurface),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (d == DesignDirection.defaultDirection)
-                        Text('Recommended', style: text.labelSmall?.copyWith(color: scheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+        for (var i = 0; i < all.length; i += perRow) ...[
+          if (i > 0) const SizedBox(height: Space.sm),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final d in all.sublist(i, (i + perRow).clamp(0, all.length))) ...[
+                if (d != all[i]) const SizedBox(width: Space.sm),
+                Expanded(child: _style(context, d)),
+              ],
+            ],
           ),
         ],
       ],
+    );
+  }
+
+  Widget _style(BuildContext context, DesignDirection d) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return Semantics(
+      button: true,
+      selected: appearance.direction == d,
+      label: '${d.label} design. ${d.description}${d == DesignDirection.defaultDirection ? '. Recommended' : ''}',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: () => onPick(d),
+        borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.lg),
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: Space.xs),
+          child: Column(
+            children: [
+              _StyleSample(direction: d, appearance: appearance, selected: appearance.direction == d),
+              const SizedBox(height: Space.sm),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (appearance.direction == d) ...[Icon(Icons.check, size: 16, color: scheme.primary), const SizedBox(width: 2)],
+                  // Shrinks rather than cuts the name at large text.
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        d.label,
+                        style: text.labelLarge?.copyWith(color: appearance.direction == d ? scheme.primary : scheme.onSurface),
+                        maxLines: 1,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (d == DesignDirection.defaultDirection)
+                Text('Recommended', style: text.labelSmall?.copyWith(color: scheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -423,9 +441,10 @@ class _MiniApp extends StatelessWidget {
           alignment: Alignment.centerLeft,
           child: Container(height: h, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(h / 2))),
         );
-    // The navigation indicator's corner, scaled down: a pill in Tonal (and
-    // v2), the style's small corner elsewhere.
-    final indicator = t.direction == DesignDirection.tonal || t.direction == DesignDirection.v2 ? 3.5 : t.radii.sm / 3;
+    // The navigation indicator, scaled down: a pill where the bar is one,
+    // the style's small corner elsewhere; in the bar's own colours.
+    final nav = theme.navigationBarTheme;
+    final indicator = nav.indicatorShape is StadiumBorder ? 3.5 : t.radii.sm / 3;
     final card = BoxDecoration(
       color: t.cardColor,
       borderRadius: BorderRadius.circular(t.cardRadius / 2.5),
@@ -471,9 +490,9 @@ class _MiniApp extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  Container(width: 14, height: 7, decoration: BoxDecoration(color: s.secondaryContainer, borderRadius: BorderRadius.circular(indicator))),
+                  Container(width: 14, height: 7, decoration: BoxDecoration(color: nav.indicatorColor ?? s.secondaryContainer, borderRadius: BorderRadius.circular(indicator))),
                   for (var i = 0; i < 3; i++)
-                    Container(width: 5, height: 5, decoration: BoxDecoration(color: s.onSurfaceVariant, shape: BoxShape.circle)),
+                    Container(width: 5, height: 5, decoration: BoxDecoration(color: nav.iconTheme?.resolve({})?.color ?? s.onSurfaceVariant, shape: BoxShape.circle)),
                 ],
               ),
             ),

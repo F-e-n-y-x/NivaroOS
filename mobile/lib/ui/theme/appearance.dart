@@ -82,7 +82,22 @@ enum DesignDirection {
 
   /// C: operations console. Graphite, IBM Plex Sans with Plex Mono for
   /// numbers and time labels, tight corners, thin accent lines on a grid.
-  console('Console', 'Graphite, mono numbers, lines on a grid');
+  console('Console', 'Graphite, mono numbers, lines on a grid'),
+
+  /// D: grouped settings (One UI, iOS). A cool grey page with white
+  /// islands - no tint, no edges in light - Google Sans Flex, large soft
+  /// corners, filled accent buttons, rounded meters.
+  soft('Soft', 'White cards on cool grey, large rounded corners'),
+
+  /// E: a terminal. Geist Mono for everything, square corners, panels the
+  /// page colour ruled by hairlines, inverse-video selection, a grid with
+  /// time labels.
+  terminal('Terminal', 'All monospace, square corners, ruled panels'),
+
+  /// F: Swiss, editorial. Geist SemiBold set tight, big heavy numbers,
+  /// small corners, solid grey cards and one in the accent, thick ink
+  /// lines and meters.
+  bold('Bold', 'Heavy type, solid cards, thick ink lines');
 
   const DesignDirection(this.label, this.description);
 
@@ -94,7 +109,7 @@ enum DesignDirection {
   static const defaultDirection = DesignDirection.rack;
 
   /// The directions the Appearance screen's Design preview offers.
-  static const selectable = [rack, tonal, console];
+  static const selectable = [rack, tonal, console, soft, terminal, bold];
 }
 
 /// Everything the user chose about how the app looks.

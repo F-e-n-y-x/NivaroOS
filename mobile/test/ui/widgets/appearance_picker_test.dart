@@ -79,11 +79,35 @@ void main() {
     expect(rows, hasLength(3));
   });
 
+  for (final scale in [1.0, 2.0]) {
+    testWidgets('the styles are a 3 × 2 grid, Rack recommended, at ${scale}x text', (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = scale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final c = ThemeController();
+      await pump(tester, c);
+      expect(tester.takeException(), isNull, reason: 'nothing overflows');
+      Offset at(DesignDirection d) => tester.getRect(find.bySemanticsLabel(RegExp('^${d.label} design'))).topCenter;
+      final centres = {for (final d in DesignDirection.selectable) d: at(d)};
+      expect({for (final o in centres.values) o.dy}, hasLength(2), reason: 'two rows');
+      expect({for (final o in centres.values) o.dx.round()}, hasLength(3), reason: 'three columns');
+      expect(find.bySemanticsLabel(RegExp(r'^Rack design.*Recommended$')), findsOneWidget);
+      expect(find.text('Recommended'), findsOneWidget);
+
+      await tester.tap(find.bySemanticsLabel(RegExp('^Terminal design')));
+      await tester.pumpAndSettle();
+      expect(c.value.direction, DesignDirection.terminal);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets("true black's note says what the style keeps", (tester) async {
     for (final (d, words) in [
       (DesignDirection.rack, 'graphite fill and hairline edge'),
       (DesignDirection.tonal, 'tonal colour, dimmed'),
       (DesignDirection.console, 'like a terminal'),
+      (DesignDirection.soft, 'soft grey islands'),
+      (DesignDirection.terminal, 'drawn by their rules'),
+      (DesignDirection.bold, 'solid slabs'),
     ]) {
       final c = ThemeController(Appearance(mode: AppThemeMode.black, direction: d));
       await pump(tester, c);

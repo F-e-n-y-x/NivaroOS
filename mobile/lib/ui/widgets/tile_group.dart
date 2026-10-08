@@ -13,9 +13,9 @@ import 'section_header.dart';
 /// between them instead of divider lines (the Android 16 settings style): the block has large outer
 /// corners, the joins have small ones, and each row's ripple stays inside
 /// its own segment. The segments are `surfaceContainer` on the `surface`
-/// page, the pairing test/ui/theme_contrast_test.dart pins. Rack and
-/// Console draw one hairline-edged panel with ruled rows instead
-/// (`DesignTokens.ruledGroups`).
+/// page, the pairing test/ui/theme_contrast_test.dart pins. Rack, Console
+/// and Terminal draw one hairline-edged panel with ruled rows instead, and
+/// Soft the same panel without the edge (`DesignTokens.ruledGroups`).
 ///
 /// Inside the block the rows keep a 16dp inner padding whatever the screen
 /// gutter, so the header - indented by the same 16dp - lines up with the
@@ -34,14 +34,16 @@ class TileGroup extends StatelessWidget {
   static const double gap = 2;
 
 
-  /// Rack and Console: one panel on the card colour with a hairline edge,
-  /// rows ruled by inset hairlines - an instrument panel rather than a
-  /// stack of tonal segments.
+  /// Rack, Console and Terminal: one panel on the card colour with a
+  /// hairline edge, rows ruled by inset hairlines - an instrument panel
+  /// rather than a stack of tonal segments. Soft draws the same block with
+  /// no edge (the card's, null): a grouped-settings island.
   Widget _ruled(ThemeData theme, DesignTokens tokens, Radius outer) {
     final line = theme.colorScheme.outlineVariant;
+    final edge = tokens.cardBorder;
     return Material(
       color: tokens.cardColor,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(outer), side: BorderSide(color: line)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(outer), side: edge == null ? BorderSide.none : BorderSide(color: edge)),
       clipBehavior: Clip.antiAlias,
       child: Column(
         mainAxisSize: MainAxisSize.min,

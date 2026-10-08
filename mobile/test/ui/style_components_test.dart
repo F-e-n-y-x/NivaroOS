@@ -81,14 +81,17 @@ void main() {
       }
     }
 
-    test('the three styles differ in shape, density and edges', () {
+    test('the styles differ in shape, density and edges', () {
       final rack = _theme(DesignDirection.rack, 'light');
       final tonal = _theme(DesignDirection.tonal, 'light');
       final console = _theme(DesignDirection.console, 'light');
-      final dialogs = {for (final t in [rack, tonal, console]) _radius(t.dialogTheme.shape)};
-      expect(dialogs, hasLength(3));
-      final chips = {for (final t in [rack, tonal, console]) _radius(t.chipTheme.shape)};
-      expect(chips, hasLength(3));
+      final all = [for (final d in DesignDirection.selectable) _theme(d, 'light')];
+      final dialogs = {for (final t in all) _radius(t.dialogTheme.shape)};
+      expect(dialogs, hasLength(DesignDirection.selectable.length));
+      final chips = {for (final t in all) _radius(t.chipTheme.shape)};
+      expect(chips, hasLength(DesignDirection.selectable.length));
+      final faces = {for (final t in all) t.textTheme.bodyMedium!.fontFamily};
+      expect(faces, hasLength(greaterThanOrEqualTo(4)));
       expect(tonal.filledButtonTheme.style!.shape, isNull, reason: 'Tonal keeps the M3 stadium');
       expect(tonal.outlinedButtonTheme.style!.shape!.resolve({}), isA<StadiumBorder>());
       expect(console.visualDensity.vertical, lessThan(rack.visualDensity.vertical), reason: 'Console is a step denser');
@@ -173,6 +176,84 @@ void main() {
       expect(t.appBarTheme.shape, isA<Border>());
       expect(t.navigationBarTheme.backgroundColor, Colors.black);
     });
+
+    test('Soft: grey islands with no edge on #000', () {
+      final t = _theme(DesignDirection.soft, 'black');
+      final tk = t.extension<DesignTokens>()!;
+      expect(tk.cardBorder, isNull);
+      expect(contrast(tk.cardColor, Colors.black), greaterThanOrEqualTo(1.15), reason: 'the islands show on black');
+      expect(_hue(tk.cardColor), lessThan(.03), reason: 'no tint');
+    });
+
+    test('Terminal: nothing filled - panels and bar are #000, drawn by their rules', () {
+      final t = _theme(DesignDirection.terminal, 'black');
+      final tk = t.extension<DesignTokens>()!;
+      expect(tk.cardColor, Colors.black);
+      expect(t.navigationBarTheme.backgroundColor, Colors.black);
+      expect(contrast(tk.cardBorder!, Colors.black), greaterThanOrEqualTo(1.3));
+    });
+
+    test('Bold: solid slabs and heavy numbers on #000', () {
+      final t = _theme(DesignDirection.bold, 'black');
+      final tk = t.extension<DesignTokens>()!;
+      expect(tk.cardBorder, isNull);
+      expect(contrast(tk.cardColor, Colors.black), greaterThanOrEqualTo(1.15));
+      expect(tk.heroValue.fontWeight, FontWeight.w600);
+      expect(tk.emphasisCard, isNotNull);
+    });
+  });
+
+  group('the newer styles keep their character in every mode', () {
+    for (final (mode, _, _) in _modes) {
+      test('Soft $mode: grouped islands, accent actions, large corners', () {
+        final t = _theme(DesignDirection.soft, mode);
+        final tk = t.extension<DesignTokens>()!;
+        final s = t.colorScheme;
+        expect(t.textTheme.bodyMedium!.fontFamily, 'GoogleSansFlex');
+        expect(tk.cardBorder, isNull, reason: 'cards stand on tone alone');
+        expect(tk.ruledGroups, isTrue, reason: 'a group is one rounded island');
+        expect(tk.cardRadius, greaterThanOrEqualTo(22));
+        expect(_hue(s.surface), lessThan(.06), reason: 'no tonal tint on the page');
+        expect(t.filledButtonTheme.style!.backgroundColor!.resolve({}), s.primary);
+        expect(tk.button, ButtonTreatment.accent);
+        expect(tk.meterHeight, greaterThanOrEqualTo(8));
+        if (mode == 'light') expect(tk.cardColor, Colors.white);
+      });
+
+      test('Terminal $mode: mono and square, ruled, inverse video', () {
+        final t = _theme(DesignDirection.terminal, mode);
+        final tk = t.extension<DesignTokens>()!;
+        final s = t.colorScheme;
+        for (final style in [t.textTheme.bodyLarge, t.textTheme.titleLarge, t.textTheme.labelLarge, tk.heroValue, tk.cardLabel, t.appBarTheme.titleTextStyle]) {
+          expect(style!.fontFamily, 'GeistMono');
+        }
+        // Readable mono: body text at 13.5dp and up, with open lines.
+        expect(t.textTheme.bodyMedium!.fontSize, greaterThanOrEqualTo(13.5));
+        expect(t.textTheme.bodyMedium!.height, greaterThanOrEqualTo(1.4));
+        expect(tk.radii.xl, lessThanOrEqualTo(4));
+        expect(tk.cardColor, s.surface, reason: 'panels are the page, ruled');
+        expect(tk.cardBorder, isNotNull);
+        expect(t.appBarTheme.shape, isA<Border>());
+        expect(tk.chart.grid && tk.chart.timeLabels, isTrue);
+        expect(t.chipTheme.color!.resolve({WidgetState.selected}), s.primary);
+      });
+
+      test('Bold $mode: heavy tight type, solid cards, thick lines', () {
+        final t = _theme(DesignDirection.bold, mode);
+        final tk = t.extension<DesignTokens>()!;
+        final s = t.colorScheme;
+        expect(t.textTheme.headlineSmall!.fontWeight, FontWeight.w600);
+        expect(t.textTheme.headlineSmall!.letterSpacing, lessThan(0));
+        expect(tk.heroValue.fontWeight, FontWeight.w600);
+        expect(tk.cardBorder, isNull);
+        expect(tk.cardRadius, inInclusiveRange(6, 8));
+        expect(tk.chart.lineWidth, greaterThanOrEqualTo(3));
+        expect(tk.meterHeight, greaterThanOrEqualTo(10));
+        expect(tk.emphasisCard, mode == 'light' ? s.primary : s.primaryContainer, reason: 'the busiest metric on a solid accent card');
+        expect((t.appBarTheme.shape! as Border).bottom.width, 2, reason: 'a masthead rule');
+        expect(t.inputDecorationTheme.border, isA<UnderlineInputBorder>());
+      });
+    }
   });
 
   group('Monochrome', () {

@@ -7,7 +7,7 @@
 // PNGs: goldens/directions/<direction>/<screen>_<mode>_<size>.png, and -
 // with NVOS_COMPARE=1 - one side-by-side comparison per screen, mode and
 // size in goldens/directions/compare/ (the 1.3 look first for reference,
-// then Rack, Tonal, Console).
+// then Rack, Tonal, Console, Soft, Terminal, Bold).
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -52,6 +52,9 @@ const _signature = {
   DesignDirection.rack: (AccentColor.ember, AppThemeMode.light),
   DesignDirection.tonal: (AccentColor.violet, AppThemeMode.light),
   DesignDirection.console: (AccentColor.lime, AppThemeMode.dark),
+  DesignDirection.soft: (AccentColor.teal, AppThemeMode.light),
+  DesignDirection.terminal: (AccentColor.amber, AppThemeMode.black),
+  DesignDirection.bold: (AccentColor.rose, AppThemeMode.light),
 };
 
 LiveStats _live() {

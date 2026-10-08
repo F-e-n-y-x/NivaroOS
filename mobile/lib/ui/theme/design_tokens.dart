@@ -127,7 +127,7 @@ enum Corner { xs, sm, md, lg, xl }
 
 /// How a direction draws a primary (filled) button.
 enum ButtonTreatment {
-  /// The M3 default: filled in the primary colour.
+  /// Filled in the primary colour (the M3 default; Soft, Terminal, Bold).
   accent,
 
   /// Filled in ink (the text colour) with page-coloured text (Rack).
@@ -369,13 +369,14 @@ class DesignTokens extends ThemeExtension<DesignTokens> {
 }
 
 /// The style for a secondary, tonal button (`FilledButton.tonal`) in
-/// directions whose primary button isn't the M3 default: the theme's
-/// filled-button style applies to both variants, so tonal buttons restate
-/// their own fill (in Tonal too, whose primary is itself a container fill,
-/// or the two would be the same button). Null keeps the default.
+/// every style that sets its own filled-button theme (all but v2): that
+/// style applies to both variants, so tonal buttons restate their own fill
+/// (in Tonal too, whose primary is itself a container fill, and in the
+/// accent-filled styles, or the two would be the same button). Null keeps
+/// the default.
 ButtonStyle? tonalButtonStyle(BuildContext context) {
   final t = DesignTokens.of(context);
-  if (t.button == ButtonTreatment.accent) return null;
+  if (t.direction == DesignDirection.v2) return null;
   final s = Theme.of(context).colorScheme;
   return FilledButton.styleFrom(
     backgroundColor: s.secondaryContainer,

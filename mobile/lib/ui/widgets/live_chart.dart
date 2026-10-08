@@ -214,9 +214,10 @@ class LiveChart extends StatelessWidget {
     if (c.timeLabels && window != null) {
       final labels = Padding(
         padding: EdgeInsets.fromLTRB(labelInset, 4, labelInset, 0),
-        child: Row(children: [
-          Text('−$window', style: labelStyle),
-          const Spacer(),
+        // The span gives way rather than overflow a narrow card at large
+        // text.
+        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Flexible(child: Text('−$window', style: labelStyle, maxLines: 1, overflow: TextOverflow.clip)),
           Text('now', style: labelStyle),
         ]),
       );
