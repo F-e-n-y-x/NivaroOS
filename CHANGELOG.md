@@ -7,6 +7,25 @@ inherited CasaOS history and is not kept up to date.)
 
 ### Added
 
+- Drive health (SMART), in plain words, for every drive including the
+  system drive (SATA HDD/SSD, NVMe, USB enclosures - an unknown USB bridge
+  is retried as SAT). Each drive gets a verdict - Good, Watch or Failing -
+  with the reason ("12 sectors waiting to be remapped - back up this
+  drive") and the numbers that actually predict a failure: reallocated,
+  pending and unreadable sectors, uncorrectable read errors, cable errors,
+  SSD wear and spare blocks, NVMe media errors, temperature, power-on
+  hours, power cycles and unsafe shutdowns. Old counts that aren't
+  growing (read errors years ago) are a note, not a warning. A daily
+  snapshot keeps 90 days of history ("pending sectors went from 0 to 12
+  this week", with a chart), and the server checks hourly and sends one
+  notification when a drive turns Watch/Failing or a damage counter
+  grows - never repeated for the same state. Sleeping drives are still
+  never woken. Settings > Storage > a drive's info shows the Health panel
+  (verdict, key numbers with what they mean, history chart, short/long
+  self-test with progress and past results, raw SMART table); the app has
+  a Drives group on Server health that opens the same page. Starting a
+  self-test is now admin only. Without smartmontools the drive says so
+  ("SMART tools aren't installed") instead of looking healthy.
 - Drives that don't mount after a power cut. A NivaroOS drive set to
   mount at boot that isn't mounted (left dirty or damaged by a power cut,
   or not connected) is shown in Settings > Storage and in the app's

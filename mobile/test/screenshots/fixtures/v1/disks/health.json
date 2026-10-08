@@ -1,0 +1,491 @@
+{
+ "data": {
+  "path": "/dev/sdd",
+  "status": "ok",
+  "verdict": "failing",
+  "summary": "12 sectors waiting to be remapped, and the number is growing - back up this drive",
+  "reasons": [
+   "12 sectors waiting to be remapped, and the number is growing - back up this drive",
+   "2 unreadable sectors found by the drive's own scan, and the number is growing - back up this drive",
+   "8 bad sectors already replaced by spares, and the number is growing - keep a current backup",
+   "42 cable/connection errors, some recently - reseat or replace the cable (or USB enclosure)"
+  ],
+  "notes": [],
+  "kind": "hdd",
+  "model": "WDC WD20EZAZ-00GGJB0",
+  "stale": false,
+  "metrics": [
+   {
+    "key": "pending",
+    "label": "Sectors waiting to be remapped",
+    "value": 12,
+    "explain": "Spots the drive couldn't read and will replace on the next write. Data there may already be lost - back up this drive.",
+    "level": "failing"
+   },
+   {
+    "key": "reallocated",
+    "label": "Reallocated sectors",
+    "value": 8,
+    "explain": "Bad spots the drive has already swapped for spares. A few can be harmless; a growing number means the surface is wearing out.",
+    "level": "failing"
+   },
+   {
+    "key": "offline_uncorrectable",
+    "label": "Unreadable sectors (offline scan)",
+    "value": 2,
+    "explain": "Spots the drive's own background scan couldn't read at all.",
+    "level": "failing"
+   },
+   {
+    "key": "reported_uncorrect",
+    "label": "Read errors reported to the system",
+    "value": 0,
+    "explain": "Reads the drive couldn't correct, so a file read failed.",
+    "level": "good"
+   },
+   {
+    "key": "crc_errors",
+    "label": "Cable / connection errors",
+    "value": 42,
+    "explain": "Data garbled between drive and computer. Almost always the cable, connector or USB enclosure, not the disk itself.",
+    "level": "watch"
+   },
+   {
+    "key": "temperature",
+    "label": "Temperature",
+    "value": 37,
+    "unit": "°C",
+    "explain": "Now.",
+    "level": "good"
+   },
+   {
+    "key": "temperature_max",
+    "label": "Highest temperature",
+    "value": 51,
+    "unit": "°C",
+    "explain": "The hottest it has ever been.",
+    "level": "good"
+   },
+   {
+    "key": "power_on_hours",
+    "label": "Powered on",
+    "value": 22089,
+    "unit": "h",
+    "explain": "Total hours the drive has run.",
+    "level": "good"
+   },
+   {
+    "key": "power_cycles",
+    "label": "Power cycles",
+    "value": 3903,
+    "explain": "How many times it was switched on.",
+    "level": "good"
+   },
+   {
+    "key": "unsafe_shutdowns",
+    "label": "Unsafe shutdowns",
+    "value": 1263,
+    "explain": "Times power was cut without a proper shutdown (power cut, pulled cable). Not a failure itself, but each one risks file-system damage.",
+    "level": "good"
+   }
+  ],
+  "self_test": {
+   "supported": true,
+   "running": false,
+   "remaining_percent": 0,
+   "short_minutes": 2,
+   "long_minutes": 109,
+   "last": [
+    {
+     "type": "Short offline",
+     "result": "Completed without error",
+     "passed": true,
+     "hours": 17194
+    },
+    {
+     "type": "Short offline",
+     "result": "Completed without error",
+     "passed": true,
+     "hours": 6150
+    },
+    {
+     "type": "Short offline",
+     "result": "Completed without error",
+     "passed": true,
+     "hours": 5878
+    }
+   ]
+  },
+  "changes": [
+   "Sectors waiting to be remapped went from 0 to 12 this week",
+   "Reallocated sectors went from 0 to 8 this week",
+   "Unreadable sectors (offline scan) went from 0 to 2 this week"
+  ],
+  "history": [
+   {
+    "date": "2026-09-26",
+    "verdict": "good",
+    "values": {
+     "crc_errors": 42,
+     "offline_uncorrectable": 0,
+     "pending": 0,
+     "power_cycles": 3903,
+     "power_on_hours": 21777,
+     "reallocated": 0,
+     "reported_uncorrect": 0,
+     "temperature": 35,
+     "temperature_max": 51,
+     "unsafe_shutdowns": 1263
+    }
+   },
+   {
+    "date": "2026-09-27",
+    "verdict": "good",
+    "values": {
+     "crc_errors": 42,
+     "offline_uncorrectable": 0,
+     "pending": 0,
+     "power_cycles": 3903,
+     "power_on_hours": 21801,
+     "reallocated": 0,
+     "reported_uncorrect": 0,
+     "temperature": 36,
+     "temperature_max": 51,
+     "unsafe_shutdowns": 1263
+    }
+   },
+   {
+    "date": "2026-09-28",
+    "verdict": "good",
+    "values": {
+     "crc_errors": 42,
+     "offline_uncorrectable": 0,
+     "pending": 0,
+     "power_cycles": 3903,
+     "power_on_hours": 21825,
+     "reallocated": 0,
+     "reported_uncorrect": 0,
+     "temperature": 37,
+     "temperature_max": 51,
+     "unsafe_shutdowns": 1263
+    }
+   },
+   {
+    "date": "2026-09-29",
+    "verdict": "good",
+    "values": {
+     "crc_errors": 42,
+     "offline_uncorrectable": 0,
+     "pending": 0,
+     "power_cycles": 3903,
+     "power_on_hours": 21849,
+     "reallocated": 0,
+     "reported_uncorrect": 0,
+     "temperature": 38,
+     "temperature_max": 51,
+     "unsafe_shutdowns": 1263
+    }
+   },
+   {
+    "date": "2026-09-30",
+    "verdict": "good",
+    "values": {
+     "crc_errors": 42,
+     "offline_uncorrectable": 0,
+     "pending": 0,
+     "power_cycles": 3903,
+     "power_on_hours": 21873,
+     "reallocated": 0,
+     "reported_uncorrect": 0,
+     "temperature": 35,
+     "temperature_max": 51,
+     "unsafe_shutdowns": 1263
+    }
+   },
+   {
+    "date": "2026-10-01",
+    "verdict": "good",
+    "values": {
+     "crc_errors": 42,
+     "offline_uncorrectable": 0,
+     "pending": 0,
+     "power_cycles": 3903,
+     "power_on_hours": 21897,
+     "reallocated": 0,
+     "reported_uncorrect": 0,
+     "temperature": 36,
+     "temperature_max": 51,
+     "unsafe_shutdowns": 1263
+    }
+   },
+   {
+    "date": "2026-10-02",
+    "verdict": "good",
+    "values": {
+     "crc_errors": 42,
+     "offline_uncorrectable": 0,
+     "pending": 0,
+     "power_cycles": 3903,
+     "power_on_hours": 21921,
+     "reallocated": 0,
+     "reported_uncorrect": 0,
+     "temperature": 37,
+     "temperature_max": 51,
+     "unsafe_shutdowns": 1263
+    }
+   },
+   {
+    "date": "2026-10-03",
+    "verdict": "good",
+    "values": {
+     "crc_errors": 42,
+     "offline_uncorrectable": 0,
+     "pending": 0,
+     "power_cycles": 3903,
+     "power_on_hours": 21945,
+     "reallocated": 0,
+     "reported_uncorrect": 0,
+     "temperature": 38,
+     "temperature_max": 51,
+     "unsafe_shutdowns": 1263
+    }
+   },
+   {
+    "date": "2026-10-04",
+    "verdict": "good",
+    "values": {
+     "crc_errors": 42,
+     "offline_uncorrectable": 0,
+     "pending": 0,
+     "power_cycles": 3903,
+     "power_on_hours": 21969,
+     "reallocated": 0,
+     "reported_uncorrect": 0,
+     "temperature": 35,
+     "temperature_max": 51,
+     "unsafe_shutdowns": 1263
+    }
+   },
+   {
+    "date": "2026-10-05",
+    "verdict": "good",
+    "values": {
+     "crc_errors": 42,
+     "offline_uncorrectable": 0,
+     "pending": 3,
+     "power_cycles": 3903,
+     "power_on_hours": 21993,
+     "reallocated": 2,
+     "reported_uncorrect": 0,
+     "temperature": 36,
+     "temperature_max": 51,
+     "unsafe_shutdowns": 1263
+    }
+   },
+   {
+    "date": "2026-10-06",
+    "verdict": "good",
+    "values": {
+     "crc_errors": 42,
+     "offline_uncorrectable": 0,
+     "pending": 6,
+     "power_cycles": 3903,
+     "power_on_hours": 22017,
+     "reallocated": 4,
+     "reported_uncorrect": 0,
+     "temperature": 37,
+     "temperature_max": 51,
+     "unsafe_shutdowns": 1263
+    }
+   },
+   {
+    "date": "2026-10-07",
+    "verdict": "good",
+    "values": {
+     "crc_errors": 42,
+     "offline_uncorrectable": 2,
+     "pending": 9,
+     "power_cycles": 3903,
+     "power_on_hours": 22041,
+     "reallocated": 6,
+     "reported_uncorrect": 0,
+     "temperature": 38,
+     "temperature_max": 51,
+     "unsafe_shutdowns": 1263
+    }
+   },
+   {
+    "date": "2026-10-08",
+    "verdict": "good",
+    "values": {
+     "crc_errors": 42,
+     "offline_uncorrectable": 2,
+     "pending": 12,
+     "power_cycles": 3903,
+     "power_on_hours": 22065,
+     "reallocated": 8,
+     "reported_uncorrect": 0,
+     "temperature": 35,
+     "temperature_max": 51,
+     "unsafe_shutdowns": 1263
+    }
+   },
+   {
+    "date": "2026-10-09",
+    "verdict": "failing",
+    "values": {
+     "crc_errors": 42,
+     "offline_uncorrectable": 2,
+     "pending": 12,
+     "power_cycles": 3903,
+     "power_on_hours": 22089,
+     "reallocated": 8,
+     "reported_uncorrect": 0,
+     "temperature": 37,
+     "temperature_max": 51,
+     "unsafe_shutdowns": 1263
+    }
+   }
+  ],
+  "raw": [
+   {
+    "id": 1,
+    "name": "Raw Read Error Rate",
+    "value": "200",
+    "worst": "200",
+    "thresh": "51",
+    "raw": "0"
+   },
+   {
+    "id": 3,
+    "name": "Spin Up Time",
+    "value": "178",
+    "worst": "170",
+    "thresh": "21",
+    "raw": "2100"
+   },
+   {
+    "id": 4,
+    "name": "Start Stop Count",
+    "value": "95",
+    "worst": "95",
+    "thresh": "0",
+    "raw": "5821"
+   },
+   {
+    "id": 5,
+    "name": "Reallocated Sector Ct",
+    "value": "200",
+    "worst": "200",
+    "thresh": "140",
+    "raw": "8"
+   },
+   {
+    "id": 7,
+    "name": "Seek Error Rate",
+    "value": "200",
+    "worst": "200",
+    "thresh": "0",
+    "raw": "0"
+   },
+   {
+    "id": 9,
+    "name": "Power On Hours",
+    "value": "70",
+    "worst": "70",
+    "thresh": "0",
+    "raw": "22089"
+   },
+   {
+    "id": 10,
+    "name": "Spin Retry Count",
+    "value": "100",
+    "worst": "100",
+    "thresh": "0",
+    "raw": "0"
+   },
+   {
+    "id": 11,
+    "name": "Calibration Retry Count",
+    "value": "100",
+    "worst": "100",
+    "thresh": "0",
+    "raw": "0"
+   },
+   {
+    "id": 12,
+    "name": "Power Cycle Count",
+    "value": "97",
+    "worst": "97",
+    "thresh": "0",
+    "raw": "3903"
+   },
+   {
+    "id": 192,
+    "name": "Power-Off Retract Count",
+    "value": "199",
+    "worst": "199",
+    "thresh": "0",
+    "raw": "1263"
+   },
+   {
+    "id": 193,
+    "name": "Load Cycle Count",
+    "value": "118",
+    "worst": "118",
+    "thresh": "0",
+    "raw": "246894"
+   },
+   {
+    "id": 194,
+    "name": "Temperature Celsius",
+    "value": "106",
+    "worst": "92",
+    "thresh": "0",
+    "raw": "37"
+   },
+   {
+    "id": 196,
+    "name": "Reallocated Event Count",
+    "value": "200",
+    "worst": "200",
+    "thresh": "0",
+    "raw": "0"
+   },
+   {
+    "id": 197,
+    "name": "Current Pending Sector",
+    "value": "200",
+    "worst": "200",
+    "thresh": "0",
+    "raw": "12"
+   },
+   {
+    "id": 198,
+    "name": "Offline Uncorrectable",
+    "value": "100",
+    "worst": "253",
+    "thresh": "0",
+    "raw": "2"
+   },
+   {
+    "id": 199,
+    "name": "UDMA CRC Error Count",
+    "value": "200",
+    "worst": "193",
+    "thresh": "0",
+    "raw": "42"
+   },
+   {
+    "id": 200,
+    "name": "Multi Zone Error Rate",
+    "value": "100",
+    "worst": "253",
+    "thresh": "0",
+    "raw": "0"
+   }
+  ]
+ },
+ "message": "ok",
+ "success": 200
+}

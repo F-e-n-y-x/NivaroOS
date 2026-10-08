@@ -66,6 +66,10 @@ type Drive struct {
 	// Sleeping: the drive was in standby at the last SMART poll (health
 	// is then the last awake reading, or "unknown").
 	Sleeping bool `json:"sleeping,omitempty"`
+	// good | watch | failing | unknown, and why (service/smart_health.go)
+	HealthVerdict string `json:"health_verdict"`
+	HealthSummary string `json:"health_summary"`
+	System        bool   `json:"system,omitempty"`
 }
 
 type USBDriveStatus struct {

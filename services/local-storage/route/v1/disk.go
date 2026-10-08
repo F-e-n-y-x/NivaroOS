@@ -71,6 +71,13 @@ func GetDiskList(c *gin.Context) {
 		temp := service.MyService.Disk().SmartCTL(currentDisk.Path)
 		disk.Temperature = temp.Temperature.Current
 		disk.Sleeping = temp.Sleeping
+		report := service.SmartReportFor(currentDisk.Path, temp)
+		disk.HealthVerdict, disk.HealthSummary = report.Verdict, report.Summary
+		// "true"/"false"/"unknown" as before; watch is still working
+		disk.Health = map[string]string{service.VerdictGood: "true", service.VerdictWatch: "true", service.VerdictFailing: "false"}[report.Verdict]
+		if disk.Health == "" {
+			disk.Health = "unknown"
+		}
 
 		if systemDisk == nil {
 			// go 5 level deep to look for system block device by mount point being "/"
@@ -82,7 +89,7 @@ func GetDiskList(c *gin.Context) {
 				} else if strings.Contains(found.SubSystems, "usb") {
 					disk.DiskType = "USB"
 				}
-				disk.Health = "true"
+				disk.System = true
 
 				disks = append(disks, disk)
 				continue
@@ -99,9 +106,6 @@ func GetDiskList(c *gin.Context) {
 			disk.NeedFormat = false
 			avail = append(avail, disk)
 		}
-
-		// asleep: last known health, or "unknown" - not "unhealthy"
-		disk.Health = service.SmartHealth(temp)
 
 		disks = append(disks, disk)
 	}
@@ -223,7 +227,24 @@ func GetDiskSmartInfo(c *gin.Context) {
 	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: info})
 }
 
-// @Summary start a SMART self-test on a drive
+// @Summary a drive's health in plain words: verdict, key numbers, history,
+// self-test state, raw table. fresh=1 reads the drive again (a sleeping
+// drive still isn't woken).
+// @Router /disks/health [get]
+func GetDiskHealth(c *gin.Context) {
+	path := c.Query("path")
+	if _, _, err := service.MyService.Disk().ResolveListedBlockDevice(path); err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+	if c.Query("fresh") != "" {
+		service.MyService.Disk().ForgetSmart(path)
+	}
+	report := service.SmartReportFor(path, service.MyService.Disk().SmartCTL(path))
+	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: report})
+}
+
+// @Summary start a SMART self-test on a drive (admin only)
 // @Produce  application/json
 // @Accept application/json
 // @Tags disk
@@ -236,6 +257,10 @@ type smartTestRequest struct {
 }
 
 func PostDiskSmartTest(c *gin.Context) {
+	if !requestIsAdmin(c) {
+		c.JSON(http.StatusForbidden, model.Result{Success: common_err.ERROR_AUTH_TOKEN, Message: "Only an administrator can start a self-test."})
+		return
+	}
 	var req smartTestRequest
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS), Data: err.Error()})

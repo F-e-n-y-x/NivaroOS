@@ -10,6 +10,7 @@ import '../widgets/monitor_modals.dart';
 import '../widgets/tailscale_modal.dart';
 import 'companion_devices_screen.dart';
 import 'download_station/download_station_screen.dart';
+import 'drive_health_screen.dart';
 import 'dashboard_screen.dart';
 import 'system_updates_screen.dart';
 
@@ -78,7 +79,8 @@ class HealthActions {
   /// The action a screen reader announces for the row.
   static String hint(AttentionKind kind) => switch (kind) {
         AttentionKind.serverUpdate || AttentionKind.packages => 'open updates',
-        AttentionKind.disk || AttentionKind.driveHealth => 'open storage',
+        AttentionKind.disk => 'open storage',
+        AttentionKind.driveHealth => 'open the drive',
         AttentionKind.driveMount => 'show what happened',
         AttentionKind.backup => 'open the backup',
         AttentionKind.apps => 'open apps',
@@ -103,6 +105,8 @@ class HealthActions {
         final page = a.kind == AttentionKind.packages ? UpdatesPage.packages : UpdatesPage.nivaroos;
         await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SystemUpdatesScreen(page: page)));
         await c.loadUpdates();
+      case AttentionKind.driveHealth when a.drive != null && a.drive!.path.isNotEmpty:
+        await openDrive(context, a.drive!);
       case AttentionKind.disk:
       case AttentionKind.driveHealth:
         await _push(context, StorageDetailScreen(live: c.live, onRetry: c.refreshLive, onOpenFiles: onOpenFiles));
@@ -135,6 +139,13 @@ class HealthActions {
         await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DownloadStationScreen(initialFilter: DsFilter.failed)));
         await c.refreshAll();
     }
+  }
+
+  /// A drive's health page; Home's drive list is read again afterwards (a
+  /// self-test may have finished).
+  Future<void> openDrive(BuildContext context, DriveHealth d) async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => DriveHealthScreen(drive: d)));
+    await controller.refreshAll();
   }
 
   // What happened to the drive, in the server's words, and Repair drive
@@ -319,6 +330,11 @@ class _ServerHealthScreenState extends State<ServerHealthScreen> {
             ),
           if (health.unchecked.isNotEmpty)
             TileGroup(title: 'Not checked', children: [for (final c in health.unchecked) _CheckTile(check: c, ok: false)]),
+          if ((_c.drives ?? const []).any((d) => d.path.isNotEmpty))
+            TileGroup(title: 'Drives', children: [
+              for (final d in _c.drives!)
+                if (d.path.isNotEmpty) DriveRow(drive: d, onTap: () => _actions.openDrive(context, d)),
+            ]),
           if (widget.onOpenFans != null) TileGroup(title: 'Cooling', children: [FansRow(onTap: widget.onOpenFans!)]),
           const SizedBox(height: Space.lg),
         ]),
@@ -416,6 +432,47 @@ class HealthSummary extends StatelessWidget {
   // "3 h ago" and "Sep 12" stay; "Just now" and "Yesterday" go lower
   // case mid-sentence.
   static String _lower(String s) => s == 'Just now' || s == 'Yesterday' ? s.toLowerCase() : s;
+}
+
+/// A drive on Server health: its verdict as a chip and the one-line why;
+/// opens its health page.
+class DriveRow extends StatelessWidget {
+  const DriveRow({super.key, required this.drive, required this.onTap});
+
+  final DriveHealth drive;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = drive;
+    final (status, word) = switch (d.verdict) {
+      DriveVerdict.good => (Status.success, 'Good'),
+      DriveVerdict.watch => (Status.warning, 'Watch'),
+      DriveVerdict.failing => (Status.error, 'Failing'),
+      DriveVerdict.unknown => d.healthy == true
+          ? (Status.success, 'Good')
+          : d.healthy == false
+              ? (Status.error, 'Failing')
+              : (Status.neutral, d.sleeping ? 'Asleep' : 'Unknown'),
+    };
+    final facts = [
+      if (d.type.isNotEmpty) d.type,
+      if (d.temperature != null) '${d.temperature}\u00A0°C',
+      if (d.summary.isNotEmpty && d.verdict != DriveVerdict.good) d.summary,
+    ];
+    return MergeSemantics(
+      child: Semantics(
+        onTapHint: 'open the drive',
+        child: ListTile(
+          leading: Icon(Icons.storage_outlined, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          title: Text(d.system ? 'System drive · ${d.name}' : (d.model.isNotEmpty ? '${d.model} · ${d.name}' : d.name)),
+          subtitle: facts.isEmpty ? null : Text(facts.join(' · ')),
+          trailing: Row(mainAxisSize: MainAxisSize.min, children: [StatusChip(label: word, status: status), const Icon(Icons.chevron_right)]),
+          onTap: onTap,
+        ),
+      ),
+    );
+  }
 }
 
 /// A check that passed (a quiet check mark) or couldn't be made (why).

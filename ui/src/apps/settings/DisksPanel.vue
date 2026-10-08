@@ -228,16 +228,19 @@ export default {
 			if (d.children_number > 0) return this.$t('{count} partition(s), no filesystem', { count: d.children_number })
 			return this.$t('No filesystem (blank disk)')
 		},
-		// health: 'true' | 'false' | 'unknown' (never read while awake);
+		// health_verdict: good | watch | failing | unknown (server/smart_health.go;
+		// older servers only send health 'true' | 'false' | 'unknown').
 		// `sleeping` means the drive is spun down right now.
 		healthText(d) {
+			if (d.health_verdict === 'watch') return this.$t('Watch: {why}', { why: d.health_summary })
+			if (d.health_verdict === 'failing' || d.health === 'false') return this.$t('Failing: {why}', { why: d.health_summary || this.$t('Check disk') })
 			if (d.sleeping) return this.$t('Sleeping')
-			if (d.health === 'true') return this.$t('Healthy')
-			if (d.health === 'false') return this.$t('Check disk')
-			return this.$t('Health unknown')
+			if (d.health_verdict === 'good' || d.health === 'true') return this.$t('Healthy')
+			return d.health_summary || this.$t('Health unknown')
 		},
 		healthClass(d) {
-			return !d.sleeping && d.health === 'false' ? 'health-bad' : ''
+			if (d.health_verdict === 'failing' || d.health === 'false') return 'health-bad'
+			return d.health_verdict === 'watch' ? 'health-watch' : ''
 		},
 		stepText(step) {
 			if (!step) return ''
@@ -510,6 +513,10 @@ export default {
 
 .health-bad {
 	color: var(--color-danger-fg);
+}
+
+.health-watch {
+	color: var(--color-warning-fg);
 }
 
 .pool-note {

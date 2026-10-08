@@ -247,6 +247,7 @@ func main() {
 		logger.Error("error when trying to register drive event types", zap.String("status", response.Status()))
 	}
 	service.MyService.Disk().StartDriveProblemWatcher(ctx)
+	service.MyService.Disk().StartSmartWatcher(ctx)
 
 	service.MyService.Disk().InitCheck()
 	v1Router := route.InitV1Router()

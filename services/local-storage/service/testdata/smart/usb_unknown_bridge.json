@@ -1,0 +1,7 @@
+{
+ "json_format_version": [1, 0],
+ "smartctl": {"version": [7, 4], "svn_revision": "5530", "argv": ["smartctl", "--json", "-a", "-l", "devstat", "-n", "standby", "/dev/sde"],
+  "messages": [{"string": "/dev/sde: Unknown USB bridge [0x152d:0x0578 (0x214)]\nPlease specify device type with the -d option.", "severity": "error"}],
+  "exit_status": 1},
+ "local_time": {"time_t": 1791561600, "asctime": "Fri Oct  9 12:00:00 2026 IST"}
+}

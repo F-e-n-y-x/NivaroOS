@@ -1,0 +1,32 @@
+{
+ "json_format_version": [1, 0],
+ "smartctl": {"version": [7, 4], "svn_revision": "5530", "argv": ["smartctl", "--json", "-a", "-l", "devstat", "-n", "standby", "/dev/nvme0"], "exit_status": 0},
+ "device": {"name": "/dev/nvme0", "info_name": "/dev/nvme0", "type": "nvme", "protocol": "NVMe"},
+ "model_name": "Samsung SSD 970 EVO Plus 1TB",
+ "serial_number": "SCRUBBED0002",
+ "firmware_version": "2B2QEXM7",
+ "nvme_pci_vendor": {"id": 5197, "subsystem_id": 5197},
+ "nvme_total_capacity": 1000204886016,
+ "user_capacity": {"blocks": 1953525168, "bytes": 1000204886016},
+ "smart_support": {"available": true, "enabled": true},
+ "smart_status": {"passed": true, "nvme": {"value": 0}},
+ "nvme_smart_health_information_log": {
+  "critical_warning": 0, "temperature": 41, "available_spare": 100, "available_spare_threshold": 10,
+  "percentage_used": 3, "data_units_read": 31584962, "data_units_written": 40422121,
+  "host_reads": 279203498, "host_writes": 543987211, "controller_busy_time": 1688,
+  "power_cycles": 1043, "power_on_hours": 9112, "unsafe_shutdowns": 87,
+  "media_errors": 0, "num_err_log_entries": 2149, "warning_temp_time": 0, "critical_comp_time": 0,
+  "temperature_sensors": [41, 47]
+ },
+ "temperature": {"current": 41},
+ "power_cycle_count": 1043,
+ "power_on_time": {"hours": 9112},
+ "nvme_self_test_log": {
+  "current_self_test_operation": {"value": 1, "string": "Short self-test in progress"},
+  "current_self_test_completion_percent": 30,
+  "table": [
+   {"self_test_code": {"value": 2, "string": "Extended"}, "self_test_result": {"value": 0, "string": "Completed without error"}, "power_on_hours": 9001},
+   {"self_test_code": {"value": 1, "string": "Short"}, "self_test_result": {"value": 0, "string": "Completed without error"}, "power_on_hours": 8800}
+  ]
+ }
+}

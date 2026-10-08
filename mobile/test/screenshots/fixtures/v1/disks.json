@@ -13,7 +13,10 @@
     "need_format": false,
     "serial": "2029EF000001",
     "path": "/dev/sda",
-    "children_number": 2
+    "children_number": 2,
+    "health_verdict": "good",
+    "health_summary": "Healthy",
+    "system": true
    },
    {
     "name": "sdd",
@@ -25,7 +28,9 @@
     "need_format": false,
     "serial": "WD-WX12A0000002",
     "path": "/dev/sdd",
-    "children_number": 1
+    "children_number": 1,
+    "health_verdict": "good",
+    "health_summary": "Healthy"
    },
    {
     "name": "sdc",
@@ -37,7 +42,9 @@
     "need_format": false,
     "serial": "Z9F0000003",
     "path": "/dev/sdc",
-    "children_number": 1
+    "children_number": 1,
+    "health_verdict": "good",
+    "health_summary": "Healthy"
    },
    {
     "name": "sdb",
@@ -50,7 +57,9 @@
     "serial": "ZW60000004",
     "path": "/dev/sdb",
     "children_number": 1,
-    "sleeping": true
+    "sleeping": true,
+    "health_verdict": "good",
+    "health_summary": "Healthy"
    }
   ],
   "avail": []

@@ -11,6 +11,9 @@
 
 import '../utils/format.dart';
 import 'dashboard_stats.dart';
+import 'drive_report.dart';
+
+export 'drive_report.dart' show DriveVerdict;
 
 enum AttentionSeverity { error, warning, info }
 
@@ -18,7 +21,7 @@ enum AttentionKind { serverUpdate, packages, disk, driveHealth, driveMount, back
 
 /// One row of "Needs attention" (Home and the Server health page).
 class AttentionItem {
-  const AttentionItem({required this.kind, required this.severity, required this.title, required this.detail, this.disk, this.mount, this.backupJobId = '', this.backupRunId = ''});
+  const AttentionItem({required this.kind, required this.severity, required this.title, required this.detail, this.disk, this.drive, this.mount, this.backupJobId = '', this.backupRunId = ''});
 
   final AttentionKind kind;
   final AttentionSeverity severity;
@@ -29,6 +32,9 @@ class AttentionItem {
 
   /// For [AttentionKind.disk]: the drive.
   final DiskUsage? disk;
+
+  /// For [AttentionKind.driveHealth]: the drive (opens its health page).
+  final DriveHealth? drive;
 
   /// For [AttentionKind.driveMount]: the drive that isn't mounted.
   final MountProblem? mount;
@@ -56,16 +62,37 @@ class HealthCheck {
 }
 
 /// A drive's own health, from `GET /v1/disks` (SMART, cached by the
-/// server; a sleeping drive isn't woken for it).
+/// server; a sleeping drive isn't woken for it). The drive's page
+/// (`GET /v1/disks/health`) has the numbers behind it.
 class DriveHealth {
-  const DriveHealth({required this.name, this.model = '', this.healthy, this.sleeping = false, this.temperature, this.type = '', this.system = false});
+  const DriveHealth({
+    required this.name,
+    this.path = '',
+    this.model = '',
+    this.healthy,
+    this.verdict = DriveVerdict.unknown,
+    this.summary = '',
+    this.sleeping = false,
+    this.temperature,
+    this.type = '',
+    this.system = false,
+  });
 
   /// The kernel's name ("sda").
   final String name;
+
+  /// "/dev/sda", for the drive's health page.
+  final String path;
   final String model;
 
-  /// True healthy, false failing, null unknown (never read while awake).
+  /// True healthy (good or watch), false failing, null unknown (never read
+  /// while awake, or no SMART).
   final bool? healthy;
+
+  /// good / watch / failing, and why; unknown from a server older than
+  /// drive health (it only says healthy or not).
+  final DriveVerdict verdict;
+  final String summary;
   final bool sleeping;
 
   /// °C; null when the drive doesn't report it.
@@ -74,24 +101,38 @@ class DriveHealth {
   /// "HDD", "SSD", "USB", "MMC".
   final String type;
 
-  /// The boot drive. The server doesn't read its SMART health (it always
-  /// says "true"), so it isn't counted as checked.
+  /// The boot drive. Servers older than drive health don't read its SMART
+  /// (they always say "true"), so then it isn't counted as checked.
   final bool system;
 
-  String get label => model.isNotEmpty && !system ? model : name;
+  /// Its health was read: by a server with drive health, or any non-system
+  /// drive.
+  bool get checked => !system || hasVerdict;
+
+  bool get hasVerdict => verdict != DriveVerdict.unknown || summary.isNotEmpty;
+
+  String get label => system ? 'System drive' : (model.isNotEmpty ? model : name);
 
   factory DriveHealth.fromJson(Map<String, dynamic> j) {
     final h = j['health']?.toString();
     final t = j['temperature'];
     final model = j['model']?.toString().trim() ?? '';
+    final verdict = driveVerdictOf(j['health_verdict']);
     return DriveHealth(
       name: j['name']?.toString() ?? '',
+      path: j['path']?.toString() ?? '',
       model: model,
-      healthy: h == 'true' ? true : (h == 'false' ? false : null),
+      healthy: switch (verdict) {
+        DriveVerdict.good || DriveVerdict.watch => true,
+        DriveVerdict.failing => false,
+        DriveVerdict.unknown => h == 'true' ? true : (h == 'false' ? false : null),
+      },
+      verdict: verdict,
+      summary: j['health_summary']?.toString() ?? '',
       sleeping: j['sleeping'] == true,
       temperature: t is num && t > 0 ? t.toInt() : null,
       type: j['disk_type']?.toString() ?? '',
-      system: model == 'System',
+      system: j['system'] == true || model == 'System',
     );
   }
 
@@ -277,14 +318,19 @@ ServerHealth buildHealth({
 
   // Each drive's own health (SMART), matched by model so a mounted
   // drive's is told under its own name ("blue", not "WDC WD20EZAZ-00G").
-  final smart = [for (final d in drives ?? const <DriveHealth>[]) if (!d.system) d];
+  final smart = [for (final d in drives ?? const <DriveHealth>[]) if (d.checked) d];
   final named = <DriveHealth, String>{};
 
   // Space on each drive, with its health when that is good.
   final disks = stats?.disks ?? const <DiskUsage>[];
   for (final d in disks) {
     if (d.isSystemPartition || !d.sizeKnown) continue;
-    final drive = d.model.isEmpty ? null : smart.where((h) => h.model == d.model && !named.containsKey(h)).firstOrNull;
+    // the root filesystem's row carries the system drive's health
+    final drive = d.isSystem
+        ? smart.where((h) => h.system && !named.containsKey(h)).firstOrNull
+        : d.model.isEmpty
+            ? null
+            : smart.where((h) => !h.system && h.model == d.model && !named.containsKey(h)).firstOrNull;
     if (drive != null) named[drive] = d.label;
     final f = d.fraction;
     final pct = (f * 100).round();
@@ -292,7 +338,7 @@ ServerHealth buildHealth({
       fine.add(HealthCheck(
         area: HealthArea.storage,
         title: d.label,
-        detail: ['$pct% used', '${formatBytes(d.freeBytes)} free', if (drive?.healthy == true) 'Healthy'].join(' · '),
+        detail: ['$pct% used', '${formatBytes(d.freeBytes)} free', if (drive != null && drive.healthy == true && drive.verdict != DriveVerdict.watch) 'Healthy'].join(' · '),
       ));
       continue;
     }
@@ -313,19 +359,30 @@ ServerHealth buildHealth({
     for (final d in smart) {
       final name = named[d];
       final facts = [if (d.type.isNotEmpty) d.type, if (d.temperature != null) '${d.temperature}\u00A0°C'];
-      switch (d.healthy) {
-        case false:
+      final verdict = d.hasVerdict ? d.verdict : (d.healthy == false ? DriveVerdict.failing : (d.healthy == true ? DriveVerdict.good : DriveVerdict.unknown));
+      switch (verdict) {
+        case DriveVerdict.failing:
           items.add(AttentionItem(
             kind: AttentionKind.driveHealth,
             severity: AttentionSeverity.error,
-            title: '${name ?? d.label} reports a problem',
-            detail: 'Its health check failed · Back up what is on it',
+            title: '${name ?? d.label} may be failing',
+            detail: d.summary.isNotEmpty ? d.summary : 'Its health check failed · Back up what is on it',
+            drive: d,
           ));
-        case true:
+        case DriveVerdict.watch:
+          items.add(AttentionItem(
+            kind: AttentionKind.driveHealth,
+            severity: AttentionSeverity.warning,
+            title: '${name ?? d.label} needs watching',
+            detail: d.summary,
+            drive: d,
+          ));
+        case DriveVerdict.good:
           // A mounted drive's health is on its space row already.
           if (name == null) fine.add(HealthCheck(area: HealthArea.driveHealth, title: d.label, detail: ['Healthy', ...facts].join(' · ')));
-        case null:
-          notChecked(HealthArea.driveHealth, name ?? d.label, d.sleeping ? 'Asleep · Health is checked when it wakes up' : 'Health unknown');
+        case DriveVerdict.unknown:
+          notChecked(HealthArea.driveHealth, name ?? d.label,
+              d.sleeping ? 'Asleep · Health is checked when it wakes up' : (d.summary.isNotEmpty ? d.summary : 'Health unknown'));
       }
     }
   }

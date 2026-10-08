@@ -1,6 +1,7 @@
 package command
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os/exec"
@@ -13,29 +14,11 @@ import (
 // with exec.Command and separate arguments; for local-storage-helper.sh use
 // service.RunHelper.)
 
-// exec smart
+// ExecSmartCTLByPath: smartctl --json -a -l devstat with "-n standby", so
+// the periodic read never wakes a sleeping drive. nil: no output at all
+// (smartctl missing, timeout).
 func ExecSmartCTLByPath(path string) []byte {
-	timeout := 6
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
-	defer cancel()
-	//smartctl -i -n standby /dev/sdc  TODO:https://www.ippa.top/956.html
-	cmd := exec.CommandContext(ctx, "smartctl", "-a", "-n", "standby", path, "-j")
-	println(cmd.String())
-
-	output, err := cmd.Output()
-	if err != nil {
-		// smartctl's exit status is a bitmask: a sleeping drive with
-		// "-n standby" exits 2 but still prints JSON saying "STANDBY" -
-		// the caller needs that to tell "asleep" from "failed".
-		if len(output) == 0 || ctx.Err() != nil {
-			return nil
-		}
-	}
-	return output
-}
-
-func ExecEnabledSMART(path string) ([]byte, error) {
-	return exec.Command("smartctl", "-s", "on", path).CombinedOutput()
+	return execSmartctl(6*time.Second, path, "-n", "standby")
 }
 
 // ExecSmartCTLFullByPath is like ExecSmartCTLByPath but without "-n standby" -
@@ -43,23 +26,40 @@ func ExecEnabledSMART(path string) ([]byte, error) {
 // sleeping drive is expected and fine, unlike the periodic list-population
 // read above which deliberately avoids it.
 func ExecSmartCTLFullByPath(path string) []byte {
-	timeout := 15
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "smartctl", "-a", path, "-j")
-	println(cmd.String())
+	return execSmartctl(15*time.Second, path)
+}
 
-	output, err := cmd.Output()
-	if err != nil {
-		fmt.Println(string(output))
-		// smartctl's exit status is a bitmask of warning bits (e.g. "attribute
-		// below threshold") - the JSON body is still usable even when it's
-		// non-zero, unlike a hard failure that produced no output at all.
-		if len(output) == 0 {
+// execSmartctl: smartctl's exit status is a bitmask (a sleeping drive with
+// "-n standby" exits 2, "error log has entries" sets 64) but the JSON is
+// still there, so only "no output" is a failure. A USB enclosure smartctl
+// doesn't know ("Unknown USB bridge ... specify device type") is tried
+// once more as a SAT bridge, which nearly all of them are.
+var smartctlOutput = func(ctx context.Context, args ...string) ([]byte, error) {
+	return exec.CommandContext(ctx, "smartctl", args...).Output()
+}
+
+func execSmartctl(timeout time.Duration, path string, extra ...string) []byte {
+	run := func(dev ...string) []byte {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		args := append(append([]string{"--json", "-a", "-l", "devstat"}, extra...), dev...)
+		out, err := smartctlOutput(ctx, append(args, path)...)
+		if err != nil && (len(out) == 0 || ctx.Err() != nil) {
 			return nil
 		}
+		return out
 	}
-	return output
+	out := run()
+	if out != nil && bytes.Contains(out, []byte("specify device type")) {
+		if sat := run("-d", "sat"); sat != nil {
+			return sat
+		}
+	}
+	return out
+}
+
+func ExecEnabledSMART(path string) ([]byte, error) {
+	return exec.Command("smartctl", "-s", "on", path).CombinedOutput()
 }
 
 // ExecSmartCTLSelfTest starts a SMART self-test ("short" or "long") on the

@@ -35,7 +35,13 @@ const disks = {
 		return api.get(`${PREFIX}/smart`, { path });
 	},
 
-	// Start a SMART self-test ("short" or "long") on a drive
+	// Drive health in plain words: verdict, key numbers, history, self-test,
+	// raw table. fresh: read the drive now (a sleeping one isn't woken).
+	getHealth(path) {
+		return api.get(`${PREFIX}/health`, { path, fresh: 1 });
+	},
+
+	// Start a SMART self-test (admin only) ("short" or "long") on a drive
 	startSmartTest(path, type) {
 		return api.post(`${PREFIX}/smart-test`, { path, type });
 	},

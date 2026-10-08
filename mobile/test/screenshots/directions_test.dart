@@ -17,6 +17,7 @@ import 'package:nivaroos_mobile/models/container_entry.dart';
 import 'package:nivaroos_mobile/models/dashboard_stats.dart';
 import 'package:nivaroos_mobile/screens/apps_screen.dart';
 import 'package:nivaroos_mobile/screens/dashboard_screen.dart';
+import 'package:nivaroos_mobile/screens/drive_health_screen.dart';
 import 'package:nivaroos_mobile/screens/files/trash_screen.dart';
 import 'package:nivaroos_mobile/screens/files_screen.dart';
 import 'package:nivaroos_mobile/screens/server_health_screen.dart';
@@ -112,6 +113,21 @@ final Map<String, _Screen> _screens = {
       pushed: true, modes: const [AppThemeMode.light, AppThemeMode.black], extra: const [(smallPhone, 1), (phone, 2)]),
   'health_all_good': _Screen(() => ServerHealthScreen(controller: HistoryController()),
       pushed: true, overrides: allClear, modes: const [AppThemeMode.light, AppThemeMode.black], extra: const [(smallPhone, 1), (phone, 2)]),
+  // Server health > Drives > a drive whose pending sectors grew this week
+  // (fixtures/v1/disks/health.json, from the server's own report builder).
+  'drive_health': _Screen(
+      () => const DriveHealthScreen(drive: DriveHealth(name: 'sdd', path: '/dev/sdd', model: 'WDC WD20EZAZ-00G', healthy: false, type: 'HDD')),
+      pushed: true,
+      modes: const [AppThemeMode.light, AppThemeMode.black],
+      extra: const [(smallPhone, 1), (phone, 2)]),
+  'drive_health_more': _Screen(
+      () => const DriveHealthScreen(drive: DriveHealth(name: 'sdd', path: '/dev/sdd', model: 'WDC WD20EZAZ-00G', healthy: false, type: 'HDD')),
+      pushed: true,
+      modes: const [AppThemeMode.light, AppThemeMode.black],
+      before: (tester) async {
+        await tester.drag(find.byType(Scrollable).first, const Offset(0, -1400));
+        await tester.pump(const Duration(seconds: 1));
+      }),
   'cpu': _Screen(() {
     final h = LiveHistory();
     fillHistory(h);

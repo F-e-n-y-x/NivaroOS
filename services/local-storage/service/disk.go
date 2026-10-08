@@ -93,6 +93,9 @@ type DiskService interface {
 	// Drives that should be mounted but aren't (drive_problem.go).
 	RetryFstabMounts()
 	StartDriveProblemWatcher(ctx context.Context)
+	StartSmartWatcher(ctx context.Context)
+	CheckSmartHealth()
+	ForgetSmart(path string)
 	RepairFstabDrive(mountPoint string) error
 }
 
@@ -324,6 +327,10 @@ func SmartHealth(m model.SmartctlA) string {
 	return strconv.FormatBool(m.SmartStatus.Passed)
 }
 
+// ForgetSmart drops the cached reading, so the next SmartCTL reads the
+// drive again (still without waking it).
+func (d *diskService) ForgetSmart(path string) { Cache.Delete(smartCacheKeyPrefix + path) }
+
 func (d *diskService) SmartCTL(path string) model.SmartctlA {
 	key := smartCacheKeyPrefix + path
 	if result, ok := Cache.Get(key); ok {
@@ -377,11 +384,14 @@ func (d *diskService) SmartCTLFull(path string) model.SmartctlA {
 	return m
 }
 
+var smartSelfTestCmd = command.ExecSmartCTLSelfTest // fake in tests
+
 func (d *diskService) SmartTest(path, testType string) error {
 	if testType != "short" && testType != "long" {
 		return fmt.Errorf("invalid self-test type: %s", testType)
 	}
-	output, err := command.ExecSmartCTLSelfTest(path, testType)
+	output, err := smartSelfTestCmd(path, testType)
+	d.ForgetSmart(path)
 	if err != nil {
 		// smartctl's exit status alone (e.g. "exit status 4") isn't useful to
 		// show a user - the actual reason (e.g. "Self-test functions not

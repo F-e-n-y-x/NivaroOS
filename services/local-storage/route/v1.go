@@ -45,6 +45,7 @@ func InitV1Router() *gin.Engine {
 			v1DisksGroup.DELETE("/usb", v1.DeleteDiskUSB)
 			v1DisksGroup.DELETE("", v1.DeleteDisksUmount)
 			v1DisksGroup.GET("/smart", v1.GetDiskSmartInfo)
+			v1DisksGroup.GET("/health", v1.GetDiskHealth)
 			v1DisksGroup.POST("/smart-test", v1.PostDiskSmartTest)
 			v1DisksGroup.GET("/standby", v1.GetDiskStandby)
 			v1DisksGroup.PUT("/standby", v1.PutDiskStandby)

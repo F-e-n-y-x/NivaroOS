@@ -2,6 +2,7 @@
 // attention") shows as a problem, as fine, or as not checked.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nivaroos_mobile/models/dashboard_stats.dart';
+import 'package:nivaroos_mobile/models/drive_report.dart';
 
 import '../screenshots/harness.dart' show fixture;
 
@@ -129,7 +130,7 @@ void main() {
         DriveHealth(name: 'sdd'),
       ]);
       final bad = h.attention.single;
-      expect((bad.kind, bad.severity, bad.title), (AttentionKind.driveHealth, AttentionSeverity.error, 'WDC WD20EZAZ reports a problem'));
+      expect((bad.kind, bad.severity, bad.title), (AttentionKind.driveHealth, AttentionSeverity.error, 'WDC WD20EZAZ may be failing'));
       expect(h.unchecked.map((c) => (c.title, c.detail)), containsAll([('TOSHIBA', 'Asleep · Health is checked when it wakes up'), ('sdd', 'Health unknown')]));
     });
 
@@ -139,7 +140,7 @@ void main() {
       expect(_titles(ok.fine), isNot(contains('WDC WD20EZAZ')));
       expect(ok.fine.firstWhere((c) => c.title == 'blue').detail, '20% used · 80.0 GB free · Healthy');
       final bad = _health(stats: _stats(disks: [blue]), drives: const [DriveHealth(name: 'sdb', model: 'WDC WD20EZAZ', healthy: false)]);
-      expect(bad.attention.single.title, 'blue reports a problem');
+      expect(bad.attention.single.title, 'blue may be failing');
       expect(bad.fine.firstWhere((c) => c.title == 'blue').detail, '20% used · 80.0 GB free');
     });
 
@@ -149,12 +150,49 @@ void main() {
 
     test('reads GET /v1/disks', () {
       final drives = DriveHealth.fromDisksApi(fixture('v1/disks')['data']);
-      expect(drives.map((d) => d.label), ['sda', 'WDC WD20EZAZ-00G', 'TOSHIBA MQ04ABF1', 'WDC WD40PURZ-85A']);
+      expect(drives.map((d) => d.label), ['System drive', 'WDC WD20EZAZ-00G', 'TOSHIBA MQ04ABF1', 'WDC WD40PURZ-85A']);
       expect(drives.first.system, isTrue);
       expect(drives[1].healthy, isTrue);
       expect(drives[1].temperature, 36);
       expect(drives[3].temperature, isNull, reason: '0 °C means not reported');
       expect(drives[3].sleeping, isTrue);
+      expect(drives.first.path, '/dev/sda');
+      expect(drives.first.verdict, DriveVerdict.good);
+      expect(drives.first.checked, isTrue, reason: 'the server reads the system drive now');
+      expect(drives[2].verdict, DriveVerdict.good);
+    });
+
+    test('watch is a warning with the why; failing an error; the system drive counts once read', () {
+      final h = _health(drives: const [
+        DriveHealth(name: 'sdc', path: '/dev/sdc', model: 'TOSHIBA', healthy: true, verdict: DriveVerdict.watch, summary: '42 cable/connection errors, some recently'),
+        DriveHealth(name: 'sdd', path: '/dev/sdd', model: 'WDC', healthy: false, verdict: DriveVerdict.failing, summary: '12 sectors waiting to be remapped'),
+        DriveHealth(name: 'sda', model: 'System', system: true, healthy: true, verdict: DriveVerdict.good),
+        DriveHealth(name: 'sde', model: 'System', system: true, healthy: true),
+      ]);
+      expect(h.attention.map((a) => (a.title, a.severity, a.detail, a.drive?.path)), [
+        ('WDC may be failing', AttentionSeverity.error, '12 sectors waiting to be remapped', '/dev/sdd'),
+        ('TOSHIBA needs watching', AttentionSeverity.warning, '42 cable/connection errors, some recently', '/dev/sdc'),
+      ]);
+      expect(_titles(h.fine), contains('System drive'));
+      expect(h.fine.where((c) => c.title == 'System drive').length, 1, reason: 'an old server (no verdict) does not read the system drive');
+    });
+
+    test('reads GET /v1/disks/health', () {
+      final r = DriveReport.fromJson(fixture('v1/disks/health')['data'] as Map<String, dynamic>);
+      expect(r.verdict, DriveVerdict.failing);
+      expect(r.summary, startsWith('12 sectors waiting to be remapped'));
+      expect(r.changes.first, 'Sectors waiting to be remapped went from 0 to 12 this week');
+      final pending = r.metrics.firstWhere((m) => m.key == 'pending');
+      expect((pending.value, pending.level), (12, 'failing'));
+      final hours = r.metrics.firstWhere((m) => m.key == 'power_on_hours');
+      expect((hours.valueText, hours.hint), ('22,089', '2.5 years'));
+      expect(r.history.length, 14);
+      expect(r.defaultChartKey, 'pending');
+      expect(r.chartKeys.first, 'pending');
+      expect(r.selfTest.supported, isTrue);
+      expect(r.selfTest.status, startsWith('Short offline: Completed without error'));
+      expect(r.raw.first.name, 'Raw Read Error Rate');
+      expect(groupDigits(1234567), '1,234,567');
     });
   });
 

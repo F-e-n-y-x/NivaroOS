@@ -85,3 +85,17 @@ func TestWantSyncAndWaitFor(t *testing.T) {
 		t.Fatal("waitFor false")
 	}
 }
+
+// Self-tests are admin only: a token whose role says otherwise is refused
+// before the request is even read.
+func TestSmartTestAdminOnly(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/v1/disks/smart-test", strings.NewReader(`{"path":"/dev/sdb","type":"long"}`))
+	// header.{"role":"user"}.sig - ginJWT has already verified it
+	c.Request.Header.Set("Authorization", "e30.eyJyb2xlIjoidXNlciJ9.x")
+	PostDiskSmartTest(c)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("non-admin -> %d %s", w.Code, w.Body.String())
+	}
+}
