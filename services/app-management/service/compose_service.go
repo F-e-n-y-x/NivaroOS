@@ -17,9 +17,9 @@ import (
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/flags"
-	"github.com/docker/compose/v2/pkg/api"
-	"github.com/docker/compose/v2/pkg/compose"
-	"github.com/docker/docker/client"
+	"github.com/docker/compose/v5/pkg/api"
+	"github.com/docker/compose/v5/pkg/compose"
+	"github.com/moby/moby/client"
 
 	"go.uber.org/zap"
 )
@@ -314,7 +314,7 @@ func (sharedDockerClient) Close() error { return nil }
 
 var (
 	apiServiceMu     sync.Mutex
-	apiServiceCached api.Service
+	apiServiceCached api.Compose
 	apiClientCached  client.APIClient
 )
 
@@ -322,7 +322,7 @@ var (
 // (config file, context store, API version negotiation) on every request was
 // costly; the compose service and docker client are safe for concurrent use.
 // A failed initialisation is not cached, so it is retried on the next call.
-func apiService() (api.Service, client.APIClient, error) {
+func apiService() (api.Compose, client.APIClient, error) {
 	apiServiceMu.Lock()
 	defer apiServiceMu.Unlock()
 
@@ -339,13 +339,18 @@ func apiService() (api.Service, client.APIClient, error) {
 		return nil, nil, err
 	}
 
-	apiServiceCached = compose.NewComposeService(dockerCli)
+	service, err := compose.NewComposeService(dockerCli)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	apiServiceCached = service
 	apiClientCached = dockerCli.Client()
 
 	return apiServiceCached, sharedDockerClient{apiClientCached}, nil
 }
 
-func ApiService() (api.Service, client.APIClient, error) {
+func ApiService() (api.Compose, client.APIClient, error) {
 	return apiService()
 }
 

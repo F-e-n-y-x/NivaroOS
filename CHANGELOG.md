@@ -83,6 +83,16 @@ inherited CasaOS history and is not kept up to date.)
 
 ### Security
 
+- Apps: app management talks to Docker through the current official
+  modules (moby/moby client v0.6 and API v1.56, Docker Compose v5.6 SDK
+  and compose-go v2) instead of the frozen docker/docker v24 and Compose
+  v2.23 ones. govulncheck: 28 reachable vulnerabilities to 0 (the CLI: 9
+  to 0). Installing, updating and removing apps, custom compose apps,
+  app status (failed vs stopped), auto-updates, logs, stats and holding
+  apps whose drive is missing work as before. New installs no longer
+  relax Docker's minimum API version (`DOCKER_MIN_API_VERSION=1.24`).
+  Compose files NivaroOS writes now spell device mappings in compose's
+  long form and add the default `mode: ingress` to ports (same meaning).
 - Server: the Go services' HTTP framework moved from Echo v4 (security
   fixes end 2026-12-31) to Echo v5.4. Routes, status codes, error bodies,
   sign-in/token checks, CORS and the web UI files behave as before.

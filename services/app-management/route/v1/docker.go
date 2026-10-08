@@ -23,12 +23,12 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/systemctl"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/termsession"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/wsterm"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/errdefs"
+	"github.com/containerd/errdefs"
 	"github.com/gorilla/websocket"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/labstack/echo/v5"
+	dockercontainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
 	"github.com/samber/lo"
 	uuid "github.com/satori/go.uuid"
 	"go.uber.org/zap"
@@ -239,7 +239,7 @@ func UninstallApp(ctx *echo.Context) error {
 
 	container, err := service.MyService.Docker().DescribeContainer(httpCtx, containerID)
 	if err != nil {
-		if _, ok := err.(errdefs.ErrNotFound); ok {
+		if errdefs.IsNotFound(err) {
 			return ctx.JSON(http.StatusNotFound, modelCommon.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 		}
 
@@ -698,7 +698,7 @@ func pullAndInstall(ctx context.Context, imageName string, m *model.Customizatio
 	return nil
 }
 
-func uninstall(ctx context.Context, container *types.ContainerJSON, isDelete bool) error {
+func uninstall(ctx context.Context, container *dockercontainer.InspectResponse, isDelete bool) error {
 	// step：停止容器
 	if err := func() error {
 		go service.PublishEventWrapper(ctx, common.EventTypeContainerStopBegin, nil)

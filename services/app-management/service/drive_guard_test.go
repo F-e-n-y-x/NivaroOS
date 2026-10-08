@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 const testFstab = `# /etc/fstab
@@ -49,32 +49,32 @@ func TestMissingDrive(t *testing.T) {
 }
 
 type fakeDocker struct {
-	list           []types.Container
+	list           []container.Summary
 	stopped, start []string
 }
 
-func (f *fakeDocker) ContainerList(context.Context, types.ContainerListOptions) ([]types.Container, error) {
-	return f.list, nil
+func (f *fakeDocker) ContainerList(context.Context, client.ContainerListOptions) (client.ContainerListResult, error) {
+	return client.ContainerListResult{Items: f.list}, nil
 }
 
-func (f *fakeDocker) ContainerStop(_ context.Context, id string, _ container.StopOptions) error {
+func (f *fakeDocker) ContainerStop(_ context.Context, id string, _ client.ContainerStopOptions) (client.ContainerStopResult, error) {
 	f.stopped = append(f.stopped, id)
 	for i := range f.list {
 		if f.list[i].ID == id {
 			f.list[i].State = "exited"
 		}
 	}
-	return nil
+	return client.ContainerStopResult{}, nil
 }
 
-func (f *fakeDocker) ContainerStart(_ context.Context, id string, _ types.ContainerStartOptions) error {
+func (f *fakeDocker) ContainerStart(_ context.Context, id string, _ client.ContainerStartOptions) (client.ContainerStartResult, error) {
 	f.start = append(f.start, id)
 	for i := range f.list {
 		if f.list[i].ID == id {
 			f.list[i].State = "running"
 		}
 	}
-	return nil
+	return client.ContainerStartResult{}, nil
 }
 
 // The 2026-10-08 power cut: tower failed to mount, Docker started immich
@@ -83,8 +83,8 @@ func (f *fakeDocker) ContainerStart(_ context.Context, id string, _ types.Contai
 // tower is mounted - even after an app-management restart - the two are
 // started again, nothing else.
 func TestDriveGuardHoldsAppsUntilTheDriveIsBack(t *testing.T) {
-	bind := func(src string) []types.MountPoint { return []types.MountPoint{{Type: "bind", Source: src}} }
-	d := &fakeDocker{list: []types.Container{
+	bind := func(src string) []container.MountPoint { return []container.MountPoint{{Type: "bind", Source: src}} }
+	d := &fakeDocker{list: []container.Summary{
 		{ID: "immich000000a", State: "running", Labels: map[string]string{"com.docker.compose.project": "immich"}, Mounts: bind("/DATA/tower/Gallery")},
 		{ID: "postgres0000b", State: "running", Mounts: bind("/DATA/AppData/immich/pgdata")},
 		{ID: "font2svg0000c", State: "restarting", Names: []string{"/font2svg"}, Mounts: bind("/DATA/tower/Backup_15-Aug/AppData/font2svg")},

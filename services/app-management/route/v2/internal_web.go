@@ -12,7 +12,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/service"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	"github.com/docker/compose/v2/pkg/api"
+	"github.com/docker/compose/v5/pkg/api"
 	"github.com/labstack/echo/v5"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
@@ -156,11 +156,8 @@ func WebAppGridItemAdapterV2(composeAppWithStoreInfo *codegen.ComposeAppWithStor
 		}
 
 		if composeAppStoreInfo.Main != nil {
-			for i, service := range composeApp.Services {
-				if service.Name == *composeAppStoreInfo.Main {
-					item.Image = &composeApp.Services[i].Image // Hengxin needs this image property for some reason...
-					break
-				}
+			if service, ok := composeApp.Services[*composeAppStoreInfo.Main]; ok {
+				item.Image = &service.Image // Hengxin needs this image property for some reason...
 			}
 		}
 	}

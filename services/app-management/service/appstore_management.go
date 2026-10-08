@@ -16,7 +16,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/bluele/gcache"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 )
@@ -604,7 +604,7 @@ func (a *AppStoreManagement) IsUpdateAvailableWith(composeApp *ComposeApp, store
 	}
 	if lo.Contains(common.NeedCheckDigestTags, currentTag) {
 		ctx := context.Background()
-		cli, clientErr := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+		cli, clientErr := client.New(client.FromEnv)
 		if clientErr != nil {
 			logger.Error("failed to create docker client", zap.Error(clientErr))
 			return false, clientErr
@@ -617,7 +617,7 @@ func (a *AppStoreManagement) IsUpdateAvailableWith(composeApp *ComposeApp, store
 
 		image, _ := docker.ExtractImageAndTag(mainService.Image)
 
-		imageInfo, _, clientErr := cli.ImageInspectWithRaw(ctx, image)
+		imageInfo, clientErr := cli.ImageInspect(ctx, image)
 		if clientErr != nil {
 			logger.Error("failed to inspect image", zap.Error(clientErr))
 			return false, clientErr

@@ -7,27 +7,27 @@ import (
 	"context"
 	"io"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/client"
 )
 
-func Image(ctx context.Context, imageName string) (*types.ImageInspect, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+func Image(ctx context.Context, imageName string) (*image.InspectResponse, error) {
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, err
 	}
 	defer cli.Close()
 
-	imageInfo, _, err := cli.ImageInspectWithRaw(ctx, imageName)
+	imageInfo, err := cli.ImageInspect(ctx, imageName)
 	if err != nil {
 		return nil, err
 	}
 
-	return &imageInfo, nil
+	return &imageInfo.InspectResponse, nil
 }
 
 func PullImage(ctx context.Context, imageName string, handleOut func(io.ReadCloser)) error {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return err
 	}
@@ -56,13 +56,13 @@ func PullImage(ctx context.Context, imageName string, handleOut func(io.ReadClos
 }
 
 func HasNewImage(ctx context.Context, imageName string, currentImageID string) (bool, string, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return false, currentImageID, err
 	}
 	defer cli.Close()
 
-	newImageInfo, _, err := cli.ImageInspectWithRaw(ctx, imageName)
+	newImageInfo, err := cli.ImageInspect(ctx, imageName)
 	if err != nil {
 		return false, currentImageID, err
 	}

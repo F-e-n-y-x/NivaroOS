@@ -7,10 +7,8 @@ import (
 	"testing"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/docker"
-	"github.com/docker/distribution/manifest/manifestlist"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
 	"github.com/mitchellh/mapstructure"
+	"github.com/moby/moby/client"
 	"github.com/samber/lo"
 	"go.uber.org/goleak"
 	"gotest.tools/v3/assert"
@@ -37,7 +35,7 @@ func TestCompareDigest(t *testing.T) {
 		runtime.GC()
 	}()
 
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	assert.NilError(t, err)
 	defer cli.Close()
 
@@ -45,7 +43,7 @@ func TestCompareDigest(t *testing.T) {
 
 	imageName := "alpine:latest"
 
-	out, err := cli.ImagePull(ctx, imageName, types.ImagePullOptions{})
+	out, err := cli.ImagePull(ctx, imageName, client.ImagePullOptions{})
 	assert.NilError(t, err)
 	defer out.Close()
 
@@ -54,7 +52,7 @@ func TestCompareDigest(t *testing.T) {
 
 	t.Log(string(str))
 
-	imageInfo, _, err := cli.ImageInspectWithRaw(ctx, imageName)
+	imageInfo, err := cli.ImageInspect(ctx, imageName)
 	assert.NilError(t, err)
 
 	match, err := docker.CompareDigest(imageName, imageInfo.RepoDigests)
@@ -74,16 +72,19 @@ func TestGetManifest1(t *testing.T) {
 
 	manifest, contentType, err := docker.GetManifest(context.Background(), "hello-world:nanoserver-1803")
 	assert.NilError(t, err)
-	assert.Equal(t, contentType, manifestlist.MediaTypeManifestList)
+	assert.Equal(t, contentType, docker.MediaTypeManifestList)
 
-	var listManifest manifestlist.ManifestList
+	var listManifest v1.Index
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{Result: &listManifest, Squash: true})
 	assert.NilError(t, err)
 
 	err = decoder.Decode(manifest)
 	assert.NilError(t, err)
 
-	architectures := lo.Map(listManifest.Manifests, func(m manifestlist.ManifestDescriptor, i int) string {
+	architectures := lo.Map(listManifest.Manifests, func(m v1.Descriptor, i int) string {
+		if m.Platform == nil {
+			return ""
+		}
 		return m.Platform.Architecture
 	})
 
@@ -122,14 +123,17 @@ func TestGetManifest3(t *testing.T) {
 	assert.NilError(t, err)
 	assert.Equal(t, contentType, v1.MediaTypeImageIndex)
 
-	var listManifest manifestlist.ManifestList
+	var listManifest v1.Index
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{Result: &listManifest, Squash: true})
 	assert.NilError(t, err)
 
 	err = decoder.Decode(manifest)
 	assert.NilError(t, err)
 
-	architectures := lo.Map(listManifest.Manifests, func(m manifestlist.ManifestDescriptor, i int) string {
+	architectures := lo.Map(listManifest.Manifests, func(m v1.Descriptor, i int) string {
+		if m.Platform == nil {
+			return ""
+		}
 		return m.Platform.Architecture
 	})
 

@@ -1,14 +1,13 @@
 package model
 
 import (
-	"fmt"
 	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
-	"github.com/compose-spec/compose-go/types"
+	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/samber/lo"
 )
 
@@ -67,9 +66,9 @@ func (p *PathArray) ServiceVolumeConfigList() []types.ServiceVolumeConfig {
 	return volumes
 }
 
-func (p *PathArray) ToSlice() []string {
-	return lo.Map(*p, func(p PathMap, i int) string {
-		return fmt.Sprintf("%s:%s", p.Path, p.ContainerPath)
+func (p *PathArray) DeviceMappings() []types.DeviceMapping {
+	return lo.Map(*p, func(p PathMap, i int) types.DeviceMapping {
+		return types.DeviceMapping{Source: p.Path, Target: p.ContainerPath, Permissions: "rwm"}
 	})
 }
 
@@ -138,26 +137,25 @@ func (c *CustomizationPostData) ComposeAppStoreInfo() codegen.ComposeAppStoreInf
 }
 
 func (c *CustomizationPostData) Services() types.Services {
-	return types.Services{
-		{
-			CapAdd:      c.CapAdd,
-			Command:     emtpySliceThenNil(c.Cmd),
-			CPUShares:   c.CPUShares,
-			Devices:     c.Devices.ToSlice(),
-			Environment: c.Envs.ToMappingWithEquals(),
-			Image:       c.Image,
-			Name:        strings.ToLower(c.ContainerName),
-			NetworkMode: c.NetworkModel,
-			Ports:       c.Ports.ServicePortConfigList(),
-			Privileged:  c.Privileged,
-			Restart:     c.Restart,
-			Volumes:     c.Volumes.ServiceVolumeConfigList(),
-
-			Extensions: map[string]interface{}{
-				common.ComposeExtensionNameXCasaOS: c.AppStoreInfo(),
-			},
+	s := types.ServiceConfig{
+		Name:    strings.ToLower(c.ContainerName),
+		Restart: c.Restart,
+		Extensions: map[string]interface{}{
+			common.ComposeExtensionNameXCasaOS: c.AppStoreInfo(),
 		},
 	}
+	s.CapAdd = c.CapAdd
+	s.Command = emtpySliceThenNil(c.Cmd)
+	s.CPUShares = c.CPUShares
+	s.Devices = c.Devices.DeviceMappings()
+	s.Environment = c.Envs.ToMappingWithEquals()
+	s.Image = c.Image
+	s.NetworkMode = c.NetworkModel
+	s.Ports = c.Ports.ServicePortConfigList()
+	s.Privileged = c.Privileged
+	s.Volumes = c.Volumes.ServiceVolumeConfigList()
+
+	return types.Services{s.Name: s}
 }
 
 func (c *CustomizationPostData) Compose() codegen.ComposeApp {

@@ -9,14 +9,14 @@ import (
 	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/samber/lo"
 )
 
-func ImageName(containerInfo *types.ContainerJSON) string {
+func ImageName(containerInfo *container.InspectResponse) string {
 	imageName := containerInfo.Config.Image
 
 	if !strings.Contains(imageName, ":") {
@@ -26,19 +26,19 @@ func ImageName(containerInfo *types.ContainerJSON) string {
 	return imageName
 }
 
-func Container(ctx context.Context, id string) (*types.ContainerJSON, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+func Container(ctx context.Context, id string) (*container.InspectResponse, error) {
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, err
 	}
 	defer cli.Close()
 
-	containerInfo, err := cli.ContainerInspect(ctx, id)
+	result, err := cli.ContainerInspect(ctx, id, client.ContainerInspectOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	return &containerInfo, nil
+	return &result.Container, nil
 }
 
 func CloneContainer(ctx context.Context, id string, newName string) (string, error) {
@@ -73,26 +73,31 @@ func CloneContainer(ctx context.Context, id string, newName string) (string, err
 	networkConfig := &network.NetworkingConfig{EndpointsConfig: containerInfo.NetworkSettings.Networks}
 	simpleNetworkConfig := simpleNetworkConfig(networkConfig)
 
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return "", err
 	}
 	defer cli.Close()
 
-	newContainer, err := cli.ContainerCreate(ctx, config, hostConfig, simpleNetworkConfig, nil, newName)
+	newContainer, err := cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:           config,
+		HostConfig:       hostConfig,
+		NetworkingConfig: simpleNetworkConfig,
+		Name:             newName,
+	})
 	if err != nil {
 		return "", err
 	}
 
 	if !(hostConfig.NetworkMode.IsHost()) {
 		for k := range simpleNetworkConfig.EndpointsConfig {
-			if err := cli.NetworkDisconnect(ctx, k, newContainer.ID, true); err != nil {
+			if _, err := cli.NetworkDisconnect(ctx, k, client.NetworkDisconnectOptions{Container: newContainer.ID, Force: true}); err != nil {
 				return newContainer.ID, err
 			}
 		}
 
 		for k, v := range networkConfig.EndpointsConfig {
-			if err := cli.NetworkConnect(ctx, k, newContainer.ID, v); err != nil {
+			if _, err := cli.NetworkConnect(ctx, k, client.NetworkConnectOptions{Container: newContainer.ID, EndpointConfig: v}); err != nil {
 				return newContainer.ID, err
 			}
 		}
@@ -102,58 +107,61 @@ func CloneContainer(ctx context.Context, id string, newName string) (string, err
 }
 
 func RemoveContainer(ctx context.Context, id string) error {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return err
 	}
 	defer cli.Close()
 
-	return cli.ContainerRemove(ctx, id, types.ContainerRemoveOptions{Force: true})
+	_, err = cli.ContainerRemove(ctx, id, client.ContainerRemoveOptions{Force: true})
+	return err
 }
 
 func RenameContainer(ctx context.Context, id string, name string) error {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return err
 	}
 	defer cli.Close()
 
-	return cli.ContainerRename(ctx, id, name)
+	_, err = cli.ContainerRename(ctx, id, client.ContainerRenameOptions{NewName: name})
+	return err
 }
 
 func StartContainer(ctx context.Context, id string) error {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return err
 	}
 	defer cli.Close()
 
-	containerInfo, err := cli.ContainerInspect(ctx, id)
+	containerInfo, err := cli.ContainerInspect(ctx, id, client.ContainerInspectOptions{})
 	if err != nil {
 		return err
 	}
 
-	if !containerInfo.State.Running {
-		return cli.ContainerStart(ctx, id, types.ContainerStartOptions{})
+	if !containerInfo.Container.State.Running {
+		_, err = cli.ContainerStart(ctx, id, client.ContainerStartOptions{})
+		return err
 	}
 
 	return nil
 }
 
 func StopContainer(ctx context.Context, id string) error {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return err
 	}
 	defer cli.Close()
 
-	containerInfo, err := cli.ContainerInspect(ctx, id)
+	containerInfo, err := cli.ContainerInspect(ctx, id, client.ContainerInspectOptions{})
 	if err != nil {
 		return err
 	}
 
-	if containerInfo.State.Running {
-		if err := cli.ContainerStop(ctx, id, container.StopOptions{}); err != nil {
+	if containerInfo.Container.State.Running {
+		if _, err := cli.ContainerStop(ctx, id, client.ContainerStopOptions{}); err != nil {
 			return err
 		}
 
@@ -166,24 +174,22 @@ func StopContainer(ctx context.Context, id string) error {
 }
 
 func WaitContainer(ctx context.Context, id string, condition container.WaitCondition) error {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return err
 	}
 	defer cli.Close()
 
-	wait, errChan := cli.ContainerWait(ctx, id, condition)
-	for {
-		select {
-		case err := <-errChan:
-			return err
-		case <-wait:
-			return nil
-		}
+	wait := cli.ContainerWait(ctx, id, client.ContainerWaitOptions{Condition: condition})
+	select {
+	case err := <-wait.Error:
+		return err
+	case <-wait.Result:
+		return nil
 	}
 }
 
-func runtimeConfig(containerInfo *types.ContainerJSON, imageInfo *types.ImageInspect) *container.Config {
+func runtimeConfig(containerInfo *container.InspectResponse, imageInfo *image.InspectResponse) *container.Config {
 	config := containerInfo.Config
 	hostConfig := containerInfo.HostConfig
 	imageConfig := imageInfo.Config
@@ -221,7 +227,7 @@ func runtimeConfig(containerInfo *types.ContainerJSON, imageInfo *types.ImageIns
 
 	// subtract ports exposed in image from container
 	for k := range config.ExposedPorts {
-		if _, ok := imageConfig.ExposedPorts[k]; ok {
+		if _, ok := imageConfig.ExposedPorts[k.String()]; ok {
 			delete(config.ExposedPorts, k)
 		}
 	}
@@ -234,7 +240,7 @@ func runtimeConfig(containerInfo *types.ContainerJSON, imageInfo *types.ImageIns
 	return config
 }
 
-func hostConfig(containerInfo *types.ContainerJSON) *container.HostConfig {
+func hostConfig(containerInfo *container.InspectResponse) *container.HostConfig {
 	hostConfig := containerInfo.HostConfig
 
 	for i, link := range hostConfig.Links {

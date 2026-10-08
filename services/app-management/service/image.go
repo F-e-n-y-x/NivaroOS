@@ -11,27 +11,22 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/docker"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/filters"
-	client2 "github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/jsonmessage"
+	"github.com/moby/moby/api/types/jsonstream"
+	client2 "github.com/moby/moby/client"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 )
 
 // 检查镜像是否存在
 func (ds *dockerService) IsExistImage(imageName string) bool {
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		return false
 	}
 	defer cli.Close()
-	filter := filters.NewArgs()
-	filter.Add("reference", imageName)
+	list, err := cli.ImageList(context.Background(), client2.ImageListOptions{Filters: make(client2.Filters).Add("reference", imageName)})
 
-	list, err := cli.ImageList(context.Background(), types.ImageListOptions{Filters: filter})
-
-	if err == nil && len(list) > 0 {
+	if err == nil && len(list.Items) > 0 {
 		return true
 	}
 
@@ -149,12 +144,12 @@ func (ds *dockerService) PullLatestImage(ctx context.Context, imageName string) 
 
 // 删除镜像
 func (ds *dockerService) RemoveImage(name string) error {
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		return err
 	}
 	defer cli.Close()
-	imageList, err := cli.ImageList(context.Background(), types.ImageListOptions{})
+	imageList, err := cli.ImageList(context.Background(), client2.ImageListOptions{})
 	if err != nil {
 		return err
 	}
@@ -162,7 +157,7 @@ func (ds *dockerService) RemoveImage(name string) error {
 	imageID := ""
 
 Loop:
-	for _, ig := range imageList {
+	for _, ig := range imageList.Items {
 		for _, i := range ig.RepoTags {
 			if i == name {
 				imageID = ig.ID
@@ -170,7 +165,7 @@ Loop:
 			}
 		}
 	}
-	_, err = cli.ImageRemove(context.Background(), imageID, types.ImageRemoveOptions{})
+	_, err = cli.ImageRemove(context.Background(), imageID, client2.ImageRemoveOptions{})
 	return err
 }
 
@@ -266,7 +261,7 @@ func pullImageProgress(ctx context.Context, out io.ReadCloser, notificationType 
 	lastProgress := -1
 
 	for decoder.More() {
-		var message jsonmessage.JSONMessage
+		var message jsonstream.Message
 		if err := decoder.Decode(&message); err != nil {
 			logger.Error("failed to decode json message", zap.Error(err))
 			break // a broken stream never recovers; More() would spin

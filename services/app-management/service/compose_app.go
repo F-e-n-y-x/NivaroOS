@@ -6,10 +6,12 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,12 +29,12 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	portutil "github.com/F-e-n-y-x/NivaroOS/services/common/utils/port"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/random"
-	"github.com/compose-spec/compose-go/cli"
-	"github.com/compose-spec/compose-go/loader"
-	"github.com/compose-spec/compose-go/types"
+	"github.com/compose-spec/compose-go/v2/cli"
+	"github.com/compose-spec/compose-go/v2/loader"
+	"github.com/compose-spec/compose-go/v2/types"
 
-	"github.com/docker/compose/v2/cmd/formatter"
-	"github.com/docker/compose/v2/pkg/api"
+	"github.com/docker/compose/v5/cmd/formatter"
+	"github.com/docker/compose/v5/pkg/api"
 	"github.com/go-resty/resty/v2"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
@@ -229,8 +231,8 @@ func (a *ComposeApp) Update(ctx context.Context) error {
 		return ErrNotFoundInAppStore
 	}
 
-	localComposeAppServices := lo.Map(a.Services, func(service types.ServiceConfig, i int) string { return service.Name })
-	storeComposeAppServices := lo.Map(storeComposeApp.Services, func(service types.ServiceConfig, i int) string { return service.Name })
+	localComposeAppServices := lo.Keys(a.Services)
+	storeComposeAppServices := lo.Keys(storeComposeApp.Services)
 
 	localAbsentOfStore, storeAbsentOfLocal := lo.Difference(localComposeAppServices, storeComposeAppServices)
 	if len(localAbsentOfStore) > 0 {
@@ -311,15 +313,15 @@ func imagesChanged(before, after types.Services) bool {
 	if len(before) != len(after) {
 		return true
 	}
-	for i := range before {
-		if before[i].Image != after[i].Image {
+	for name, service := range before {
+		if a, ok := after[name]; !ok || a.Image != service.Image {
 			return true
 		}
 	}
 	return false
 }
 
-// withServices returns a shallow copy of a with its own Services slice.
+// withServices returns a shallow copy of a with its own Services map.
 func (a *ComposeApp) withServices(services types.Services) *ComposeApp {
 	copied := *a
 	copied.Services = services
@@ -330,18 +332,17 @@ func (a *ComposeApp) withServices(services types.Services) *ComposeApp {
 // store's image, unless the store image uses a tag that is checked by digest
 // (e.g. latest), which keeps the local image.
 func updatedServiceImages(local, store types.Services) types.Services {
-	result := make(types.Services, len(local))
-	copy(result, local)
+	result := maps.Clone(local)
 
-	for _, storeService := range store {
-		for i := range result {
-			if result[i].Name != storeService.Name {
-				continue
-			}
+	for name, storeService := range store {
+		service, ok := result[name]
+		if !ok {
+			continue
+		}
 
-			if !lo.SomeBy(common.NeedCheckDigestTags, func(tag string) bool { return strings.HasSuffix(storeService.Image, tag) }) {
-				result[i].Image = storeService.Image
-			}
+		if !lo.SomeBy(common.NeedCheckDigestTags, func(tag string) bool { return strings.HasSuffix(storeService.Image, tag) }) {
+			service.Image = storeService.Image
+			result[name] = service
 		}
 	}
 
@@ -354,20 +355,19 @@ func (a *ComposeApp) App(name string) *App {
 		return nil
 	}
 
-	for i, service := range a.Services {
-		if service.Name == name {
-			return (*App)(&a.Services[i])
-		}
+	service, ok := a.Services[name]
+	if !ok {
+		return nil
 	}
 
-	return nil
+	return (*App)(&service)
 }
 
 func (a *ComposeApp) Apps() map[string]*App {
 	apps := make(map[string]*App)
 
-	for i, service := range a.Services {
-		apps[service.Name] = (*App)(&a.Services[i])
+	for name, service := range a.Services {
+		apps[name] = (*App)(&service)
 	}
 
 	return apps
@@ -421,7 +421,8 @@ func (a *ComposeApp) Pull(ctx context.Context) error {
 	// pull
 	serviceNum := len(a.Services)
 
-	for i, app := range a.Services {
+	for i, name := range slices.Sorted(maps.Keys(a.Services)) {
+		app := a.Services[name]
 		if err := func() error {
 			go PublishEventWrapper(ctx, common.EventTypeImagePullBegin, map[string]string{
 				common.PropertyTypeImageName.Name: app.Image,
@@ -469,23 +470,24 @@ func (a *ComposeApp) injectEnvVariableToComposeApp() {
 		}
 	}
 
-	for i := range a.Services {
-		keys := referencedGlobalKeys(raw, a.Services[i].Environment, global)
+	for name, service := range a.Services {
+		keys := referencedGlobalKeys(raw, service.Environment, global)
 		if len(keys) == 0 {
 			continue
 		}
 
-		if a.Services[i].Environment == nil {
-			a.Services[i].Environment = types.MappingWithEquals{}
+		if service.Environment == nil {
+			service.Environment = types.MappingWithEquals{}
 		}
 
 		for _, k := range keys {
 			// if there is same name var declared in environment in compose yaml
 			// we should not reassign a value to it.
-			if a.Services[i].Environment[k] == nil {
-				a.Services[i].Environment[k] = utils.Ptr(global[k])
+			if service.Environment[k] == nil {
+				service.Environment[k] = utils.Ptr(global[k])
 			}
 		}
+		a.Services[name] = service
 	}
 }
 
@@ -517,13 +519,12 @@ func referencedGlobalKeys(raw []byte, environment types.MappingWithEquals, globa
 // $$ is an escaped dollar; $NAME and ${NAME[:-default...]} are references
 var composeVariablePattern = regexp.MustCompile(`\$\$|\$\{([A-Za-z_][A-Za-z0-9_]*)|\$([A-Za-z_][A-Za-z0-9_]*)`)
 
-func (a *ComposeApp) Up(ctx context.Context, service api.Service) error {
+func (a *ComposeApp) Up(ctx context.Context, service api.Compose) error {
 	a.injectEnvVariableToComposeApp()
 
-	if err := service.Up(ctx, (*codegen.ComposeApp)(a), api.UpOptions{
+	if err := service.Up(ctx, (*types.Project)(a), api.UpOptions{
 		Start: api.StartOptions{
-			CascadeStop: true,
-			Wait:        true,
+			Wait: true,
 		},
 	}); err != nil {
 		logger.Error("failed to start original compose app", zap.Error(err), zap.String("name", a.Name))
@@ -558,7 +559,7 @@ func bindSourceToCreate(volume types.ServiceVolumeConfig, projectVolumes types.V
 	return volume.Source
 }
 
-func (a *ComposeApp) UpWithCheckRequire(ctx context.Context, service api.Service) error {
+func (a *ComposeApp) UpWithCheckRequire(ctx context.Context, service api.Compose) error {
 	if err := a.checkComposeDrives(); err != nil {
 		go PublishEventWrapper(ctx, common.EventTypeContainerStartError, map[string]string{
 			common.PropertyTypeMessage.Name: err.Error(),
@@ -566,7 +567,7 @@ func (a *ComposeApp) UpWithCheckRequire(ctx context.Context, service api.Service
 		return err
 	}
 	// prepare source path for volumes if not exist
-	for i, app := range a.Services {
+	for name, app := range a.Services {
 		for _, volume := range app.Volumes {
 			path := bindSourceToCreate(volume, a.Volumes)
 			if path == "" {
@@ -581,17 +582,8 @@ func (a *ComposeApp) UpWithCheckRequire(ctx context.Context, service api.Service
 			}
 		}
 
-		// check if each required device exists
-		deviceMapFiltered := []string{}
-		for _, deviceMap := range app.Devices {
-			devicePath := strings.SplitN(deviceMap, ":", 2)[0]
-			if file.CheckNotExist(devicePath) {
-				logger.Info("device not found", zap.String("device", devicePath))
-				continue
-			}
-			deviceMapFiltered = append(deviceMapFiltered, deviceMap)
-		}
-		a.Services[i].Devices = deviceMapFiltered
+		app.Devices = existingDevices(app.Devices)
+		a.Services[name] = app
 	}
 
 	if err := a.Up(ctx, service); err != nil {
@@ -601,6 +593,19 @@ func (a *ComposeApp) UpWithCheckRequire(ctx context.Context, service api.Service
 		return err
 	}
 	return nil
+}
+
+// existingDevices drops the device mappings whose host device is missing.
+func existingDevices(devices []types.DeviceMapping) []types.DeviceMapping {
+	result := []types.DeviceMapping{}
+	for _, device := range devices {
+		if file.CheckNotExist(device.Source) {
+			logger.Info("device not found", zap.String("device", device.Source))
+			continue
+		}
+		result = append(result, device)
+	}
+	return result
 }
 
 func (a *ComposeApp) PullAndApply(ctx context.Context, newComposeYAML []byte) error {
@@ -674,9 +679,9 @@ func (a *ComposeApp) PullAndApply(ctx context.Context, newComposeYAML []byte) er
 	return err
 }
 
-func (a *ComposeApp) Create(ctx context.Context, options api.CreateOptions, service api.Service) error {
+func (a *ComposeApp) Create(ctx context.Context, options api.CreateOptions, service api.Compose) error {
 	a.injectEnvVariableToComposeApp()
-	return service.Create(ctx, (*codegen.ComposeApp)(a), api.CreateOptions{})
+	return service.Create(ctx, (*types.Project)(a), api.CreateOptions{})
 }
 
 func (a *ComposeApp) PullAndInstall(ctx context.Context) error {
@@ -703,7 +708,7 @@ func (a *ComposeApp) PullAndInstall(ctx context.Context) error {
 
 		defer PublishEventWrapper(ctx, common.EventTypeContainerCreateEnd, nil)
 
-		for i, app := range a.Services {
+		for name, app := range a.Services {
 			// prepare source path for volumes if not exist
 			for _, volume := range app.Volumes {
 				path := bindSourceToCreate(volume, a.Volumes)
@@ -719,17 +724,8 @@ func (a *ComposeApp) PullAndInstall(ctx context.Context) error {
 				}
 			}
 
-			// check if each required device exists
-			deviceMapFiltered := []string{}
-			for _, deviceMap := range app.Devices {
-				devicePath := strings.SplitN(deviceMap, ":", 2)[0]
-				if file.CheckNotExist(devicePath) {
-					logger.Info("device not found", zap.String("device", devicePath))
-					continue
-				}
-				deviceMapFiltered = append(deviceMapFiltered, deviceMap)
-			}
-			a.Services[i].Devices = deviceMapFiltered
+			app.Devices = existingDevices(app.Devices)
+			a.Services[name] = app
 		}
 
 		if err := a.Create(ctx, api.CreateOptions{}, service); err != nil {
@@ -749,8 +745,7 @@ func (a *ComposeApp) PullAndInstall(ctx context.Context) error {
 	defer PublishEventWrapper(ctx, common.EventTypeContainerStartEnd, nil)
 
 	if err := service.Start(ctx, a.Name, api.StartOptions{
-		CascadeStop: true,
-		Wait:        true,
+		Wait: true,
 	}); err != nil {
 		go PublishEventWrapper(ctx, common.EventTypeContainerStartError, map[string]string{
 			common.PropertyTypeMessage.Name: err.Error(),
@@ -1021,8 +1016,7 @@ func (a *ComposeApp) SetStatus(ctx context.Context, status codegen.RequestCompos
 			}
 
 			if err := service.Start(ctx, a.Name, api.StartOptions{
-				CascadeStop: true,
-				Wait:        true,
+				Wait: true,
 			}); err != nil {
 				go PublishEventWrapper(ctx, common.EventTypeAppStartError, map[string]string{
 					common.PropertyTypeMessage.Name: err.Error(),
@@ -1078,8 +1072,8 @@ func (a *ComposeApp) Logs(ctx context.Context, lines int) ([]byte, error) {
 	consumer := formatter.NewLogConsumer(ctx, &buf, &buf, false, true, false)
 
 	if err := service.Logs(ctx, a.Name, consumer, api.LogOptions{
-		Project:  (*codegen.ComposeApp)(a),
-		Services: lo.Map(a.Services, func(s types.ServiceConfig, i int) string { return s.Name }),
+		Project:  (*types.Project)(a),
+		Services: lo.Keys(a.Services),
 		Follow:   false,
 		Tail:     lo.If(lines < 0, "all").Else(strconv.Itoa(lines)),
 	}); err != nil {
@@ -1100,7 +1094,8 @@ func (a *ComposeApp) GetPortsInUse() (*codegen.ComposeAppValidationErrorsPortsIn
 	tcpPortInUse := []string{}
 	udpPortInUse := []string{}
 
-	for _, s := range a.Services {
+	for _, name := range slices.Sorted(maps.Keys(a.Services)) { // stable order in the response
+		s := a.Services[name]
 		for _, p := range s.Ports {
 			if lo.ContainsBy(allPortsInUse, func(portInUse int) bool { return strconv.Itoa(portInUse) == p.Published }) {
 				switch strings.ToLower(p.Protocol) {
@@ -1240,7 +1235,7 @@ func LoadComposeAppFromConfigFiles(appID string, configFiles []string) (*Compose
 		return nil, err
 	}
 
-	project, err := cli.ProjectFromOptions(options)
+	project, err := cli.ProjectFromOptions(context.Background(), options)
 	if err != nil {
 		return nil, err
 	}
@@ -1257,9 +1252,7 @@ func LoadComposeAppFromConfigFiles(appID string, configFiles []string) (*Compose
 		project.Services[i] = s
 	}
 
-	project.WithoutUnnecessaryResources()
-
-	return (*ComposeApp)(project), nil
+	return (*ComposeApp)(project.WithoutUnnecessaryResources()), nil
 }
 
 var gpuCache *([]external.NvidiaGPUInfo) = nil
@@ -1279,8 +1272,9 @@ func removeRuntime(a *ComposeApp) {
 			// without nvidia-smi 	// no gpu or first time fetching gpu info failed
 		}
 		if len(*gpuCache) == 0 {
-			for i := range a.Services {
-				a.Services[i].Runtime = ""
+			for name, service := range a.Services {
+				service.Runtime = ""
+				a.Services[name] = service
 			}
 		}
 	}
@@ -1316,7 +1310,8 @@ func newComposeAppFromYAML(yaml []byte, skipInterpolation, skipValidation, forCa
 		return port
 	}
 
-	project, err := loader.Load(
+	project, err := loader.LoadWithContext(
+		context.Background(),
 		types.ConfigDetails{
 			ConfigFiles: []types.ConfigFile{
 				{
@@ -1382,11 +1377,12 @@ func newComposeAppFromYAML(yaml []byte, skipInterpolation, skipValidation, forCa
 	// still using `func getContainerStats()` from `container.go` to get container stats
 	// (we are being lazy to upgrade that v1 API to v2 - please help if you can :D)
 	if err == nil && storeInfo != nil && storeInfo.Icon != "" {
-		for i := range composeApp.Services {
-			if composeApp.Services[i].Labels == nil {
-				composeApp.Services[i].Labels = map[string]string{}
+		for name, service := range composeApp.Services {
+			if service.Labels == nil {
+				service.Labels = map[string]string{}
 			}
-			composeApp.Services[i].Labels[v1.V1LabelIcon] = storeInfo.Icon
+			service.Labels[v1.V1LabelIcon] = storeInfo.Icon
+			composeApp.Services[name] = service
 		}
 	}
 

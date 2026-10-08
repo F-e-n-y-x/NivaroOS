@@ -10,7 +10,7 @@ import (
 	v1 "github.com/F-e-n-y-x/NivaroOS/services/app-management/service/v1"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	"github.com/docker/docker/errdefs"
+	"github.com/containerd/errdefs"
 	"github.com/labstack/echo/v5"
 	"go.uber.org/zap"
 )
@@ -37,7 +37,7 @@ func (a *AppManagement) RecreateContainerByID(ctx *echo.Context, id codegen.Cont
 	if err != nil {
 
 		message := err.Error()
-		if _, ok := err.(errdefs.ErrNotFound); ok {
+		if errdefs.IsNotFound(err) {
 			return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
 		}
 

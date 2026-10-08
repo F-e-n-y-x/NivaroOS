@@ -12,7 +12,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/service"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	"github.com/docker/compose/v2/pkg/api"
+	"github.com/docker/compose/v5/pkg/api"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 

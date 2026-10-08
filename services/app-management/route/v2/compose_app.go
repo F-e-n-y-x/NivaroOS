@@ -12,8 +12,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/service"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	"github.com/compose-spec/compose-go/types"
-	"github.com/docker/compose/v2/pkg/api"
+	"github.com/docker/compose/v5/pkg/api"
 	"github.com/labstack/echo/v5"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
@@ -100,7 +99,7 @@ func (a *AppManagement) MyComposeApp(ctx *echo.Context, id codegen.ComposeAppID)
 		Message: &message,
 		Data: &codegen.ComposeAppWithStoreInfo{
 			StoreInfo: storeInfo,
-			Compose:   (*types.Project)(composeApp),
+			Compose:   (*codegen.ComposeApp)(composeApp),
 			Status:    &status,
 
 			// see above comment
@@ -734,7 +733,7 @@ func composeAppsWithStoreInfoAndContainers(ctx context.Context, opts composeApps
 		// In order words, the status of the compose app is determined by the status of the first main container. Silly...
 		//
 		// TODO: This needs a re-design in future.
-		composeAppWithStoreInfo.Status = &mainContainers[0].State
+		composeAppWithStoreInfo.Status = utils.Ptr(string(mainContainers[0].State))
 
 		return composeAppWithStoreInfo
 	})

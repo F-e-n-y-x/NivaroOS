@@ -8,9 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 	"github.com/moby/sys/mountinfo"
 	"go.uber.org/zap"
 
@@ -111,7 +110,7 @@ func (a *ComposeApp) checkComposeDrives() error {
 	return nil
 }
 
-func bindSources(mounts []types.MountPoint) []string {
+func bindSources(mounts []container.MountPoint) []string {
 	var out []string
 	for _, m := range mounts {
 		if m.Type == "bind" {
@@ -123,9 +122,9 @@ func bindSources(mounts []types.MountPoint) []string {
 
 // guardDocker: the Docker calls the guard makes (a fake in tests).
 type guardDocker interface {
-	ContainerList(ctx context.Context, options types.ContainerListOptions) ([]types.Container, error)
-	ContainerStop(ctx context.Context, id string, options container.StopOptions) error
-	ContainerStart(ctx context.Context, id string, options types.ContainerStartOptions) error
+	ContainerList(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error)
+	ContainerStop(ctx context.Context, id string, options client.ContainerStopOptions) (client.ContainerStopResult, error)
+	ContainerStart(ctx context.Context, id string, options client.ContainerStartOptions) (client.ContainerStartResult, error)
 }
 
 type driveGuard struct {
@@ -137,7 +136,7 @@ type driveGuard struct {
 	file    string
 }
 
-func containerApp(c types.Container) string {
+func containerApp(c container.Summary) string {
 	if p := c.Labels["com.docker.compose.project"]; p != "" {
 		return p
 	}
@@ -148,10 +147,11 @@ func containerApp(c types.Container) string {
 }
 
 func (g *driveGuard) tick(ctx context.Context) {
-	list, err := g.docker.ContainerList(ctx, types.ContainerListOptions{All: true})
+	result, err := g.docker.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		return // Docker not up yet
 	}
+	list := result.Items
 	configured, mounted := fstabMountPoints(g.fstab()), g.mounted()
 	changed, seen := false, map[string]bool{}
 	for _, c := range list {
@@ -162,7 +162,7 @@ func (g *driveGuard) tick(ctx context.Context) {
 		switch {
 		case running && mp != "":
 			timeout := 30
-			if err := g.docker.ContainerStop(ctx, c.ID, container.StopOptions{Timeout: &timeout}); err != nil {
+			if _, err := g.docker.ContainerStop(ctx, c.ID, client.ContainerStopOptions{Timeout: &timeout}); err != nil {
 				logger.Error("drive guard: couldn't stop an app whose drive isn't mounted", zap.String("app", app), zap.String("drive", mp), zap.Error(err))
 				continue
 			}
@@ -171,7 +171,7 @@ func (g *driveGuard) tick(ctx context.Context) {
 			g.notify(app+" waits for drive "+drive,
 				drive+" isn't mounted, so "+app+" was stopped before it could keep files on the system disk. It starts again by itself once "+drive+" is mounted (Settings > Storage).", "warning")
 		case !running && mp == "" && g.waiting[c.ID] != "":
-			if err := g.docker.ContainerStart(ctx, c.ID, types.ContainerStartOptions{}); err != nil {
+			if _, err := g.docker.ContainerStart(ctx, c.ID, client.ContainerStartOptions{}); err != nil {
 				logger.Error("drive guard: couldn't start an app again after its drive came back", zap.String("app", app), zap.Error(err))
 				continue
 			}
@@ -215,7 +215,7 @@ func (g *driveGuard) save() {
 // StartDriveGuard checks every 10 s. The containers it stopped are kept
 // in driveWaitFile, so they are started again even after a restart.
 func StartDriveGuard(ctx context.Context) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		logger.Error("drive guard: no Docker client", zap.Error(err))
 		return

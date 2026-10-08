@@ -11,8 +11,8 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/config"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	"github.com/compose-spec/compose-go/types"
-	"github.com/docker/compose/v2/pkg/api"
+	"github.com/compose-spec/compose-go/v2/types"
+	"github.com/docker/compose/v5/pkg/api"
 	"gotest.tools/v3/assert"
 )
 
@@ -125,21 +125,21 @@ func TestIsPathWithin(t *testing.T) {
 // Update used to overwrite the images of the installed app in place, so the
 // rollback started the new (failed) images again.
 func TestUpdatedServiceImagesDoesNotMutateLocal(t *testing.T) {
-	local := types.Services{{Name: "web", Image: "nginx:1.24"}, {Name: "db", Image: "postgres:15"}, {Name: "cache", Image: "redis:latest"}}
-	store := types.Services{{Name: "web", Image: "nginx:1.25"}, {Name: "db", Image: "postgres:16"}, {Name: "cache", Image: "redis:latest"}}
+	local := imageServices("web", "nginx:1.24", "db", "postgres:15", "cache", "redis:latest")
+	store := imageServices("web", "nginx:1.25", "db", "postgres:16", "cache", "redis:latest")
 
 	updated := updatedServiceImages(local, store)
 
-	assert.Equal(t, local[0].Image, "nginx:1.24")
-	assert.Equal(t, local[1].Image, "postgres:15")
-	assert.Equal(t, updated[0].Image, "nginx:1.25")
-	assert.Equal(t, updated[1].Image, "postgres:16")
-	assert.Equal(t, updated[2].Image, "redis:latest")
+	assert.Equal(t, local["web"].Image, "nginx:1.24")
+	assert.Equal(t, local["db"].Image, "postgres:15")
+	assert.Equal(t, updated["web"].Image, "nginx:1.25")
+	assert.Equal(t, updated["db"].Image, "postgres:16")
+	assert.Equal(t, updated["cache"].Image, "redis:latest")
 
 	app := &ComposeApp{Name: "x", Services: local}
 	copied := app.withServices(updated)
-	assert.Equal(t, app.Services[0].Image, "nginx:1.24")
-	assert.Equal(t, copied.Services[0].Image, "nginx:1.25")
+	assert.Equal(t, app.Services["web"].Image, "nginx:1.24")
+	assert.Equal(t, copied.Services["web"].Image, "nginx:1.25")
 }
 
 func TestStoreFingerprint(t *testing.T) {
@@ -194,7 +194,7 @@ func TestInjectOnlyReferencedGlobals(t *testing.T) {
 	app := &ComposeApp{
 		Name:         "inj",
 		ComposeFiles: []string{composeFile},
-		Services:     types.Services{{Name: "a"}, {Name: "b", Environment: types.MappingWithEquals{}}},
+		Services:     types.Services{"a": {Name: "a"}, "b": {Name: "b", ContainerSpec: types.ContainerSpec{Environment: types.MappingWithEquals{}}}},
 	}
 	app.injectEnvVariableToComposeApp()
 
@@ -237,22 +237,22 @@ services:
 	app, err := LoadComposeAppFromConfigFiles("envtest", stackConfigFiles(composeFile+","+override))
 	assert.NilError(t, err)
 
-	env := app.Services[0].Environment
+	env := app.Services["web"].Environment
 	assert.Equal(t, *env["HOST"], "")
 	assert.Equal(t, *env["ID"], "envtest")
 	assert.Equal(t, *env["PUID"], baseInterpolationMap()["PUID"])
 	assert.Equal(t, *env["G"], "global-value")
 
 	// both files of the project are loaded, and compose labels are set
-	assert.Equal(t, app.Services[0].Labels["from-override"], "yes")
-	assert.Equal(t, app.Services[0].CustomLabels[api.ProjectLabel], "envtest")
+	assert.Equal(t, app.Services["web"].Labels["from-override"], "yes")
+	assert.Equal(t, app.Services["web"].CustomLabels[api.ProjectLabel], "envtest")
 	assert.Equal(t, len(app.ComposeFiles), 2)
 
 	// the install-time parser keeps references for later instead of
 	// resolving them from the process environment
 	parsed, err := NewComposeAppFromYAML([]byte("name: p\nservices:\n  web:\n    image: nginx\n    environment:\n      HOST: ${NIVAROOS_TEST_HOST_SECRET}\n"), false, true)
 	assert.NilError(t, err)
-	assert.Assert(t, !strings.Contains(*parsed.Services[0].Environment["HOST"], "leaked"))
+	assert.Assert(t, !strings.Contains(*parsed.Services["web"].Environment["HOST"], "leaked"))
 }
 
 func TestStackConfigFiles(t *testing.T) {
@@ -332,4 +332,22 @@ func TestInstallRefusesAConcurrentInstallOfTheSameApp(t *testing.T) {
 
 	// the reservation of the running install is left alone
 	assert.Assert(t, s.IsInstalling("dup"))
+}
+
+// imageServices builds services from name, image pairs.
+func imageServices(nameImage ...string) types.Services {
+	services := types.Services{}
+	for i := 0; i+1 < len(nameImage); i += 2 {
+		s := types.ServiceConfig{Name: nameImage[i]}
+		s.Image = nameImage[i+1]
+		services[s.Name] = s
+	}
+	return services
+}
+
+// compose-go v2 parses devices into mappings; a missing host device is
+// dropped before compose creates the container.
+func TestExistingDevices(t *testing.T) {
+	got := existingDevices([]types.DeviceMapping{{Source: "/dev/null", Target: "/dev/null", Permissions: "rwm"}, {Source: "/dev/nivaroos-missing", Target: "/dev/x"}})
+	assert.DeepEqual(t, got, []types.DeviceMapping{{Source: "/dev/null", Target: "/dev/null", Permissions: "rwm"}})
 }

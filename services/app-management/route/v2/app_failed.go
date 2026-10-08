@@ -6,8 +6,7 @@ import (
 	"strconv"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
-	"github.com/docker/docker/api/types"
-	client2 "github.com/docker/docker/client"
+	client2 "github.com/moby/moby/client"
 )
 
 // Exit codes a container gets from a normal stop: 0 (clean exit), 130
@@ -88,17 +87,17 @@ type containerSummary struct{ name, project, state, status string }
 // listContainers: every container, with what markFailed needs. Errors mean
 // no extra fields - the grid is still served.
 var listContainers = func(ctx context.Context) []containerSummary {
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		return nil
 	}
 	defer cli.Close()
-	list, err := cli.ContainerList(ctx, types.ContainerListOptions{All: true})
+	list, err := cli.ContainerList(ctx, client2.ContainerListOptions{All: true})
 	if err != nil {
 		return nil
 	}
-	out := make([]containerSummary, 0, len(list))
-	for _, c := range list {
+	out := make([]containerSummary, 0, len(list.Items))
+	for _, c := range list.Items {
 		name := ""
 		if len(c.Names) > 0 {
 			name = c.Names[0]
@@ -106,7 +105,7 @@ var listContainers = func(ctx context.Context) []containerSummary {
 				name = name[1:]
 			}
 		}
-		out = append(out, containerSummary{name: name, project: c.Labels["com.docker.compose.project"], state: c.State, status: c.Status})
+		out = append(out, containerSummary{name: name, project: c.Labels["com.docker.compose.project"], state: string(c.State), status: c.Status})
 	}
 	return out
 }

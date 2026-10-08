@@ -11,8 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types"
-	client2 "github.com/docker/docker/client"
+	client2 "github.com/moby/moby/client"
 )
 
 // UpdateJob is one container update running in the background. Updates
@@ -68,11 +67,11 @@ func (m *ContainerUpdateManager) UpdateStatus(ctx context.Context, nameOrID stri
 // StartUpdate starts updating a container in the background.
 func (m *ContainerUpdateManager) StartUpdate(nameOrID string) (*UpdateJob, error) {
 	ctx := context.Background()
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		return nil, err
 	}
-	inspect, err := cli.ContainerInspect(ctx, nameOrID)
+	inspect, err := inspectContainer(ctx, cli, nameOrID)
 	cli.Close()
 	if err != nil {
 		return nil, err
@@ -194,9 +193,9 @@ func dockerPathMapper(ctx context.Context) hostPathMapper {
 	defer mapperMu.Unlock()
 	if mapperMount == nil || time.Since(mapperAt) > time.Minute {
 		mapperMount = map[string]string{}
-		if cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation()); err == nil {
-			if list, err := cli.ContainerList(ctx, types.ContainerListOptions{All: true}); err == nil {
-				for _, c := range list {
+		if cli, err := client2.New(client2.FromEnv); err == nil {
+			if list, err := cli.ContainerList(ctx, client2.ContainerListOptions{All: true}); err == nil {
+				for _, c := range list.Items {
 					for _, mnt := range c.Mounts {
 						if mnt.Source != "" && mnt.Destination != "" && mnt.Destination != "/" {
 							mapperMount[mnt.Destination] = mnt.Source

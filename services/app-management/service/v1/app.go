@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/docker/docker/api/types"
+	"github.com/moby/moby/api/types/container"
 	uuid "github.com/satori/go.uuid"
 	"go.uber.org/zap"
 
@@ -18,7 +18,7 @@ const (
 	V1LabelIcon = "icon"
 )
 
-func GetCustomizationPostData(info types.ContainerJSON) model.CustomizationPostData {
+func GetCustomizationPostData(info container.InspectResponse) model.CustomizationPostData {
 	var port model.PortArray
 
 	for k, v := range info.HostConfig.PortBindings {
@@ -26,7 +26,7 @@ func GetCustomizationPostData(info types.ContainerJSON) model.CustomizationPostD
 			CommendPort:   v[0].HostPort,
 			ContainerPort: k.Port(),
 
-			Protocol: strings.ToLower(k.Proto()),
+			Protocol: strings.ToLower(string(k.Proto())),
 		}
 		port = append(port, temp)
 	}
@@ -115,7 +115,7 @@ func GetCustomizationPostData(info types.ContainerJSON) model.CustomizationPostD
 		Position:      false,
 		Privileged:    info.HostConfig.Privileged,
 		Protocol:      info.Config.Labels["protocol"],
-		Restart:       info.HostConfig.RestartPolicy.Name,
+		Restart:       string(info.HostConfig.RestartPolicy.Name),
 		Volumes:       vol,
 	}
 
@@ -134,7 +134,7 @@ func GetCustomizationPostData(info types.ContainerJSON) model.CustomizationPostD
 	return m
 }
 
-func AppName(containerInfo *types.ContainerJSON) string {
+func AppName(containerInfo *container.InspectResponse) string {
 	if containerInfo == nil {
 		return ""
 	}
@@ -146,7 +146,7 @@ func AppName(containerInfo *types.ContainerJSON) string {
 	return strings.TrimPrefix(containerInfo.Name, "/")
 }
 
-func AppIcon(containerInfo *types.ContainerJSON) string {
+func AppIcon(containerInfo *container.InspectResponse) string {
 	if containerInfo == nil {
 		return ""
 	}

@@ -11,8 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types"
-	client2 "github.com/docker/docker/client"
+	client2 "github.com/moby/moby/client"
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 
@@ -151,12 +150,12 @@ func (m *ContainerUpdateManager) normalizeKeysLocked() {
 
 // nameOf resolves a container ID (or name) to its name.
 func containerName(ctx context.Context, nameOrID string) string {
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		return nameOrID
 	}
 	defer cli.Close()
-	if inspect, err := cli.ContainerInspect(ctx, nameOrID); err == nil {
+	if inspect, err := inspectContainer(ctx, cli, nameOrID); err == nil {
 		return strings.TrimPrefix(inspect.Name, "/")
 	}
 	return nameOrID
@@ -249,16 +248,17 @@ func (m *ContainerUpdateManager) SetContainerAutoUpdate(nameOrID string, enabled
 }
 
 func (m *ContainerUpdateManager) GetAllContainersWithUpdates(ctx context.Context) ([]ContainerUpdateInfo, error) {
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		return nil, err
 	}
 	defer cli.Close()
 
-	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{All: true})
+	list, err := cli.ContainerList(ctx, client2.ContainerListOptions{All: true})
 	if err != nil {
 		return nil, err
 	}
+	containers := list.Items
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -274,7 +274,7 @@ func (m *ContainerUpdateManager) GetAllContainersWithUpdates(ctx context.Context
 			if cfg.Image != "" && !strings.HasPrefix(cfg.Image, "sha256:") {
 				displayImage = cfg.Image
 			} else {
-				if inspect, err := cli.ContainerInspect(ctx, c.ID); err == nil && inspect.Config != nil && inspect.Config.Image != "" {
+				if inspect, err := inspectContainer(ctx, cli, c.ID); err == nil && inspect.Config != nil && inspect.Config.Image != "" {
 					displayImage = inspect.Config.Image
 				}
 			}
@@ -285,7 +285,7 @@ func (m *ContainerUpdateManager) GetAllContainersWithUpdates(ctx context.Context
 			Name:               name,
 			Image:              displayImage,
 			ImageID:            c.ImageID,
-			State:              c.State,
+			State:              string(c.State),
 			Status:             c.Status,
 			HasUpdate:          cfg.HasUpdate,
 			CurrentDigest:      cfg.CurrentDigest,
@@ -309,16 +309,17 @@ func (m *ContainerUpdateManager) GetAllContainersWithUpdates(ctx context.Context
 }
 
 func (m *ContainerUpdateManager) CheckContainerUpdate(ctx context.Context, nameOrID string) (*ContainerUpdateInfo, error) {
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		return nil, err
 	}
 	defer cli.Close()
 
-	inspect, raw, err := cli.ContainerInspectWithRaw(ctx, nameOrID, false)
+	result, err := cli.ContainerInspect(ctx, nameOrID, client2.ContainerInspectOptions{})
 	if err != nil {
 		return nil, err
 	}
+	inspect, raw := result.Container, result.Raw
 
 	// Built from a compose project: its image is in no registry. A git
 	// checkout (e.g. from GitHub) has an update when upstream has commits
@@ -336,7 +337,7 @@ func (m *ContainerUpdateManager) CheckContainerUpdate(ctx context.Context, nameO
 		src.Behind = behind
 		m.mu.Lock()
 		cfg := m.configs[name]
-		cfg.ID, cfg.Name, cfg.Image, cfg.State = inspect.ID, name, inspect.Config.Image, inspect.State.Status
+		cfg.ID, cfg.Name, cfg.Image, cfg.State = inspect.ID, name, inspect.Config.Image, string(inspect.State.Status)
 		cfg.HasUpdate = behind > 0
 		cfg.LastCheckedAt = time.Now().Format(time.RFC3339)
 		m.configs[name] = cfg
@@ -368,7 +369,7 @@ func (m *ContainerUpdateManager) CheckContainerUpdate(ctx context.Context, nameO
 	}
 
 	// Inspect local image for this container to get repo digests and image ID
-	imageInfo, _, imgErr := cli.ImageInspectWithRaw(ctx, inspect.Image)
+	imageInfo, imgErr := cli.ImageInspect(ctx, inspect.Image)
 	if imgErr == nil && len(imageInfo.RepoDigests) > 0 {
 		parts := strings.Split(imageInfo.RepoDigests[0], "@")
 		if len(parts) > 1 {
@@ -404,7 +405,7 @@ func (m *ContainerUpdateManager) CheckContainerUpdate(ctx context.Context, nameO
 		hasUpdate = false
 	} else {
 		// 1. Check if host Docker already has a newer image ID pulled for this tag
-		localLatest, _, localErr := cli.ImageInspectWithRaw(ctx, imageRef)
+		localLatest, localErr := cli.ImageInspect(ctx, imageRef)
 		if localErr == nil && localLatest.ID != "" && inspect.Image != "" && localLatest.ID != inspect.Image {
 			hasUpdate = true
 			if len(localLatest.RepoDigests) > 0 {
@@ -447,7 +448,7 @@ func (m *ContainerUpdateManager) CheckContainerUpdate(ctx context.Context, nameO
 	cfg.Name = name
 	cfg.Image = imageName
 	cfg.ImageID = inspect.Image
-	cfg.State = inspect.State.Status
+	cfg.State = string(inspect.State.Status)
 	cfg.LastCheckedAt = time.Now().Format(time.RFC3339)
 	cfg.HasUpdate = hasUpdate
 	if currentDigest != "" {
@@ -464,16 +465,17 @@ func (m *ContainerUpdateManager) CheckContainerUpdate(ctx context.Context, nameO
 }
 
 func (m *ContainerUpdateManager) CheckAllContainersUpdate(ctx context.Context) ([]ContainerUpdateInfo, error) {
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		return nil, err
 	}
 	defer cli.Close()
 
-	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{All: true})
+	list, err := cli.ContainerList(ctx, client2.ContainerListOptions{All: true})
 	if err != nil {
 		return nil, err
 	}
+	containers := list.Items
 
 	type job struct {
 		id string
@@ -510,13 +512,13 @@ func (m *ContainerUpdateManager) CheckAllContainersUpdate(ctx context.Context) (
 }
 
 func (m *ContainerUpdateManager) GetContainerInfo(ctx context.Context, nameOrID string) (*ContainerUpdateInfo, error) {
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		return nil, err
 	}
 	defer cli.Close()
 
-	inspect, err := cli.ContainerInspect(ctx, nameOrID)
+	inspect, err := inspectContainer(ctx, cli, nameOrID)
 	if err != nil {
 		return nil, err
 	}
@@ -532,8 +534,8 @@ func (m *ContainerUpdateManager) GetContainerInfo(ctx context.Context, nameOrID 
 		Name:               name,
 		Image:              inspect.Config.Image,
 		ImageID:            inspect.Image,
-		State:              inspect.State.Status,
-		Status:             inspect.State.Status,
+		State:              string(inspect.State.Status),
+		Status:             string(inspect.State.Status),
 		HasUpdate:          cfg.HasUpdate,
 		CurrentDigest:      cfg.CurrentDigest,
 		LatestDigest:       cfg.LatestDigest,
@@ -551,13 +553,13 @@ func (m *ContainerUpdateManager) GetContainerInfo(ctx context.Context, nameOrID 
 // container only if that brought a newer image. updated reports whether it
 // did; an image that can't be pulled is an error, never a silent success.
 func (m *ContainerUpdateManager) UpdateAndRecreateContainer(ctx context.Context, nameOrID string) (info *ContainerUpdateInfo, updated bool, err error) {
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		return nil, false, err
 	}
 	defer cli.Close()
 
-	inspect, err := cli.ContainerInspect(ctx, nameOrID)
+	inspect, err := inspectContainer(ctx, cli, nameOrID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -623,11 +625,11 @@ func (m *ContainerUpdateManager) UpdateAndRecreateContainer(ctx context.Context,
 	if cfg.LatestDigest != "" {
 		cfg.CurrentDigest = cfg.LatestDigest
 	}
-	if newInspect, err := cli.ContainerInspect(ctx, name); err == nil {
+	if newInspect, err := inspectContainer(ctx, cli, name); err == nil {
 		cfg.ID = newInspect.ID
 		cfg.ImageID = newInspect.Image
 		cfg.Image = newInspect.Config.Image
-		cfg.State = newInspect.State.Status
+		cfg.State = string(newInspect.State.Status)
 	}
 	m.configs[name] = cfg
 	_ = m.saveLocked()
@@ -718,12 +720,12 @@ var (
 		return m.CheckContainerUpdate(ctx, id)
 	}
 	composeProjectOf = func(ctx context.Context, id string) string {
-		cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+		cli, err := client2.New(client2.FromEnv)
 		if err != nil {
 			return ""
 		}
 		defer cli.Close()
-		inspect, err := cli.ContainerInspect(ctx, id)
+		inspect, err := inspectContainer(ctx, cli, id)
 		if err != nil || inspect.Config == nil {
 			return ""
 		}
@@ -754,7 +756,7 @@ func DemuxDockerLogs(raw []byte) string {
 }
 
 func GetFormattedContainerLogs(ctx context.Context, nameOrID string, tail string, timestamps bool) (string, error) {
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		return "", err
 	}
@@ -764,7 +766,7 @@ func GetFormattedContainerLogs(ctx context.Context, nameOrID string, tail string
 		tail = "500"
 	}
 
-	body, err := cli.ContainerLogs(ctx, nameOrID, types.ContainerLogsOptions{
+	body, err := cli.ContainerLogs(ctx, nameOrID, client2.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Timestamps: timestamps,

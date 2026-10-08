@@ -922,7 +922,6 @@ check_docker() {
 		mkdir -p /etc/systemd/system/docker.service.d
 		cat > /etc/systemd/system/docker.service.d/override.conf <<'DOCKEREOF'
 [Service]
-Environment=\"DOCKER_MIN_API_VERSION=1.24\"
 DOCKEREOF
 		echo '/etc/systemd/system/docker.service.d/override.conf' >> \"$MANIFEST_FILE\"
 

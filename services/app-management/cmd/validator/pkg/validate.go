@@ -5,7 +5,7 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/service"
-	"github.com/compose-spec/compose-go/loader"
+	"github.com/compose-spec/compose-go/v2/loader"
 )
 
 func VaildDockerCompose(yaml []byte) (err error) {

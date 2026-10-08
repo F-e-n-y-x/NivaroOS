@@ -27,7 +27,7 @@ services:
 		// MyComposeApp: the installed file, interpolated, written as YAML.
 		installed, err := LoadComposeAppFromConfigFiles("dollar", []string{file})
 		assert.NilError(t, err)
-		env := installed.Services[0].Environment
+		env := installed.Services["app"].Environment
 		assert.Equal(t, *env["PASS"], "pa$word", "round %d", round)
 		assert.Equal(t, *env["HASH"], "$2y$10$abc", "round %d", round)
 		got, err := GenerateYAMLFromComposeApp(*installed)

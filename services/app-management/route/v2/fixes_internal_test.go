@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
-	"github.com/compose-spec/compose-go/types"
-	"github.com/docker/compose/v2/pkg/api"
+	"github.com/compose-spec/compose-go/v2/types"
+	"github.com/docker/compose/v5/pkg/api"
 	"gotest.tools/v3/assert"
 )
 
@@ -21,7 +21,7 @@ func TestWebAppGridItemImageIsTheMainService(t *testing.T) {
 	app := &codegen.ComposeAppWithStoreInfo{
 		Compose: &codegen.ComposeApp{
 			Name:     "demo",
-			Services: types.Services{{Name: "db", Image: "postgres:16"}, {Name: "web", Image: "nginx:1.25"}},
+			Services: imageServices("db", "postgres:16", "web", "nginx:1.25"),
 		},
 		StoreInfo: &codegen.ComposeAppStoreInfo{Main: &main},
 	}
@@ -37,4 +37,15 @@ func TestWebAppGridItemImageIsTheMainService(t *testing.T) {
 	item, err = WebAppGridItemAdapterV2(app)
 	assert.NilError(t, err)
 	assert.Assert(t, item.Image == nil)
+}
+
+// imageServices builds services from name, image pairs.
+func imageServices(nameImage ...string) types.Services {
+	services := types.Services{}
+	for i := 0; i+1 < len(nameImage); i += 2 {
+		s := types.ServiceConfig{Name: nameImage[i]}
+		s.Image = nameImage[i+1]
+		services[s.Name] = s
+	}
+	return services
 }

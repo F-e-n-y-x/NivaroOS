@@ -9,11 +9,11 @@ import (
 	url2 "net/url"
 	"time"
 
-	"github.com/docker/distribution/manifest/manifestlist"
-	"github.com/docker/distribution/manifest/schema1"
 	"github.com/mitchellh/mapstructure"
 	"github.com/patrickmn/go-cache"
 	"github.com/samber/lo"
+
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 var Cache *cache.Cache
@@ -96,7 +96,7 @@ func GetArchitectures(imageName string, noCache bool) ([]string, error) {
 }
 
 func tryGetArchitecturesFromManifestList(manifest interface{}) ([]string, error) {
-	var listManifest manifestlist.ManifestList
+	var listManifest v1.Index
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{Result: &listManifest, Squash: true})
 	if err != nil {
 		return nil, err
@@ -108,7 +108,7 @@ func tryGetArchitecturesFromManifestList(manifest interface{}) ([]string, error)
 
 	architectures := []string{}
 	for _, platform := range listManifest.Manifests {
-		if platform.Platform.Architecture == "" || platform.Platform.Architecture == "unknown" {
+		if platform.Platform == nil || platform.Platform.Architecture == "" || platform.Platform.Architecture == "unknown" {
 			continue
 		}
 
@@ -121,7 +121,7 @@ func tryGetArchitecturesFromManifestList(manifest interface{}) ([]string, error)
 }
 
 func tryGetArchitecturesFromV1SignedManifest(manifest interface{}) ([]string, error) {
-	var signedManifest schema1.SignedManifest
+	var signedManifest struct{ Architecture string }
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{Result: &signedManifest, Squash: true})
 	if err != nil {
 		return nil, err

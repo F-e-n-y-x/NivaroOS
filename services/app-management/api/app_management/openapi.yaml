@@ -1429,10 +1429,10 @@ components:
       description: |-
         See [Compose Specification](https://compose-spec.io) for the schema structure of `ComposeApp`.
 
-      x-go-type: types.Project
+      x-go-type: compose.Project
       x-go-type-import:
-        name: types
-        path: github.com/compose-spec/compose-go/types
+        name: compose
+        path: github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/compose
 
     ComposeAppWithStoreInfo:
       description: |-
@@ -1591,7 +1591,7 @@ components:
       x-go-type: api.ContainerSummary
       x-go-type-import:
         name: api
-        path: github.com/docker/compose/v2/pkg/api
+        path: github.com/docker/compose/v5/pkg/api
 
     EnvStoreInfo:
       required:

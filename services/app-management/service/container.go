@@ -32,13 +32,11 @@ import (
 
 	//"github.com/containerd/containerd/oci"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/api/types/network"
-	client2 "github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/system"
+	client2 "github.com/moby/moby/client"
 )
 
 var (
@@ -60,10 +58,10 @@ type DockerService interface {
 	CreateContainer(m model.CustomizationPostData, id string) (containerID string, err error)
 	CreateContainerShellSession(containerID, shell string, cols, rows uint16) (*ContainerShellSession, error)
 	ListContainerShells(containerID string) ([]ContainerShell, error)
-	DescribeContainer(ctx context.Context, name string) (*types.ContainerJSON, error)
-	GetContainer(id string) (types.Container, error)
+	DescribeContainer(ctx context.Context, name string) (*container.InspectResponse, error)
+	GetContainer(id string) (container.Summary, error)
 	GetContainerAppList(name, image, state *string) (*[]model.MyAppList, *[]model.MyAppList)
-	GetContainerByName(name string) (*types.Container, error)
+	GetContainerByName(name string) (*container.Summary, error)
 	GetContainerLog(name string) ([]byte, error)
 	GetContainerStats() []model.DockerStatsModel
 	RecreateContainer(ctx context.Context, id string, pull bool, force bool) error
@@ -73,17 +71,17 @@ type DockerService interface {
 	StopContainer(id string) error
 
 	// network
-	GetNetworkList() []types.NetworkResource
+	GetNetworkList() []network.Summary
 
 	// docker server
-	GetServerInfo() (types.Info, error)
+	GetServerInfo() (system.Info, error)
 }
 
 type dockerService struct{}
 
 // FIXME - should use WebSocket or SocketIO instead of HTTP polling (tiger)
 func getContainerStats() {
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		return
 	}
@@ -92,13 +90,15 @@ func getContainerStats() {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 
-	containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{All: true})
+	list, err := cli.ContainerList(context.Background(), client2.ContainerListOptions{All: true})
 	if err != nil {
 		logger.Error("Failed to get container_list", zap.Any("err", err))
 	}
+	containers := list.Items
 	for i := 0; i < 100; i++ {
 		if i%10 == 0 {
-			containers, err = cli.ContainerList(context.Background(), types.ContainerListOptions{All: true})
+			list, err = cli.ContainerList(context.Background(), client2.ContainerListOptions{All: true})
+			containers = list.Items
 			if err != nil {
 				logger.Error("Failed to get container_list", zap.Any("err", err))
 				continue
@@ -119,9 +119,9 @@ func getContainerStats() {
 				continue
 			}
 			wg.Add(1)
-			go func(v types.Container, i int) {
+			go func(v container.Summary, i int) {
 				defer wg.Done()
-				stats, err := cli.ContainerStatsOneShot(ctx, v.ID)
+				stats, err := cli.ContainerStats(ctx, v.ID, client2.ContainerStatsOptions{})
 				if err != nil {
 					return
 				}
@@ -228,32 +228,30 @@ func (ds *dockerService) CheckContainerHealth(id string) (bool, error) {
 }
 
 // 获取我的应用列表
-func (ds *dockerService) GetContainer(id string) (types.Container, error) {
+func (ds *dockerService) GetContainer(id string) (container.Summary, error) {
 	// 获取docker应用
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		logger.Error("Failed to init client", zap.Any("err", err))
-		return types.Container{}, err
+		return container.Summary{}, err
 	}
 	defer cli.Close()
 
-	filters := filters.NewArgs()
-	filters.Add("id", id)
-	containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{All: true, Filters: filters})
+	list, err := cli.ContainerList(context.Background(), client2.ContainerListOptions{All: true, Filters: make(client2.Filters).Add("id", id)})
 	if err != nil {
 		logger.Error("Failed to get container_list", zap.Any("err", err))
-		return types.Container{}, err
+		return container.Summary{}, err
 	}
 
-	if len(containers) > 0 {
-		return containers[0], nil
+	if len(list.Items) > 0 {
+		return list.Items[0], nil
 	}
-	return types.Container{}, nil
+	return container.Summary{}, nil
 }
 
 // 获取我的应用列表
 func (ds *dockerService) GetContainerAppList(name, image, state *string) (*[]model.MyAppList, *[]model.MyAppList) {
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation(), client2.WithTimeout(time.Second*5))
+	cli, err := client2.New(client2.FromEnv, client2.WithTimeout(time.Second*5))
 	if err != nil {
 		logger.Error("Failed to init client", zap.Any("err", err))
 	}
@@ -262,10 +260,11 @@ func (ds *dockerService) GetContainerAppList(name, image, state *string) (*[]mod
 	// fts.Add("label", "casaos=casaos")
 	// fts.Add("label", "casaos")
 	// fts.Add("casaos", "casaos")
-	containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{All: true})
+	list, err := cli.ContainerList(context.Background(), client2.ContainerListOptions{All: true})
 	if err != nil {
 		logger.Error("Failed to get container_list", zap.Any("err", err))
 	}
+	containers := list.Items
 	// 获取本地数据库应用
 
 	localApps := []model.MyAppList{}
@@ -287,7 +286,7 @@ func (ds *dockerService) GetContainerAppList(name, image, state *string) (*[]mod
 		}
 
 		if state != nil && len(*state) > 0 {
-			if m.State != *state {
+			if string(m.State) != *state {
 				continue
 			}
 		}
@@ -310,7 +309,7 @@ func (ds *dockerService) GetContainerAppList(name, image, state *string) (*[]mod
 			nivaroosApp := model.MyAppList{
 				Name:       name,
 				Icon:       icon,
-				State:      m.State,
+				State:      string(m.State),
 				CustomID:   m.Labels["custom_id"],
 				ID:         m.ID,
 				Port:       m.Labels["web"],
@@ -339,7 +338,7 @@ func (ds *dockerService) GetContainerAppList(name, image, state *string) (*[]mod
 			localApp := model.MyAppList{
 				Name:     name,
 				Icon:     "",
-				State:    m.State,
+				State:    string(m.State),
 				CustomID: m.ID,
 				ID:       m.ID,
 				Port:     "",
@@ -360,7 +359,7 @@ func (ds *dockerService) GetContainerAppList(name, image, state *string) (*[]mod
 // ContainerShellSession is an interactive TTY exec inside a container.
 // Conn is the hijacked stdio stream (write = stdin, read = tty output).
 type ContainerShellSession struct {
-	Conn   types.HijackedResponse
+	Conn   client2.HijackedResponse
 	Shell  string
 	cli    *client2.Client
 	execID string
@@ -380,9 +379,9 @@ func (s *ContainerShellSession) HostPid() int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	info, err := s.cli.ContainerExecInspect(ctx, s.execID)
-	if err == nil && info.Running && info.Pid > 0 {
-		s.pid = info.Pid
+	info, err := s.cli.ExecInspect(ctx, s.execID, client2.ExecInspectOptions{})
+	if err == nil && info.Running && info.PID > 0 {
+		s.pid = info.PID
 	}
 	return s.pid
 }
@@ -402,7 +401,8 @@ func (s *ContainerShellSession) Resize(cols, rows uint16) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return s.cli.ContainerExecResize(ctx, s.execID, types.ResizeOptions{Height: uint(rows), Width: uint(cols)})
+	_, err := s.cli.ExecResize(ctx, s.execID, client2.ExecResizeOptions{Height: uint(rows), Width: uint(cols)})
+	return err
 }
 
 // Close ends the session without typing anything into it: it closes the
@@ -440,7 +440,7 @@ func (s *ContainerShellSession) recordExit() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	code := -1
-	if info, err := s.cli.ContainerExecInspect(ctx, s.execID); err == nil && !info.Running {
+	if info, err := s.cli.ExecInspect(ctx, s.execID, client2.ExecInspectOptions{}); err == nil && !info.Running {
 		code = info.ExitCode
 	}
 	s.mu.Lock()
@@ -453,12 +453,12 @@ func (s *ContainerShellSession) recordExit() {
 func (s *ContainerShellSession) waitExit(ctx context.Context, d time.Duration) (int, string, bool) {
 	deadline := time.Now().Add(d)
 	for {
-		info, err := s.cli.ContainerExecInspect(ctx, s.execID)
+		info, err := s.cli.ExecInspect(ctx, s.execID, client2.ExecInspectOptions{})
 		if err != nil || !info.Running {
 			return 0, "", false
 		}
 		if time.Now().After(deadline) {
-			return info.Pid, info.ContainerID, true
+			return info.PID, info.ContainerID, true
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -497,10 +497,11 @@ var knownShells = []ContainerShell{
 // any image). A symlink counts only if its target exists too - /bin/sh is
 // often a link to busybox or dash.
 func containerHasFile(ctx context.Context, cli *client2.Client, containerID, path string) bool {
-	st, err := cli.ContainerStatPath(ctx, containerID, path)
+	res, err := cli.ContainerStatPath(ctx, containerID, client2.ContainerStatPathOptions{Path: path})
 	if err != nil {
 		return false
 	}
+	st := res.Stat
 	if st.Mode&os.ModeSymlink == 0 {
 		return st.Mode.IsRegular()
 	}
@@ -511,8 +512,8 @@ func containerHasFile(ctx context.Context, cli *client2.Client, containerID, pat
 	if !strings.HasPrefix(target, "/") {
 		target = filepath.Join(filepath.Dir(path), target)
 	}
-	t, err := cli.ContainerStatPath(ctx, containerID, target)
-	return err == nil && (t.Mode.IsRegular() || t.Mode&os.ModeSymlink != 0)
+	t, err := cli.ContainerStatPath(ctx, containerID, client2.ContainerStatPathOptions{Path: target})
+	return err == nil && (t.Stat.Mode.IsRegular() || t.Stat.Mode&os.ModeSymlink != 0)
 }
 
 // availableShells lists the known shells present in the container.
@@ -561,14 +562,14 @@ func chooseShell(shells []ContainerShell, want string) (string, error) {
 
 // ListContainerShells lists the shells a terminal can start in containerID.
 func (ds *dockerService) ListContainerShells(containerID string) ([]ContainerShell, error) {
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		return nil, err
 	}
 	defer cli.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	if _, err := cli.ContainerInspect(ctx, containerID); err != nil {
+	if _, err := cli.ContainerInspect(ctx, containerID, client2.ContainerInspectOptions{}); err != nil {
 		return nil, err
 	}
 	return availableShells(ctx, cli, containerID), nil
@@ -578,7 +579,7 @@ func (ds *dockerService) ListContainerShells(containerID string) ([]ContainerShe
 // at the given size: the shell named shell (see knownShells), or the
 // default one when shell is "".
 func (ds *dockerService) CreateContainerShellSession(containerID, shell string, cols, rows uint16) (*ContainerShellSession, error) {
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		return nil, err
 	}
@@ -591,14 +592,14 @@ func (ds *dockerService) CreateContainerShellSession(containerID, shell string, 
 		cli.Close()
 		return nil, err
 	}
-	size := &[2]uint{uint(rows), uint(cols)}
-	ir, err := cli.ContainerExecCreate(ctx, containerID, types.ExecConfig{
+	size := client2.ConsoleSize{Height: uint(rows), Width: uint(cols)}
+	ir, err := cli.ExecCreate(ctx, containerID, client2.ExecCreateOptions{
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
 		Env:          []string{"TERM=xterm-256color", "COLUMNS=" + strconv.Itoa(int(cols)), "LINES=" + strconv.Itoa(int(rows))},
 		Cmd:          []string{shellPath},
-		Tty:          true,
+		TTY:          true,
 		ConsoleSize:  size,
 	})
 	if err != nil {
@@ -607,13 +608,13 @@ func (ds *dockerService) CreateContainerShellSession(containerID, shell string, 
 	}
 
 	// The attach must outlive this function's timeout context.
-	hr, err := cli.ContainerExecAttach(context.Background(), ir.ID, types.ExecStartCheck{Detach: false, Tty: true, ConsoleSize: size})
+	hr, err := cli.ExecAttach(context.Background(), ir.ID, client2.ExecAttachOptions{TTY: true, ConsoleSize: size})
 	if err != nil {
 		cli.Close()
 		return nil, err
 	}
 
-	s := &ContainerShellSession{Conn: hr, Shell: shellPath, cli: cli, execID: ir.ID, exitCode: -1}
+	s := &ContainerShellSession{Conn: hr.HijackedResponse, Shell: shellPath, cli: cli, execID: ir.ID, exitCode: -1}
 	// Daemons older than API 1.42 ignore ConsoleSize.
 	_ = s.Resize(cols, rows)
 	return s, nil
@@ -632,14 +633,14 @@ func (ds *dockerService) CreateContainer(m model.CustomizationPostData, id strin
 		m.NetworkModel = "bridge"
 	}
 
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		return "", err
 	}
 
 	defer cli.Close()
-	ports := make(nat.PortSet)
-	portMaps := make(nat.PortMap)
+	ports := make(network.PortSet)
+	portMaps := make(network.PortMap)
 
 	for _, portMap := range m.Ports {
 		protocol := strings.ToLower(portMap.Protocol)
@@ -653,10 +654,11 @@ func (ds *dockerService) CreateContainer(m model.CustomizationPostData, id strin
 		protocols := strings.Replace(protocol, "both", "tcp,udp", -1)
 		for _, p := range strings.Split(protocols, ",") {
 			tContainer, _ := strconv.Atoi(portMap.ContainerPort)
-			if tContainer > 0 {
-				ports[nat.Port(portMap.ContainerPort+"/"+p)] = struct{}{}
+			port, err := network.ParsePort(portMap.ContainerPort + "/" + p)
+			if tContainer > 0 && err == nil {
+				ports[port] = struct{}{}
 				if m.NetworkModel != "host" {
-					portMaps[nat.Port(portMap.ContainerPort+"/"+p)] = []nat.PortBinding{{HostPort: portMap.CommendPort}}
+					portMaps[port] = []network.PortBinding{{HostPort: portMap.CommendPort}}
 				}
 			}
 		}
@@ -735,7 +737,7 @@ func (ds *dockerService) CreateContainer(m model.CustomizationPostData, id strin
 	rp := container.RestartPolicy{}
 
 	if len(m.Restart) > 0 {
-		rp.Name = m.Restart
+		rp.Name = container.RestartPolicyMode(m.Restart)
 	}
 	// healthTest := []string{}
 	// if len(port) > 0 {
@@ -752,14 +754,12 @@ func (ds *dockerService) CreateContainer(m model.CustomizationPostData, id strin
 		m.HostName = m.Label
 	}
 
-	info, err := cli.ContainerInspect(context.Background(), id)
+	inspect, err := cli.ContainerInspect(context.Background(), id, client2.ContainerInspectOptions{})
 	hostConfig := &container.HostConfig{}
 	config := &container.Config{}
 	config.Labels = map[string]string{}
 	if err == nil {
-		// info.HostConfig = &container.HostConfig{}
-		// info.Config = &container.Config{}
-		// info.NetworkSettings = &types.NetworkSettings{}
+		info := inspect.Container
 		hostConfig = info.HostConfig
 		config = info.Config
 		if config.Labels["casaos"] == "casaos" {
@@ -803,12 +803,12 @@ func (ds *dockerService) CreateContainer(m model.CustomizationPostData, id strin
 
 	hostConfig.PortBindings = portMaps
 	//}
-	containerDb, err := cli.ContainerCreate(context.Background(),
-		config,
-		hostConfig,
-		&network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{m.NetworkModel: {NetworkID: "", Aliases: []string{}}}},
-		nil,
-		m.ContainerName)
+	containerDb, err := cli.ContainerCreate(context.Background(), client2.ContainerCreateOptions{
+		Config:           config,
+		HostConfig:       hostConfig,
+		NetworkingConfig: &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{m.NetworkModel: {NetworkID: "", Aliases: []string{}}}},
+		Name:             m.ContainerName,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -1048,12 +1048,12 @@ func (ds *dockerService) StopContainer(id string) error {
 // 启动容器
 func (ds *dockerService) StartContainer(name string) error {
 	ctx := context.Background()
-	if cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation()); err == nil {
-		info, err := cli.ContainerInspect(ctx, name)
+	if cli, err := client2.New(client2.FromEnv); err == nil {
+		info, err := cli.ContainerInspect(ctx, name, client2.ContainerInspectOptions{})
 		cli.Close()
 		if err == nil {
-			if mp := DriveWaitingFor(bindSources(info.Mounts)); mp != "" {
-				return errWaitsForDrive(strings.TrimPrefix(info.Name, "/"), mp)
+			if mp := DriveWaitingFor(bindSources(info.Container.Mounts)); mp != "" {
+				return errWaitsForDrive(strings.TrimPrefix(info.Container.Name, "/"), mp)
 			}
 		}
 	}
@@ -1062,13 +1062,13 @@ func (ds *dockerService) StartContainer(name string) error {
 
 // 查看日志
 func (ds *dockerService) GetContainerLog(name string) ([]byte, error) {
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
 		return []byte(""), err
 	}
 	defer cli.Close()
 	// body, err := cli.ContainerAttach(context.Background(), name, types.ContainerAttachOptions{Logs: true, Stream: false, Stdin: false, Stdout: false, Stderr: false})
-	body, err := cli.ContainerLogs(context.Background(), name, types.ContainerLogsOptions{ShowStdout: true, ShowStderr: true})
+	body, err := cli.ContainerLogs(context.Background(), name, client2.ContainerLogsOptions{ShowStdout: true, ShowStderr: true})
 	if err != nil {
 		return []byte(""), err
 	}
@@ -1081,23 +1081,21 @@ func (ds *dockerService) GetContainerLog(name string) ([]byte, error) {
 	return content, nil
 }
 
-func (ds *dockerService) GetContainerByName(name string) (*types.Container, error) {
-	cli, _ := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+func (ds *dockerService) GetContainerByName(name string) (*container.Summary, error) {
+	cli, _ := client2.New(client2.FromEnv)
 	defer cli.Close()
-	filter := filters.NewArgs()
-	filter.Add("name", name)
-	containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{All: true, Filters: filter})
+	list, err := cli.ContainerList(context.Background(), client2.ContainerListOptions{All: true, Filters: make(client2.Filters).Add("name", name)})
 	if err != nil {
-		return &types.Container{}, err
+		return &container.Summary{}, err
 	}
-	if len(containers) == 0 {
-		return &types.Container{}, errors.New("not found")
+	if len(list.Items) == 0 {
+		return &container.Summary{}, errors.New("not found")
 	}
-	return &containers[0], nil
+	return &list.Items[0], nil
 }
 
 // 获取容器详情
-func (ds *dockerService) DescribeContainer(ctx context.Context, nameOrID string) (*types.ContainerJSON, error) {
+func (ds *dockerService) DescribeContainer(ctx context.Context, nameOrID string) (*container.InspectResponse, error) {
 	return docker.Container(ctx, nameOrID)
 }
 
@@ -1110,28 +1108,34 @@ func (ds *dockerService) RenameContainer(name, id string) (err error) {
 }
 
 // 获取网络列表
-func (ds *dockerService) GetNetworkList() []types.NetworkResource {
-	cli, _ := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+func (ds *dockerService) GetNetworkList() []network.Summary {
+	cli, _ := client2.New(client2.FromEnv)
 	defer cli.Close()
-	networks, _ := cli.NetworkList(context.Background(), types.NetworkListOptions{})
-	return networks
+	networks, _ := cli.NetworkList(context.Background(), client2.NetworkListOptions{})
+	return networks.Items
 }
 
-func (ds *dockerService) GetServerInfo() (types.Info, error) {
-	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+func (ds *dockerService) GetServerInfo() (system.Info, error) {
+	cli, err := client2.New(client2.FromEnv)
 	if err != nil {
-		return types.Info{}, err
+		return system.Info{}, err
 	}
 	defer cli.Close()
 
-	return cli.Info(context.Background())
+	info, err := cli.Info(context.Background(), client2.InfoOptions{})
+	return info.Info, err
+}
+
+func inspectContainer(ctx context.Context, cli client2.ContainerAPIClient, nameOrID string) (container.InspectResponse, error) {
+	result, err := cli.ContainerInspect(ctx, nameOrID, client2.ContainerInspectOptions{})
+	return result.Container, err
 }
 
 func NewDockerService() DockerService {
 	return &dockerService{}
 }
 
-func getV1AppStoreID(m *types.Container) uint {
+func getV1AppStoreID(m *container.Summary) uint {
 	if appStoreIDString, ok := m.Labels[common.ContainerLabelV1AppStoreID]; ok {
 		appStoreID, err := strconv.Atoi(appStoreIDString)
 		if err != nil {

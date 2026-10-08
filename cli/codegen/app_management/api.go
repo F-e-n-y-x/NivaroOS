@@ -15,9 +15,9 @@ import (
 
 	"gopkg.in/yaml.v2"
 
-	types "github.com/compose-spec/compose-go/types"
+	compose "github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/compose"
 	"github.com/deepmap/oapi-codegen/pkg/runtime"
-	api "github.com/docker/compose/v2/pkg/api"
+	api "github.com/docker/compose/v5/pkg/api"
 )
 
 const (
@@ -103,7 +103,7 @@ type CategoryInfo struct {
 }
 
 // ComposeApp See [Compose Specification](https://compose-spec.io) for the schema structure of `ComposeApp`.
-type ComposeApp = types.Project
+type ComposeApp = compose.Project
 
 // ComposeAppContainers Schema for `ComposeAppContainersOK` response.
 type ComposeAppContainers struct {
@@ -288,16 +288,22 @@ type WebAppGridItem struct {
 	// - `official`: The app is contributed by the app owner, i.e. `author`` and `developer`` are the same.
 	// - `by_casaos`: The app is contributed by CasaOS team, i.e. `author` is `CasaOS Team`
 	// - `community`: The app is contributed by the community, i.e. any app that is not `official` or `by_casaos`
-	AuthorType     *StoreAppAuthorType `json:"author_type,omitempty"`
-	Hostname       *string             `json:"hostname,omitempty"`
-	Icon           *string             `json:"icon,omitempty"`
-	Image          *string             `json:"image,omitempty"`
-	Index          *string             `json:"index,omitempty"`
-	IsUncontrolled *bool               `json:"is_uncontrolled,omitempty"`
-	Name           *string             `json:"name,omitempty"`
-	Port           *string             `json:"port,omitempty"`
-	Scheme         *Scheme             `json:"scheme,omitempty" yaml:",omitempty"`
-	Status         *string             `json:"status,omitempty"`
+	AuthorType *StoreAppAuthorType `json:"author_type,omitempty"`
+
+	// ExitCode For an exited app, the exit code of its first stopped container (0, 137 or 143 after a normal stop).
+	ExitCode *int `json:"exit_code,omitempty"`
+
+	// Failed The app isn't running because it crashed or keeps restarting (a container exited with an error code, was killed for memory, is restarting or dead) - not because someone stopped it. Absent while the app runs.
+	Failed         *bool   `json:"failed,omitempty"`
+	Hostname       *string `json:"hostname,omitempty"`
+	Icon           *string `json:"icon,omitempty"`
+	Image          *string `json:"image,omitempty"`
+	Index          *string `json:"index,omitempty"`
+	IsUncontrolled *bool   `json:"is_uncontrolled,omitempty"`
+	Name           *string `json:"name,omitempty"`
+	Port           *string `json:"port,omitempty"`
+	Scheme         *Scheme `json:"scheme,omitempty" yaml:",omitempty"`
+	Status         *string `json:"status,omitempty"`
 
 	// StoreAppId Store app ID of the compose app (unique across all app stores)
 	//

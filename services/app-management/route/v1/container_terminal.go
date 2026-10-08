@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/errdefs"
+	"github.com/containerd/errdefs"
 	"github.com/labstack/echo/v5"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/config"

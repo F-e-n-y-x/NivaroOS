@@ -4,8 +4,8 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	"github.com/compose-spec/compose-go/loader"
-	"github.com/compose-spec/compose-go/types"
+	"github.com/compose-spec/compose-go/v2/loader"
+	"github.com/compose-spec/compose-go/v2/types"
 )
 
 type App types.ServiceConfig

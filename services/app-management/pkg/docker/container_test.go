@@ -8,17 +8,16 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/docker"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/random"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/samber/lo"
 	"go.uber.org/goleak"
 	"gotest.tools/v3/assert"
 )
 
-func setupTestContainer(ctx context.Context, t *testing.T) *container.CreateResponse {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+func setupTestContainer(ctx context.Context, t *testing.T) *client.ContainerCreateResult {
+	cli, err := client.New(client.FromEnv)
 	assert.NilError(t, err)
 	defer cli.Close()
 
@@ -33,13 +32,18 @@ func setupTestContainer(ctx context.Context, t *testing.T) *container.CreateResp
 	hostConfig := &container.HostConfig{}
 	networkingConfig := &network.NetworkingConfig{}
 
-	out, err := cli.ImagePull(ctx, imageName, types.ImagePullOptions{})
+	out, err := cli.ImagePull(ctx, imageName, client.ImagePullOptions{})
 	assert.NilError(t, err)
 
 	_, err = io.ReadAll(out)
 	assert.NilError(t, err)
 
-	response, err := cli.ContainerCreate(ctx, config, hostConfig, networkingConfig, nil, "test-"+random.RandomString(4, false))
+	response, err := cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:           config,
+		HostConfig:       hostConfig,
+		NetworkingConfig: networkingConfig,
+		Name:             "test-" + random.RandomString(4, false),
+	})
 	assert.NilError(t, err)
 
 	return &response
@@ -58,7 +62,7 @@ func TestCloneContainer(t *testing.T) {
 		t.Skip("Docker daemon is not running")
 	}
 
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	assert.NilError(t, err)
 	defer cli.Close()
 
@@ -68,7 +72,7 @@ func TestCloneContainer(t *testing.T) {
 	response := setupTestContainer(ctx, t)
 
 	defer func() {
-		err = cli.ContainerRemove(ctx, response.ID, types.ContainerRemoveOptions{})
+		_, err = cli.ContainerRemove(ctx, response.ID, client.ContainerRemoveOptions{})
 		assert.NilError(t, err)
 	}()
 

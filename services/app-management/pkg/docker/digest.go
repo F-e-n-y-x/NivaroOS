@@ -16,10 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/distribution/manifest"
-	"github.com/docker/distribution/manifest/manifestlist"
-	"github.com/docker/distribution/manifest/schema1"
-	"github.com/docker/distribution/manifest/schema2"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -28,6 +24,13 @@ type RegistryCredentials struct {
 	Username string
 	Password string // usually a token rather than an actual password
 }
+
+// Docker (pre-OCI) manifest media types.
+const (
+	MediaTypeManifestList     = "application/vnd.docker.distribution.manifest.list.v2+json"
+	MediaTypeManifest         = "application/vnd.docker.distribution.manifest.v2+json"
+	MediaTypeSignedManifestV1 = "application/vnd.docker.distribution.manifest.v1+prettyjws"
+)
 
 // ContentDigestHeader is the key for the key-value pair containing the digest header
 const ContentDigestHeader = "Docker-Content-Digest"
@@ -132,24 +135,15 @@ func GetManifest(ctx context.Context, imageName string) (interface{}, string, er
 		return nil, "", err
 	}
 
-	var baseManifest manifest.Versioned
-	if err := json.Unmarshal(buf, &baseManifest); err != nil {
-		return nil, contentType, fmt.Errorf("not a manifest content: %w", err)
-	}
-
-	manifest, ok := map[string]interface{}{
-		schema1.MediaTypeSignedManifest:    schema1.SignedManifest{},
-		schema2.MediaTypeManifest:          schema2.Manifest{},
-		manifestlist.MediaTypeManifestList: manifestlist.ManifestList{},
-		v1.MediaTypeImageIndex:             manifestlist.ManifestList{},
-	}[contentType]
-
-	if !ok {
+	switch contentType {
+	case MediaTypeSignedManifestV1, MediaTypeManifest, MediaTypeManifestList, v1.MediaTypeImageIndex:
+	default:
 		return nil, contentType, fmt.Errorf("unknown content type: %s", contentType)
 	}
 
+	var manifest interface{}
 	if err := json.Unmarshal(buf, &manifest); err != nil {
-		return nil, "", err
+		return nil, contentType, fmt.Errorf("not a manifest content: %w", err)
 	}
 
 	return manifest, contentType, nil
@@ -200,7 +194,7 @@ func httpClient() *http.Client {
 func addDefaultHeaders(header *http.Header, token string) {
 	header.Add("Authorization", token)
 	// header.Add("Accept", schema2.MediaTypeManifest)
-	header.Add("Accept", manifestlist.MediaTypeManifestList)
+	header.Add("Accept", MediaTypeManifestList)
 	// header.Add("Accept", schema1.MediaTypeManifest)
 	header.Add("Accept", v1.MediaTypeImageIndex)
 }
