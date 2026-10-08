@@ -37,10 +37,14 @@ import (
 //     programs, no UPnP for the WebUI, no localhost auth bypass).
 //   - external: the user's own qBittorrent. We log in and drive torrents,
 //     but never change its preferences.
+//
+// Auth: a cookie login, then (bundled, qBittorrent 5.2+) its API key for
+// every call - no session to expire. Older versions keep the cookie, and a
+// refused key falls back to a fresh login.
 
 const (
 	qbtUnit    = "nivaroos-torrent.service"
-	qbtBinary  = "/usr/bin/qbittorrent-nox"
+	qbtBinary  = "/opt/nivaroos/qbittorrent/qbittorrent-nox" // install-qbittorrent.sh's link
 	qbtUnitDir = "/usr/lib/systemd/system"
 )
 
@@ -68,6 +72,7 @@ type qbtEngine struct {
 	dataDir          string
 	hc               *http.Client
 	loginMu          sync.Mutex
+	apiKey           string // guarded by loginMu
 }
 
 func newQbtEngine(base, user, pass string, bundled bool, dataDir string) *qbtEngine {
@@ -98,9 +103,27 @@ func (e qbtStatusError) Error() string {
 	return fmt.Sprintf("qBittorrent: HTTP %d", e.code)
 }
 
+func (q *qbtEngine) key() string {
+	q.loginMu.Lock()
+	defer q.loginMu.Unlock()
+	return q.apiKey
+}
+
+func (q *qbtEngine) setKey(k string) {
+	q.loginMu.Lock()
+	q.apiKey = k
+	q.loginMu.Unlock()
+}
+
 func (q *qbtEngine) login(ctx context.Context) error {
 	q.loginMu.Lock()
 	defer q.loginMu.Unlock()
+	if q.bundled && q.pass == "" {
+		// We restarted while the engine kept running: no Start read it yet.
+		if b, err := os.ReadFile(filepath.Join(q.dataDir, "qbt-webui.secret")); err == nil {
+			q.pass = strings.TrimSpace(string(b))
+		}
+	}
 	form := url.Values{"username": {q.user}, "password": {q.pass}}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, q.base+"/api/v2/auth/login", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -111,10 +134,47 @@ func (q *qbtEngine) login(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	if resp.StatusCode != 200 || strings.TrimSpace(string(b)) != "Ok." {
+	// Up to 5.1: 200 "Ok." or 200 "Fails."; 5.2: 204, or 401.
+	if (resp.StatusCode != 200 && resp.StatusCode != 204) || strings.TrimSpace(string(b)) == "Fails." {
 		return errQbtAuth
 	}
+	if q.bundled {
+		q.apiKey = q.fetchAPIKey(ctx)
+	}
 	return nil
+}
+
+// fetchAPIKey returns qBittorrent 5.2+'s API key, creating one if the
+// profile has none; "" on older versions. Runs right after the cookie login.
+func (q *qbtEngine) fetchAPIKey(ctx context.Context) string {
+	get := func(method, path string) []byte {
+		req, _ := http.NewRequestWithContext(ctx, method, q.base+"/api/v2/"+path, nil)
+		req.Header.Set("Referer", q.base)
+		resp, err := q.hc.Do(req)
+		if err != nil {
+			return nil
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			return nil
+		}
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return b
+	}
+	var p struct {
+		Key *string `json:"web_ui_api_key"`
+	}
+	if json.Unmarshal(get(http.MethodGet, "app/preferences"), &p) != nil || p.Key == nil {
+		return ""
+	}
+	if *p.Key != "" {
+		return *p.Key
+	}
+	var r struct {
+		APIKey string `json:"apiKey"`
+	}
+	_ = json.Unmarshal(get(http.MethodPost, "app/rotateAPIKey"), &r)
+	return r.APIKey
 }
 
 // call POSTs (or GETs, with form == nil) an API path, logging in once on 403.
@@ -142,6 +202,10 @@ func (q *qbtEngine) send(ctx context.Context, path string, body func() (io.Reade
 			req.Header.Set("Content-Type", ct)
 		}
 		req.Header.Set("Referer", q.base)
+		key := q.key()
+		if key != "" {
+			req.Header.Set("Authorization", "Bearer "+key)
+		}
 		resp, err := q.hc.Do(req)
 		if err != nil {
 			return nil, err
@@ -149,6 +213,10 @@ func (q *qbtEngine) send(ctx context.Context, path string, body func() (io.Reade
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 		resp.Body.Close()
 		if resp.StatusCode == http.StatusForbidden && attempt == 0 {
+			if key != "" {
+				// Refused key (a sent key also hides the cookie): cookie from here on.
+				q.setKey("")
+			}
 			if err := q.login(ctx); err != nil {
 				return nil, err
 			}

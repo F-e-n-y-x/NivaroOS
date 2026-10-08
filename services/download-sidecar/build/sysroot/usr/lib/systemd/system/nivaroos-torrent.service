@@ -9,7 +9,8 @@ Wants=network-online.target
 # The sidecar writes the profile (WebUI on 127.0.0.1:28646 only, a random
 # password only it knows) and re-applies its settings on every start; only
 # the torrent listening port is reachable from outside.
-ExecStart=/usr/bin/qbittorrent-nox --profile=/var/lib/nivaroos/torrent --confirm-legal-notice
+# A link install-qbittorrent.sh points at the static build or the package.
+ExecStart=/opt/nivaroos/qbittorrent/qbittorrent-nox --profile=/var/lib/nivaroos/torrent --confirm-legal-notice
 StateDirectory=nivaroos/torrent
 StateDirectoryMode=0700
 Environment=HOME=/var/lib/nivaroos/torrent
@@ -29,7 +30,7 @@ TemporaryFileSystem=/var/lib/nivaroos:ro
 BindPaths=/var/lib/nivaroos/torrent
 InaccessiblePaths=-/etc/nivaroos -/run/nivaroos -/var/lib/casaos -/var/log/nivaroos
 NoExecPaths=/
-ExecPaths=/usr/bin/qbittorrent-nox /usr/lib /usr/lib64 /lib /lib64
+ExecPaths=/opt/nivaroos/qbittorrent /usr/bin/qbittorrent-nox /usr/lib /usr/lib64 /lib /lib64
 ProtectHome=true
 PrivateTmp=true
 PrivateDevices=true

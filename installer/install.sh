@@ -59,6 +59,7 @@ WITH_HOST_DESKTOP=""
 WITH_DOWNLOAD_STATION=""
 WITH_DS_BROWSER=yes
 WITH_DS_TORRENT=yes
+DS_TORRENT_BUILD=static
 WITH_BACKUP=""
 FORCE=""
 YES=""
@@ -472,6 +473,8 @@ usage() {
     --without-download-station
     --without-ds-browser          Keep Download Station's browser in Lite mode (no Chromium)
     --without-ds-torrent          No qbittorrent-nox (torrents use the built-in engine)
+    --ds-torrent-distro           qbittorrent-nox from the distro's packages, not the
+                                  official static build (default: static)
     --with-backup                 Backup & Sync (default)
     --without-backup
     --port <port>                 Dashboard port (default: 80, or the next free one)
@@ -498,6 +501,7 @@ parse_args() {
 			--without-download-station) WITH_DOWNLOAD_STATION=no ;;
 			--without-ds-browser) WITH_DS_BROWSER=no ;;
 			--without-ds-torrent) WITH_DS_TORRENT=no ;;
+			--ds-torrent-distro) DS_TORRENT_BUILD=distro ;;
 			--with-backup) WITH_BACKUP=yes ;;
 			--without-backup) WITH_BACKUP=no ;;
 			--force) FORCE=yes ;;
@@ -1419,23 +1423,29 @@ install_download_station() {
 
 		# Torrents: qbittorrent-nox (libtorrent - the fastest engine in our
 		# benchmark) as nivaroos-torrent.service, a sandboxed unit the
-		# sidecar starts only while a torrent is active. Never fails the
-		# install: without the package Download Station uses its built-in
-		# engine. Its profile folder must exist before the sidecar starts
-		# (the sidecar's unit lists it as writable).
+		# sidecar starts only while a torrent is active. The official static
+		# build by default (distros lag behind its security fixes), the
+		# distro package with --ds-torrent-distro or when the static build
+		# can't be had. Never fails the install: without either Download
+		# Station uses its built-in engine. Its profile folder must exist
+		# before the sidecar starts (the sidecar's unit lists it as writable).
 		mkdir -p /var/lib/nivaroos/torrent
 		chmod 700 /var/lib/nivaroos/torrent
 		if [ \"${WITH_DS_TORRENT}\" != \"no\" ]; then
-			if ! command -v qbittorrent-nox >/dev/null 2>&1; then
-				if pkg_install qbittorrent-nox && command -v qbittorrent-nox >/dev/null 2>&1; then
-					mkdir -p /usr/share/nivaroos/torrent
-					echo 'package:qbittorrent-nox' > /usr/share/nivaroos/torrent/installed.txt
-				else
-					echo 'qbittorrent-nox is not packaged for this system - torrents use the built-in engine.'
-				fi
-			fi
+			# The unit first: the script restarts a running engine on the new binary.
 			cp -f \"${SRC_DIR}/services/download-sidecar/build/sysroot/usr/lib/systemd/system/nivaroos-torrent.service\" /usr/lib/systemd/system/nivaroos-torrent.service
 			echo '/usr/lib/systemd/system/nivaroos-torrent.service' >> \"$MANIFEST_FILE\"
+			systemctl daemon-reload >/dev/null 2>&1 || true
+			qbt_script=\"${SRC_DIR}/services/download-sidecar/build/scripts/install-qbittorrent.sh\"
+			if [ \"${DS_TORRENT_BUILD}\" != \"static\" ] || ! bash \"\$qbt_script\" --manifest \"$MANIFEST_FILE\"; then
+				if ! command -v qbittorrent-nox >/dev/null 2>&1; then
+					if pkg_install qbittorrent-nox && command -v qbittorrent-nox >/dev/null 2>&1; then
+						mkdir -p /usr/share/nivaroos/torrent
+						echo 'package:qbittorrent-nox' > /usr/share/nivaroos/torrent/installed.txt
+					fi
+				fi
+				bash \"\$qbt_script\" --distro --manifest \"$MANIFEST_FILE\" || echo 'qbittorrent-nox is not available for this system - torrents use the built-in engine.'
+			fi
 		fi
 
 		# The unit lives in the project (hardened: read-only system, writable

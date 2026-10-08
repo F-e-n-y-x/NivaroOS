@@ -83,6 +83,17 @@ inherited CasaOS history and is not kept up to date.)
 
 ### Security
 
+- Download Station's torrent engine is now the official static
+  qBittorrent-nox build (5.2.4 today, the latest release looked up on
+  every install/update, SHA-256 checked) instead of the distro package
+  (Debian 13 ships 5.1.0, before 5.2.1's SSRF-via-redirect fix). The
+  profile (settings and the torrent list) is backed up to
+  /var/lib/nivaroos/torrent.bak before the version changes, and torrents
+  carry on where they were. `--ds-torrent-distro` keeps the distro
+  package. On qBittorrent 5.2+ Download Station talks to it with an API
+  key instead of a login session (older versions keep the login), and a
+  restart of Download Station while torrents run no longer locks it out
+  of qBittorrent (it logged in with an empty password and got banned).
 - Apps: app management talks to Docker through the current official
   modules (moby/moby client v0.6 and API v1.56, Docker Compose v5.6 SDK
   and compose-go v2) instead of the frozen docker/docker v24 and Compose
