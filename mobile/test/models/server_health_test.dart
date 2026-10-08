@@ -274,4 +274,28 @@ void main() {
       buildHealth(stats: _stats(disks: disks), updates: updates, drives: const [], tailnet: TailnetState.notInstalled).attention.map((a) => a.title),
     );
   });
+
+  test('a drive that failed to mount after a power cut needs attention, with Repair', () {
+    final problems = MountProblem.fromFstabApi({
+      'managed': [
+        {'mount_point': '/DATA/tank', 'mounted': true},
+        {
+          'mount_point': '/DATA/tower',
+          'mounted': false,
+          'problem': {'reason': 'damaged', 'message': "tower couldn't be mounted: its file system is damaged", 'detail': r'$MFTMirr does not match $MFT (record 3).', 'repairable': true},
+        },
+        {'mount_point': '/DATA/usb', 'mounted': false, 'problem': {'reason': 'missing', 'message': "usb isn't connected"}},
+        {'mount_point': '/DATA/blue', 'mounted': false, 'repair': {'running': true}},
+      ],
+    });
+    expect(problems.map((p) => p.name), ['tower', 'usb', 'blue']);
+    final attention = buildHealth(stats: _stats(), updates: _upToDate, apps: _apps, drives: const [], tailnet: TailnetState.notInstalled, mountProblems: problems).attention;
+    final rows = attention.where((a) => a.kind == AttentionKind.driveMount).map((a) => (a.severity, a.title, a.detail)).toList();
+    expect(rows, [
+      (AttentionSeverity.error, "tower couldn't be mounted", 'Tap to repair it'),
+      (AttentionSeverity.warning, "usb isn't connected", 'Apps that use it wait until it is back'),
+      (AttentionSeverity.info, 'Repairing blue', 'Keep the drive connected'),
+    ]);
+    expect(problems.first.repairable && problems.first.detail.contains(r'$MFTMirr'), isTrue);
+  });
 }

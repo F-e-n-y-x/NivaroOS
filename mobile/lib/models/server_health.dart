@@ -14,11 +14,11 @@ import 'dashboard_stats.dart';
 
 enum AttentionSeverity { error, warning, info }
 
-enum AttentionKind { serverUpdate, packages, disk, driveHealth, backup, apps, temperature, memory, tailscale, sharing, downloads }
+enum AttentionKind { serverUpdate, packages, disk, driveHealth, driveMount, backup, apps, temperature, memory, tailscale, sharing, downloads }
 
 /// One row of "Needs attention" (Home and the Server health page).
 class AttentionItem {
-  const AttentionItem({required this.kind, required this.severity, required this.title, required this.detail, this.disk, this.backupJobId = '', this.backupRunId = ''});
+  const AttentionItem({required this.kind, required this.severity, required this.title, required this.detail, this.disk, this.mount, this.backupJobId = '', this.backupRunId = ''});
 
   final AttentionKind kind;
   final AttentionSeverity severity;
@@ -29,6 +29,9 @@ class AttentionItem {
 
   /// For [AttentionKind.disk]: the drive.
   final DiskUsage? disk;
+
+  /// For [AttentionKind.driveMount]: the drive that isn't mounted.
+  final MountProblem? mount;
 
   /// For [AttentionKind.backup]: the job, and the run waiting for a
   /// decision when one is.
@@ -97,6 +100,60 @@ class DriveHealth {
     final list = data is Map ? data['disks'] : null;
     if (list is! List) return const [];
     return list.whereType<Map>().map((e) => DriveHealth.fromJson(Map<String, dynamic>.from(e))).toList();
+  }
+}
+
+/// A drive set to mount at boot that isn't mounted (a power cut left it
+/// dirty or damaged, it isn't connected), or one being repaired: the
+/// `managed` entries of `GET /v1/storage/fstab` with a `problem` or a
+/// `repair`.
+class MountProblem {
+  const MountProblem({
+    required this.mountPoint,
+    this.reason = '',
+    this.message = '',
+    this.detail = '',
+    this.repairable = false,
+    this.repairRunning = false,
+    this.repairMessage = '',
+    this.repairOk = false,
+  });
+
+  final String mountPoint;
+
+  /// missing | dirty | damaged | failed; '' when only a repair is shown.
+  final String reason;
+  final String message;
+  final String detail;
+  final bool repairable;
+  final bool repairRunning;
+  final String repairMessage;
+  final bool repairOk;
+
+  /// "tower" for /DATA/tower.
+  String get name => mountPoint.split('/').lastWhere((p) => p.isNotEmpty, orElse: () => mountPoint);
+
+  bool get hasProblem => reason.isNotEmpty;
+
+  static List<MountProblem> fromFstabApi(Object? data) {
+    final list = data is Map ? data['managed'] : null;
+    if (list is! List) return const [];
+    final out = <MountProblem>[];
+    for (final e in list.whereType<Map>()) {
+      final p = e['problem'], r = e['repair'];
+      if (p is! Map && !(r is Map && r['running'] == true)) continue;
+      out.add(MountProblem(
+        mountPoint: e['mount_point']?.toString() ?? '',
+        reason: p is Map ? p['reason']?.toString() ?? 'failed' : '',
+        message: p is Map ? p['message']?.toString() ?? '' : '',
+        detail: p is Map ? p['detail']?.toString() ?? '' : '',
+        repairable: p is Map && p['repairable'] == true,
+        repairRunning: r is Map && r['running'] == true,
+        repairMessage: r is Map ? r['message']?.toString() ?? '' : '',
+        repairOk: r is Map && r['ok'] == true,
+      ));
+    }
+    return out;
   }
 }
 
@@ -169,6 +226,7 @@ ServerHealth buildHealth({
   String tailnetIp = '',
   SharingBrief? sharing,
   int failedDownloads = 0,
+  List<MountProblem> mountProblems = const [],
 }) {
   final items = <AttentionItem>[];
   final fine = <HealthCheck>[];
@@ -270,6 +328,22 @@ ServerHealth buildHealth({
           notChecked(HealthArea.driveHealth, name ?? d.label, d.sleeping ? 'Asleep · Health is checked when it wakes up' : 'Health unknown');
       }
     }
+  }
+
+  // Drives that should be mounted but aren't: apps that keep files on
+  // them are held until they are.
+  for (final m in mountProblems) {
+    items.add(AttentionItem(
+      kind: AttentionKind.driveMount,
+      severity: m.repairRunning ? AttentionSeverity.info : (m.reason == 'missing' ? AttentionSeverity.warning : AttentionSeverity.error),
+      title: m.repairRunning
+          ? 'Repairing ${m.name}'
+          : m.reason == 'missing'
+              ? "${m.name} isn't connected"
+              : "${m.name} couldn't be mounted",
+      detail: m.repairRunning ? 'Keep the drive connected' : (m.repairable ? 'Tap to repair it' : 'Apps that use it wait until it is back'),
+      mount: m,
+    ));
   }
 
   // Backups.

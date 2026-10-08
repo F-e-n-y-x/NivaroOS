@@ -74,7 +74,32 @@ mount_ntfs() {
     fi
     echo "ntfs3 could not mount $1 (dirty or hibernated volume?) - using ntfs-3g" | logger -t usb-mount.sh 2>/dev/null
   fi
-  ntfs-3g "$1" "$2"
+  mount_ntfs3g "$1" "$2" ""
+}
+
+# mount_ntfs3g <device> <mount point> <fstab options>: ntfs-3g, which mounts
+# a volume ntfs3 refuses as dirty (power cut, unplugged without ejecting).
+# Only the options ntfs-3g knows are passed on (an ntfs3 line's prealloc or
+# iocharset makes it fail). It runs in its own scope: the FUSE daemon must
+# not live in the caller's cgroup, or restarting local-storage would kill it
+# and drop the drive.
+mount_ntfs3g() {
+  if [ ! -b "$1" ] || [ -z "$2" ]; then
+    echo "usage: mount_ntfs3g <block device> <mount point> [options]"
+    return 1
+  fi
+  opts=""
+  for o in $(printf '%s' "$3" | tr ',' ' '); do
+    case "$o" in
+    ro|rw|noatime|relatime|uid=*|gid=*|umask=*|fmask=*|dmask=*) opts="${opts:+$opts,}$o" ;;
+    esac
+  done
+  set -- "$1" "$2" ${opts:+-o "$opts"}
+  if command -v systemd-run >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+    systemd-run --scope --quiet -- ntfs-3g "$@"
+  else
+    ntfs-3g "$@"
+  fi
 }
 
 # Usage (from local-storage, args passed separately - never via bash -c):
@@ -196,7 +221,7 @@ GetDeviceTree(){
 # `source ...; func` style) still just defines the functions.
 if [ "${BASH_SOURCE[0]}" = "$0" ] && [ $# -gt 0 ]; then
   case "$1" in
-  do_mount|USB_Start_Auto|USB_Stop_Auto)
+  do_mount|mount_ntfs3g|USB_Start_Auto|USB_Stop_Auto)
     fn="$1"
     shift
     "$fn" "$@"

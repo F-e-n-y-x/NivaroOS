@@ -80,6 +80,9 @@ func init() {
 	service.Cache = cache.Init()
 
 	service.MyService.Disk().CheckSerialDiskMount()
+	// Before Docker starts (this unit is Before=docker.service): mount the
+	// drives whose boot mount failed, so apps don't start on empty folders.
+	service.MyService.Disk().RetryFstabMounts()
 
 	if strings.ToLower(config.ServerInfo.EnableMergerFS) == "true" {
 		if !merge.IsMergerFSInstalled() {
@@ -237,6 +240,13 @@ func main() {
 	} else if response.StatusCode() != http.StatusOK {
 		logger.Error("error when trying to register storage job event types", zap.String("status", response.Status()))
 	}
+
+	if response, err := service.MyService.MessageBus().RegisterEventTypesWithResponse(ctx, common.DriveEventTypes()); err != nil {
+		logger.Error("error when trying to register drive event types", zap.Error(err))
+	} else if response.StatusCode() != http.StatusOK {
+		logger.Error("error when trying to register drive event types", zap.String("status", response.Status()))
+	}
+	service.MyService.Disk().StartDriveProblemWatcher(ctx)
 
 	service.MyService.Disk().InitCheck()
 	v1Router := route.InitV1Router()

@@ -124,6 +124,9 @@ func main() {
 		}
 	}
 
+	// apps whose folders are on a drive that isn't mounted wait for it
+	service.StartDriveGuard(ctx)
+
 	// setup listener
 	listener, err := net.Listen("tcp", net.JoinHostPort(common.Localhost, "0"))
 	if err != nil {

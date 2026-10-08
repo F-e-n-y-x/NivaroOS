@@ -20,6 +20,28 @@ type FstabMount struct {
 	DriveLabel  string `json:"drive_label,omitempty"`
 	DrivePath   string `json:"drive_path,omitempty"`
 	Size        uint64 `json:"size,omitempty"`
+	// Problem: why a drive that should be mounted isn't (nil when fine).
+	Problem *DriveProblem `json:"problem,omitempty"`
+	// Repair: the last Repair drive run on it since local-storage started.
+	Repair *DriveRepair `json:"repair,omitempty"`
+}
+
+// DriveProblem: a drive set to mount at boot that isn't mounted, and why,
+// in plain words.
+type DriveProblem struct {
+	Reason     string `json:"reason"`           // missing | dirty | damaged | failed
+	Message    string `json:"message"`          // "tower couldn't be mounted after an unclean shutdown ..."
+	Detail     string `json:"detail,omitempty"` // the tool's or kernel's own words
+	Repairable bool   `json:"repairable"`       // Repair drive can fix it
+}
+
+// DriveRepair: a Repair drive run.
+type DriveRepair struct {
+	Running    bool   `json:"running"`
+	OK         bool   `json:"ok"`
+	Message    string `json:"message,omitempty"` // outcome, plain words
+	Output     string `json:"output,omitempty"`  // the tools' output (tail)
+	FinishedAt int64  `json:"finished_at,omitempty"`
 }
 
 // FstabCandidate is an already-formatted partition the fstab UI can offer to add: not

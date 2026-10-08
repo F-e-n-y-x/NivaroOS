@@ -3475,5 +3475,13 @@
   "Working": "Working",
   "Not working": "Not working",
   "Not contacted yet": "Not contacted yet",
-  "Disabled": "Disabled"
+  "Disabled": "Disabled",
+  "Couldn't Mount": "Couldn't Mount",
+  "Repairing {name}. This can take a while - keep the drive connected.": "Repairing {name}. This can take a while - keep the drive connected.",
+  "Repair output": "Repair output",
+  "Repair drive": "Repair drive",
+  "Repair {name}?": "Repair {name}?",
+  "NivaroOS runs ntfsfix on {path}: it fixes the usual damage a power cut leaves and clears the \"needs a check\" mark, then mounts the drive. Use it only if the drive is not in use on another computer. For a full check, run chkdsk /f on Windows.": "NivaroOS runs ntfsfix on {path}: it fixes the usual damage a power cut leaves and clears the \"needs a check\" mark, then mounts the drive. Use it only if the drive is not in use on another computer. For a full check, run chkdsk /f on Windows.",
+  "NivaroOS runs e2fsck -y on {path} and mounts the drive afterwards. It fixes what it finds; on a large drive this can take a long time.": "NivaroOS runs e2fsck -y on {path} and mounts the drive afterwards. It fixes what it finds; on a large drive this can take a long time.",
+  "Failed to start the repair": "Failed to start the repair"
 }

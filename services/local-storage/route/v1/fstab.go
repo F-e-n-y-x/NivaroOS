@@ -1,7 +1,10 @@
 package v1
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
@@ -205,3 +208,76 @@ func PostFstabAdoptAction(c *gin.Context) {
 	c.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: mount})
 }
 
+
+// POST /v1/storage/fstab/repair - admin only: repair an unmounted drive's
+// file system (ntfsfix / e2fsck) in the background, then mount it. The
+// entry's "repair" field in GET /v1/storage/fstab shows how it went.
+func PostFstabRepairAction(c *gin.Context) {
+	if !requestIsAdmin(c) {
+		c.JSON(http.StatusForbidden, model.Result{Success: common_err.ERROR_AUTH_TOKEN, Message: "Only an administrator can repair a drive."})
+		return
+	}
+	var req fstabActionRequest
+	_ = c.ShouldBindJSON(&req)
+	if req.MountPoint == "" {
+		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
+		return
+	}
+	if err := service.MyService.Disk().RepairFstabDrive(req.MountPoint); err != nil {
+		fstabError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
+}
+
+// requestIsAdmin: same rule as core, Backup & Sync, Download Station and
+// Fans. Today's tokens carry no role (every account is the owner), so no
+// role claim means admin; once a role/roles claim exists it must say
+// admin/administrator/owner. ginJWT has already verified the token.
+func requestIsAdmin(c *gin.Context) bool {
+	token := c.GetHeader("Authorization")
+	if token == "" {
+		token = c.Query("token")
+	}
+	parts := strings.Split(strings.TrimSpace(strings.TrimPrefix(token, "Bearer ")), ".")
+	if len(parts) != 3 {
+		return false
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return false
+	}
+	var claims map[string]interface{}
+	if json.Unmarshal(raw, &claims) != nil {
+		return false
+	}
+	isAdmin := func(v interface{}) bool {
+		s, ok := v.(string)
+		s = strings.ToLower(strings.TrimSpace(s))
+		return ok && (s == "admin" || s == "administrator" || s == "owner")
+	}
+	checked := false
+	for _, key := range []string{"role", "roles"} {
+		v, ok := claims[key]
+		if !ok || v == nil {
+			continue
+		}
+		checked = true
+		switch t := v.(type) {
+		case string:
+			if isAdmin(t) {
+				return true
+			}
+		case []interface{}:
+			for _, x := range t {
+				if isAdmin(x) {
+					return true
+				}
+			}
+		}
+	}
+	if b, ok := claims["is_admin"].(bool); ok {
+		return b
+	}
+	return !checked
+}

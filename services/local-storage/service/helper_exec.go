@@ -11,7 +11,7 @@ import (
 
 // helperFunctions: the local-storage-helper.sh functions Go may call; the
 // script's own dispatcher has the same allow-list.
-var helperFunctions = map[string]bool{"do_mount": true, "USB_Start_Auto": true, "USB_Stop_Auto": true}
+var helperFunctions = map[string]bool{"do_mount": true, "mount_ntfs3g": true, "USB_Start_Auto": true, "USB_Stop_Auto": true}
 
 // HelperCommand builds `bash <ShellPath>/local-storage-helper.sh <fn> <args...>`
 // - every argument its own argv entry, never a shell string.

@@ -81,6 +81,9 @@ class HomeController extends ChangeNotifier {
   /// Each drive's own health; null when the drive list couldn't be read.
   List<DriveHealth>? drives;
 
+  /// Drives that should be mounted but aren't (or are being repaired).
+  List<MountProblem> mountProblems = const [];
+
   /// The server's Tailscale; null when it couldn't be asked.
   TailnetState? tailnet;
   String tailnetIp = '';
@@ -139,6 +142,7 @@ class HomeController extends ChangeNotifier {
         tailnetIp: tailnetIp,
         sharing: sharing,
         failedDownloads: failedDownloads,
+        mountProblems: mountProblems,
       );
 
   List<AttentionItem> get attention => health.attention;
@@ -308,6 +312,7 @@ class HomeController extends ChangeNotifier {
       _loadApps(),
       _loadVms(),
       _loadDrives(),
+      loadMountProblems(),
       _loadTailscale(),
       _loadSharing(),
       _loadDownloads(),
@@ -407,6 +412,24 @@ class HomeController extends ChangeNotifier {
     } catch (_) {
       drives = null;
     }
+  }
+
+  Future<void> loadMountProblems() async {
+    try {
+      final res = await _api.get('/storage/fstab');
+      mountProblems = MountProblem.fromFstabApi(res['data']);
+    } catch (_) {
+      // Older server, or not reachable: nothing known to be wrong.
+      mountProblems = const [];
+    }
+    _notify();
+  }
+
+  /// Admin only (the server says so otherwise): repairs a drive that
+  /// isn't mounted, in the background, then mounts it.
+  Future<void> repairDrive(String mountPoint) async {
+    await _api.post('/storage/fstab/repair', body: {'mount_point': mountPoint});
+    await loadMountProblems();
   }
 
   Future<void> _loadTailscale() async {

@@ -46,6 +46,7 @@ IconData _kindIcon(AttentionKind kind) => switch (kind) {
       AttentionKind.serverUpdate || AttentionKind.packages => Icons.update_outlined,
       AttentionKind.disk => Icons.storage_outlined,
       AttentionKind.driveHealth => Icons.monitor_heart_outlined,
+      AttentionKind.driveMount => Icons.report_problem_outlined,
       AttentionKind.backup => Icons.backup_outlined,
       AttentionKind.apps => Icons.apps_outlined,
       AttentionKind.temperature => Icons.thermostat_outlined,
@@ -78,6 +79,7 @@ class HealthActions {
   static String hint(AttentionKind kind) => switch (kind) {
         AttentionKind.serverUpdate || AttentionKind.packages => 'open updates',
         AttentionKind.disk || AttentionKind.driveHealth => 'open storage',
+        AttentionKind.driveMount => 'show what happened',
         AttentionKind.backup => 'open the backup',
         AttentionKind.apps => 'open apps',
         AttentionKind.temperature => 'open processor',
@@ -104,6 +106,9 @@ class HealthActions {
       case AttentionKind.disk:
       case AttentionKind.driveHealth:
         await _push(context, StorageDetailScreen(live: c.live, onRetry: c.refreshLive, onOpenFiles: onOpenFiles));
+      case AttentionKind.driveMount:
+        final m = a.mount;
+        if (m != null) await _showMountProblem(context, m);
       case AttentionKind.temperature:
         await _push(context, CpuDetailScreen(live: c.live, onRetry: c.refreshLive, history: c.history));
       case AttentionKind.memory:
@@ -129,6 +134,50 @@ class HealthActions {
       case AttentionKind.downloads:
         await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DownloadStationScreen(initialFilter: DsFilter.failed)));
         await c.refreshAll();
+    }
+  }
+
+  // What happened to the drive, in the server's words, and Repair drive
+  // when it can be repaired. Never automatic: the tools write to it.
+  Future<void> _showMountProblem(BuildContext context, MountProblem m) async {
+    final repair = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(m.repairRunning ? 'Repairing ${m.name}' : m.name),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(m.repairRunning ? 'This can take a while. Keep the drive connected.' : m.message),
+            if (m.detail.isNotEmpty && !m.repairRunning) ...[
+              const SizedBox(height: Space.sm),
+              Text(m.detail, style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace')),
+            ],
+            if (m.repairMessage.isNotEmpty && !m.repairRunning) ...[
+              const SizedBox(height: Space.sm),
+              Text(m.repairMessage),
+            ],
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Close')),
+          if (m.repairable && !m.repairRunning) FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Repair drive')),
+        ],
+      ),
+    );
+    if (repair != true || !context.mounted) return;
+    final ok = await ConfirmDialog.confirm(
+      context,
+      title: 'Repair ${m.name}?',
+      message: 'The server checks and fixes its file system (ntfsfix for NTFS, e2fsck for Linux drives), then mounts it. '
+          'Use it only if the drive is not in use on another computer.',
+      confirmLabel: 'Repair',
+    );
+    if (!ok || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await controller.repairDrive(m.mountPoint);
+      messenger.showSnackBar(SnackBar(content: Text('Repairing ${m.name}. You get a notification when it is done.')));
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 }

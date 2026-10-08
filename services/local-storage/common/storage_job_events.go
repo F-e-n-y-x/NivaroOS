@@ -31,3 +31,17 @@ func StorageJobEventTypes() []message_bus.EventType {
 	}
 	return out
 }
+
+// DriveNotifyEvent: a drive that should be mounted isn't, or a repair
+// finished - a notification (the message bus stores ":notify" events
+// with a title in the feed).
+const DriveNotifyEvent = "local-storage:drive:notify"
+
+// DriveEventTypes are registered with the message bus at startup.
+func DriveEventTypes() []message_bus.EventType {
+	props := []message_bus.PropertyType{}
+	for _, n := range []string{"title", "message", "level", "category", "args", "action"} {
+		props = append(props, message_bus.PropertyType{Name: n})
+	}
+	return []message_bus.EventType{{SourceID: ServiceName, Name: DriveNotifyEvent, PropertyTypeList: props}}
+}

@@ -34,7 +34,7 @@
 
 			<!-- Managed Drives Card Grid -->
 			<div v-if="mounts.length" class="mount-cards-grid">
-				<div v-for="m in mounts" :key="m.mount_point" class="mount-card" :class="{ 'is-unmounted': !m.mounted, 'is-disabled': !m.enabled, 'is-missing': isDeviceMissing(m) }">
+				<div v-for="m in mounts" :key="m.mount_point" class="mount-card" :class="{ 'is-unmounted': !m.mounted, 'is-disabled': !m.enabled, 'is-missing': isDeviceMissing(m) || !!m.problem }">
 					<!-- Card Header -->
 					<div class="mount-card-header">
 						<div class="drive-icon-wrap" :class="getDriveIconClass(m.fstype)">
@@ -55,6 +55,10 @@
 							<span v-if="isDeviceMissing(m)" class="status-pill is-missing" :title="$t('This drive is not currently connected. If you replaced or reformatted it, remove this entry and mount the new drive.')">
 								<span class="status-dot is-bad"></span>
 								{{ $t('Not Detected') }}
+							</span>
+							<span v-else-if="m.problem" class="status-pill is-missing">
+								<span class="status-dot is-bad"></span>
+								{{ $t("Couldn't Mount") }}
 							</span>
 							<span v-else class="status-pill" :class="m.mounted ? 'is-mounted' : 'is-unmounted'">
 								<span class="status-dot" :class="{ 'is-good': m.mounted }"></span>
@@ -86,6 +90,31 @@
 							<span v-else class="spec-item is-success">
 								<i class="mdi mdi-power-cycle mr-1"></i>{{ $t('Auto-mount at Boot') }}
 							</span>
+						</div>
+
+						<!-- Should be mounted but isn't (power cut, unplugged), or a repair -->
+						<div v-if="m.problem || m.repair" class="drive-problem" :class="problemClass(m)" role="status">
+							<i class="mdi" :class="m.repair && m.repair.running ? 'mdi-loading mdi-spin' : (m.problem ? 'mdi-alert-circle-outline' : (m.repair.ok ? 'mdi-check-circle-outline' : 'mdi-alert-circle-outline'))"></i>
+							<div class="drive-problem-body">
+								<p v-if="m.repair && m.repair.running">{{ $t('Repairing {name}. This can take a while - keep the drive connected.', { name: driveName(m) }) }}</p>
+								<p v-else-if="m.problem">{{ m.problem.message }}</p>
+								<p v-if="m.repair && !m.repair.running && m.repair.message">{{ m.repair.message }}</p>
+								<p v-if="m.problem && m.problem.detail && !(m.repair && m.repair.running)" class="drive-problem-detail"><code>{{ m.problem.detail }}</code></p>
+								<details v-if="m.repair && m.repair.output && !m.repair.running" class="drive-problem-output">
+									<summary>{{ $t('Repair output') }}</summary>
+									<pre>{{ m.repair.output }}</pre>
+								</details>
+								<button
+									v-if="m.problem && m.problem.repairable && !(m.repair && m.repair.running)"
+									class="action-btn is-danger-light mt-2"
+									type="button"
+									:disabled="actionBusy === m.mount_point"
+									@click="confirmRepair(m)"
+								>
+									<i class="mdi" :class="actionBusy === m.mount_point ? 'mdi-loading mdi-spin' : 'mdi-wrench-outline'"></i>
+									<span>{{ $t('Repair drive') }}</span>
+								</button>
+							</div>
 						</div>
 
 						<div v-if="m.options" class="options-preview one-line" :title="m.options">
@@ -562,7 +591,8 @@ export default {
 			loadingMounts: false,
 			loadingCandidates: false,
 			formError: '',
-			error: ''
+			error: '',
+			repairPoll: null
 		}
 	},
 	computed: {
@@ -576,6 +606,7 @@ export default {
 	},
 	beforeDestroy() {
 		this.$EventBus.$off(events.STORAGE_CHANGED, this.refresh)
+		clearTimeout(this.repairPoll)
 	},
 	methods: {
 		formatSize,
@@ -647,6 +678,11 @@ export default {
 				if (res.data.success === 200) {
 					this.mounts = (res.data.data && res.data.data.managed) || []
 					this.systemEntries = (res.data.data && res.data.data.system) || []
+					// A repair runs in the background: follow it until it ends.
+					clearTimeout(this.repairPoll)
+					if (this.mounts.some(m => m.repair && m.repair.running)) {
+						this.repairPoll = setTimeout(this.refresh, 3000)
+					}
 				}
 			}).catch(() => {
 				this.error = this.$t('Failed to load persistent mounts')
@@ -778,6 +814,38 @@ export default {
 				this.$buefy.toast.open({ message: escapeHtml(msg), type: 'is-danger' })
 			}).finally(() => {
 				this.actionBusy = null
+			})
+		},
+		driveName(m) {
+			return m.mount_point.split('/').pop() || m.mount_point
+		},
+		problemClass(m) {
+			if (m.repair && m.repair.running) return 'is-busy'
+			if (!m.problem && m.repair && m.repair.ok) return 'is-good'
+			return m.problem && m.problem.reason === 'missing' ? 'is-warn' : 'is-bad'
+		},
+		// Never automatic: the tools write to the drive, so an admin decides.
+		confirmRepair(m) {
+			const ntfs = (m.fstype || '').toLowerCase().startsWith('ntfs')
+			this.confirmWindow({
+				title: this.$t('Repair {name}?', { name: this.driveName(m) }),
+				message: escapeHtml(ntfs
+					? this.$t('NivaroOS runs ntfsfix on {path}: it fixes the usual damage a power cut leaves and clears the "needs a check" mark, then mounts the drive. Use it only if the drive is not in use on another computer. For a full check, run chkdsk /f on Windows.', { path: m.drive_path || m.source })
+					: this.$t('NivaroOS runs e2fsck -y on {path} and mounts the drive afterwards. It fixes what it finds; on a large drive this can take a long time.', { path: m.drive_path || m.source })),
+				type: 'is-warning',
+				confirmText: this.$t('Repair drive'),
+				cancelText: this.$t('Cancel'),
+				onConfirm: () => {
+					this.actionBusy = m.mount_point
+					this.$api.fstab.repair(m.mount_point).then(() => {
+						this.refresh()
+					}).catch(e => {
+						const msg = (e.response && e.response.data && e.response.data.message) || this.$t('Failed to start the repair')
+						this.$buefy.toast.open({ message: escapeHtml(msg), type: 'is-danger' })
+					}).finally(() => {
+						this.actionBusy = null
+					})
+				}
 			})
 		},
 		adoptEntry(e) {
@@ -1033,6 +1101,66 @@ export default {
 
 .mount-status-badges {
 	flex-shrink: 0;
+}
+
+.drive-problem {
+	display: flex;
+	gap: var(--space-2);
+	align-items: flex-start;
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-control);
+	font-size: var(--font-xs);
+	line-height: 1.45;
+	> .mdi {
+		font-size: var(--font-base);
+		line-height: 1.2;
+	}
+	&.is-bad {
+		background: var(--theme-danger-soft, rgba(239, 68, 68, 0.08));
+		color: var(--color-danger-fg, #b91c1c);
+	}
+	&.is-warn {
+		background: var(--theme-warning-soft, rgba(245, 158, 11, 0.1));
+		color: var(--color-warning-fg, #92400e);
+	}
+	&.is-busy {
+		background: var(--color-primary-soft, rgba(50, 115, 220, 0.1));
+		color: var(--color-primary-fg);
+	}
+	&.is-good {
+		background: var(--theme-success-soft, rgba(35, 209, 96, 0.1));
+		color: var(--color-success-fg);
+	}
+	p + p {
+		margin-top: var(--space-1);
+	}
+}
+
+.drive-problem-body {
+	min-width: 0;
+	flex: 1;
+}
+
+.drive-problem-detail code,
+.drive-problem-output pre {
+	font-size: var(--font-2xs);
+	white-space: pre-wrap;
+	word-break: break-word;
+	background: transparent;
+	color: inherit;
+	padding: 0;
+}
+
+.drive-problem-output {
+	margin-top: var(--space-1);
+	summary {
+		cursor: pointer;
+	}
+	pre {
+		max-height: 12rem;
+		overflow: auto;
+		margin-top: var(--space-1);
+	}
 }
 
 .status-pill {

@@ -308,6 +308,7 @@ func (d *diskService) ListFstabMounts() ([]model.FstabMount, error) {
 		}
 		result = append(result, buildFstabMountView(e, blkList, activeMounts))
 	}
+	attachDriveState(result, entries, blkList)
 
 	return result, nil
 }
@@ -715,15 +716,36 @@ func (d *diskService) MountFstabEntry(mountPoint string) error {
 		return fmt.Errorf("could not create mount point directory: %w", err)
 	}
 
-	fstypeArg, optionsArg := entry.FSType, entry.Options
-	if err := mount.Mount(entry.Source, entry.MountPoint, &fstypeArg, &optionsArg); err != nil {
+	if err := d.mountEntry(entry); err != nil {
+		setMountErr(mountPoint, err.Error())
 		return newFstabError(common_err.FSTAB_TEST_MOUNT_FAILED, err.Error())
 	}
-	if err := verifyMounted(entry.MountPoint); err != nil {
-		return newFstabError(common_err.FSTAB_TEST_MOUNT_FAILED, err.Error())
-	}
-
+	setMountErr(mountPoint, "")
 	return nil
+}
+
+// mountEntry mounts entry as fstab says; an NTFS drive the kernel's ntfs3
+// refuses (dirty after a power cut or an unplug) goes through ntfs-3g, as
+// USB drives do (local-storage-helper.sh mount_ntfs).
+func (d *diskService) mountEntry(entry *fstab.Entry) error {
+	fstypeArg, optionsArg := entry.FSType, entry.Options
+	err := mount.Mount(entry.Source, entry.MountPoint, &fstypeArg, &optionsArg)
+	if err == nil {
+		err = verifyMounted(entry.MountPoint)
+	}
+	if err == nil {
+		return nil
+	}
+	blk := findBlockDeviceByUUID(d.LSBLK(false), extractUUID(entry.Source))
+	if entry.FSType != "ntfs3" || blk == nil {
+		return err
+	}
+	out, err2 := RunHelper("mount_ntfs3g", blk.Path, entry.MountPoint, entry.Options)
+	if err2 != nil {
+		return fmt.Errorf("%v; ntfs-3g: %s", err, strings.TrimSpace(out))
+	}
+	logger.Info("ntfs3 refused the drive, mounted it with ntfs-3g", zap.String("mountPoint", entry.MountPoint), zap.NamedError("ntfs3", err))
+	return verifyMounted(entry.MountPoint)
 }
 
 // UmountFstabEntry unmounts an active fstab entry.
@@ -740,7 +762,7 @@ func (d *diskService) UmountFstabEntry(mountPoint string) error {
 	if err := mount.UmountByMountPoint(mountPoint); err != nil {
 		return fmt.Errorf("could not unmount %s: %w", mountPoint, err)
 	}
-
+	setMountErr(mountPoint, "")
 	return nil
 }
 

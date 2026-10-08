@@ -102,6 +102,7 @@ var EventTypes = []message_bus.EventType{
 	EventTypeAppStartBegin, EventTypeAppStartEnd, EventTypeAppStartError,
 	EventTypeAppStopBegin, EventTypeAppStopEnd, EventTypeAppStopError,
 	EventTypeAppRestartBegin, EventTypeAppRestartEnd, EventTypeAppRestartError,
+	EventTypeAppNotify,
 
 	// image
 	EventTypeImagePullBegin, EventTypeImagePullProgress, EventTypeImagePullEnd, EventTypeImagePullError,
@@ -516,3 +517,14 @@ var (
 		},
 	}
 )
+
+// EventTypeAppNotify is a notification for the feed (the message bus
+// stores ":notify" events that carry a title): an app held because its
+// drive isn't mounted, or started again once it is.
+var EventTypeAppNotify = message_bus.EventType{
+	SourceID: AppManagementServiceName,
+	Name:     "app:notify",
+	PropertyTypeList: []message_bus.PropertyType{
+		{Name: "title"}, {Name: "message"}, {Name: "level"}, {Name: "category"}, {Name: "action"},
+	},
+}

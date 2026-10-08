@@ -7,6 +7,17 @@ inherited CasaOS history and is not kept up to date.)
 
 ### Added
 
+- Drives that don't mount after a power cut. A NivaroOS drive set to
+  mount at boot that isn't mounted (left dirty or damaged by a power cut,
+  or not connected) is shown in Settings > Storage and in the app's
+  Server health with the cause in plain words, and sent as a
+  notification. NTFS drives the kernel driver refuses as dirty are
+  mounted through ntfs-3g automatically; anything else gets a Repair
+  drive button (admin, never automatic: ntfsfix for NTFS, e2fsck for
+  ext2-4), which mounts the drive afterwards. Apps whose folders are on
+  a drive that isn't mounted no longer start on empty folders on the
+  system disk: they wait ("Immich waits for drive tower") and start again
+  by themselves once the drive is mounted.
 - Trash for network shares, cloud drives and phones (web and app).
   Deleting on an SMB/NFS/SSHFS share or a cloud drive that can move files
   on its servers (WebDAV, Dropbox, local-style remotes...) moves it to a

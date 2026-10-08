@@ -90,6 +90,10 @@ type DiskService interface {
 	MountFstabEntry(mountPoint string) error
 	UmountFstabEntry(mountPoint string) error
 	AdoptFstabEntry(mountPoint string) (*model.FstabMount, error)
+	// Drives that should be mounted but aren't (drive_problem.go).
+	RetryFstabMounts()
+	StartDriveProblemWatcher(ctx context.Context)
+	RepairFstabDrive(mountPoint string) error
 }
 
 type diskService struct {

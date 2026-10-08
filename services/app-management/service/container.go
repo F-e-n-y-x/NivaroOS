@@ -1048,6 +1048,15 @@ func (ds *dockerService) StopContainer(id string) error {
 // 启动容器
 func (ds *dockerService) StartContainer(name string) error {
 	ctx := context.Background()
+	if cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation()); err == nil {
+		info, err := cli.ContainerInspect(ctx, name)
+		cli.Close()
+		if err == nil {
+			if mp := DriveWaitingFor(bindSources(info.Mounts)); mp != "" {
+				return errWaitsForDrive(strings.TrimPrefix(info.Name, "/"), mp)
+			}
+		}
+	}
 	return docker.StartContainer(ctx, name)
 }
 

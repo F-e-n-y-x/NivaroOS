@@ -559,6 +559,12 @@ func bindSourceToCreate(volume types.ServiceVolumeConfig, projectVolumes types.V
 }
 
 func (a *ComposeApp) UpWithCheckRequire(ctx context.Context, service api.Service) error {
+	if err := a.checkComposeDrives(); err != nil {
+		go PublishEventWrapper(ctx, common.EventTypeContainerStartError, map[string]string{
+			common.PropertyTypeMessage.Name: err.Error(),
+		})
+		return err
+	}
 	// prepare source path for volumes if not exist
 	for i, app := range a.Services {
 		for _, volume := range app.Volumes {
@@ -630,6 +636,10 @@ func (a *ComposeApp) PullAndApply(ctx context.Context, newComposeYAML []byte) er
 				return
 			}
 
+			if err := original.checkComposeDrives(); err != nil {
+				logger.Info("not starting the original compose app again", zap.Error(err))
+				return
+			}
 			if err := original.Up(ctx, service); err != nil {
 				logger.Error("failed to start original compose app", zap.Error(err), zap.String("name", a.Name))
 				return
@@ -682,6 +692,12 @@ func (a *ComposeApp) PullAndInstall(ctx context.Context) error {
 	}
 
 	// create
+	if err := a.checkComposeDrives(); err != nil {
+		go PublishEventWrapper(ctx, common.EventTypeContainerCreateError, map[string]string{
+			common.PropertyTypeMessage.Name: err.Error(),
+		})
+		return err
+	}
 	if err := func() error {
 		go PublishEventWrapper(ctx, common.EventTypeContainerCreateBegin, nil)
 
@@ -968,6 +984,12 @@ func (a *ComposeApp) SetStatus(ctx context.Context, status codegen.RequestCompos
 	eventProperties := common.PropertiesFromContext(ctx)
 	if eventProperties != nil {
 		eventProperties[common.PropertyTypeAppName.Name] = a.Name
+	}
+
+	if status == codegen.RequestComposeAppStatusStart || status == codegen.RequestComposeAppStatusRestart {
+		if err := a.checkComposeDrives(); err != nil {
+			return err
+		}
 	}
 
 	switch status {

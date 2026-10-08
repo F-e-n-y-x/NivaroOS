@@ -36,6 +36,12 @@ const fstab = {
 		return api.post(`${PREFIX}/umount`, { mount_point: mountPoint });
 	},
 
+	// Admin only: repair an unmounted drive's file system, then mount it.
+	// Runs in the background; list() shows it under each mount's "repair".
+	repair(mountPoint) {
+		return api.post(`${PREFIX}/repair`, { mount_point: mountPoint });
+	},
+
 	adopt(mountPoint) {
 		return api.post(`${PREFIX}/adopt`, { mount_point: mountPoint });
 	}
