@@ -59,7 +59,7 @@ and [Flutter](https://docs.flutter.dev/get-started/install) 3.47.5 or newer
 ```sh
 cd mobile
 flutter pub get
-flutter build apk --debug   # -> build/app/outputs/flutter-apk/app-debug.apk
+flutter build apk --release   # -> build/app/outputs/flutter-apk/app-release.apk
 ```
 
 A release build is signed with the key named in `android/key.properties`
@@ -68,9 +68,15 @@ without that file `android/app/build.gradle.kts` falls back to the debug key.
 
 ## Installing the APK
 
-This is a debug build, not a Play Store release - Android will warn about
-installing from an unknown source the first time; that's expected for a
-self-hosted app like this one.
+Download the signed stable APK (`NivaroOS.apk`) from the latest
+[GitHub release](https://github.com/F-e-n-y-x/NivaroOS/releases/latest); after
+that the app updates itself (More -> NivaroOS update). It isn't on the Play
+Store, so Android asks once to allow installs from your browser - that's
+expected for a self-hosted app like this one.
+
+The APK from the "Android app" GitHub Actions check is a test build signed
+with a throwaway key: it can't update an installed NivaroOS app. Use the
+release one.
 
 ## Regenerating the app icon
 

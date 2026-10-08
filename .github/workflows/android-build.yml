@@ -47,7 +47,11 @@ jobs:
 
       # Screenshot goldens are left out: their pixels depend on the
       # machine that rendered them, so they're checked on the build server.
+      # The fixtures' times are written for the owner's time zone (a backup
+      # at 03:00 IST on Sep 18 is still Sep 17 in UTC).
       - name: Test
+        env:
+          TZ: Asia/Kolkata
         run: flutter test $(find test -name '*_test.dart' -not -path 'test/screenshots/*' | sort)
 
       - name: Build stable APK
