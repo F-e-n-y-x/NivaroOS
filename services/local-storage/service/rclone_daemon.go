@@ -9,18 +9,26 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"go.uber.org/zap"
 )
 
 // local-storage is the only owner of cloud drive mounts. The rclone daemon
-// (rclone.service, `rclone rcd` on RcloneDaemonSocket) is still there for
-// core (legacy config calls, vfs/stats), but it used to mount the same
-// remotes on the same /mnt/<remote> paths too, and one of those mounts
-// closing late unmounted local-storage's fresh mount (2026-09-30 05:08).
-// Any mount still served by the daemon is handed over: once it has no
-// uploads left it is unmounted through the daemon and mounted here.
+// (CasaOS's rclone.service: distro rclone, `rclone rcd --rc-no-auth` on
+// RcloneDaemonSocket) is removed from NivaroOS (2026-10); on upgraded
+// installs it may still run. It used to mount the same remotes on the same
+// /mnt/<remote> paths too, and one of those mounts closing late unmounted
+// local-storage's fresh mount (2026-09-30 05:08). Any mount still served by
+// the daemon is handed over: once it has no uploads left it is unmounted
+// through the daemon and mounted here. Then retireDaemonUnit removes it.
+// ponytail: handover + retire stay until every install has upgraded past
+// 2026-10; delete this file then.
 
 const RcloneDaemonSocket = "/var/run/rclone/rclone.sock"
 
@@ -108,4 +116,44 @@ func (d *socketDaemon) PendingUploads(fs string) (int, error) {
 
 func (d *socketDaemon) Unmount(mountPoint string) error {
 	return d.call("mount/unmount", map[string]string{"mountPoint": mountPoint}, nil, 60*time.Second)
+}
+
+const daemonEnvFile = "/etc/nivaroos/rclone-cache.env" // its --cache-dir
+
+var (
+	daemonUnit = "/usr/lib/systemd/system/rclone.service"
+	systemctl  = func(args ...string) error {
+		out, err := exec.Command("systemctl", args...).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("systemctl %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+)
+
+// retireDaemonUnit is the upgrade step removing rclone.service: once the
+// daemon serves no mounts (none to hand over, so no upload can be cut off),
+// it is stopped and disabled for good and its unit kept as
+// rclone.service.prev. true: nothing left to do.
+func retireDaemonUnit(d rcloneDaemon) bool {
+	if _, err := os.Stat(daemonUnit); err != nil {
+		return true
+	}
+	ms, err := d.ListMounts()
+	if (err != nil && !errors.Is(err, errDaemonDown)) || len(ms) > 0 {
+		return false // still handing mounts over; next round
+	}
+	if err := systemctl("disable", "--now", "rclone.service"); err != nil {
+		logger.Error("couldn't stop the old rclone daemon (rclone.service)", zap.Error(err))
+		return false
+	}
+	if err := os.Rename(daemonUnit, daemonUnit+".prev"); err != nil {
+		logger.Error("couldn't remove rclone.service", zap.Error(err))
+		return false
+	}
+	_ = systemctl("daemon-reload")
+	_ = systemctl("reset-failed", "rclone.service") // rclone exits 143 on stop
+	_ = os.Remove(daemonEnvFile)
+	logger.Info("removed the old rclone daemon (rclone.service); unit kept as " + daemonUnit + ".prev")
+	return true
 }

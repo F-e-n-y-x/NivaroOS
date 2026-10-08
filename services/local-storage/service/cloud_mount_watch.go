@@ -22,8 +22,8 @@ import (
 //     path) is remounted, with backoff, and the log says why;
 //   - a drive still mounted by the rclone daemon is taken over once the
 //     daemon has no uploads pending for it (see rclone_daemon.go);
-//   - an account added to rclone.conf by someone else (core's legacy
-//     /v1/recover OAuth callback) gets mounted here, never by the daemon.
+//   - an account added to rclone.conf by someone else (e.g. `rclone config`
+//     in a terminal) gets mounted here.
 //
 // A drive that was unmounted on purpose (UnmountStorage: removing the
 // account, reconnecting it, applying cache settings) is left alone until
@@ -395,6 +395,7 @@ func StartCloudMountWatcher(ctx context.Context) {
 	go func() {
 		t := time.NewTicker(5 * time.Second)
 		defer t.Stop()
+		retired := false
 		for {
 			select {
 			case <-ctx.Done():
@@ -402,6 +403,9 @@ func StartCloudMountWatcher(ctx context.Context) {
 			case <-t.C:
 				if !cloudWatchStopping.Load() {
 					w.Tick()
+					if !retired {
+						retired = retireDaemonUnit(cloudDaemon)
+					}
 				}
 			}
 		}

@@ -608,9 +608,6 @@ func ApplyCloudCache(w CacheSettingsWire, dryRun bool) (warnings []string, err e
 	if err := saveLocalStorageConf(config.Cfg); err != nil {
 		warnings = append(warnings, "The settings are in use but couldn't be saved, so they'll reset on restart: "+err.Error())
 	}
-	if err := cloudcache.WriteEnvFile(cloudcache.EnvFile, s.Dir); err != nil {
-		logger.Error("cloud cache: couldn't write the rclone daemon's cache env file", zap.Error(err))
-	}
 	if errs := remountAll(mounts); len(errs) > 0 {
 		warnings = append(warnings, errs...)
 	}

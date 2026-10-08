@@ -4,8 +4,7 @@
 //
 // There is one setting set, stored in local-storage.conf ([cloud_cache]).
 // nivaroos-local-storage mounts in-process with it (it is the only owner
-// of cloud mounts; the rclone daemon, rclone.service, mounts nothing), and
-// the daemon's --cache-dir comes from EnvFile, which this package writes.
+// of cloud mounts).
 //
 // rclone's cache layout, for a cache dir D and a remote R:
 //
@@ -19,7 +18,6 @@ package cloudcache
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -39,8 +37,6 @@ const (
 
 	// Section is the local-storage.conf section holding the settings.
 	Section = "cloud_cache"
-	// EnvFile feeds rclone.service's --cache-dir (EnvironmentFile=).
-	EnvFile = "/etc/nivaroos/rclone-cache.env"
 
 	MinMaxAge = time.Minute
 	MaxMaxAge = 365 * 24 * time.Hour
@@ -101,21 +97,6 @@ func Store(cfg *ini.File, s Settings) {
 	sec.Key("MaxSize").SetValue(strconv.FormatInt(s.MaxSize, 10))
 	sec.Key("MaxAge").SetValue(strconv.FormatInt(int64(s.MaxAge/time.Second), 10))
 	sec.Key("Dir").SetValue(s.Dir)
-}
-
-// WriteEnvFile writes rclone.service's environment file (RCLONE_CACHE_DIR)
-// atomically.
-func WriteEnvFile(path, dir string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	body := "# Written by nivaroos-local-storage (Settings > Online storage > Cache).\n" +
-		"RCLONE_CACHE_DIR=" + dir + "\n"
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(body), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
 }
 
 func validMode(m string) bool { return m == ModeOff || m == ModeWrites || m == ModeFull }

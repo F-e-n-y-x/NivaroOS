@@ -2,8 +2,6 @@ package cloudcache
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -133,17 +131,6 @@ func TestValidateNotWritable(t *testing.T) {
 	env.ProbeWritable = func(string) error { return errors.New("read-only file system") }
 	if _, err := Validate(&s, env); err == nil || !strings.Contains(err.Error(), "can't write") {
 		t.Fatalf("want not-writable error, got %v", err)
-	}
-}
-
-func TestWriteEnvFile(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "etc", "rclone-cache.env")
-	if err := WriteEnvFile(p, "/DATA/Disk1/c"); err != nil {
-		t.Fatal(err)
-	}
-	raw, _ := os.ReadFile(p)
-	if !strings.Contains(string(raw), "RCLONE_CACHE_DIR=/DATA/Disk1/c\n") {
-		t.Fatalf("env file: %q", raw)
 	}
 }
 

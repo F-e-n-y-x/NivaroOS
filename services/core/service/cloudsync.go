@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/httper"
 )
 
 // Cloud drives are rclone FUSE mounts with the VFS "full" cache: a copy
@@ -76,25 +74,7 @@ type vfsStats struct {
 	Error string `json:"error"`
 }
 
-func rcloneVFSStats(remote string) (vfsStats, error) {
-	var st vfsStats
-	res, err := httper.NewRestyClient().SetRetryCount(0).SetTimeout(10*time.Second).R().
-		SetHeader("Content-Type", "application/json").
-		SetBody(map[string]string{"fs": remote}).
-		Post("/vfs/stats")
-	if err != nil {
-		return st, err
-	}
-	if err := json.Unmarshal(res.Body(), &st); err != nil {
-		return st, err
-	}
-	if res.StatusCode() != 200 {
-		return st, fmt.Errorf("%s", st.Error)
-	}
-	return st, nil
-}
-
-// Cloud drives are normally mounted by nivaroos-local-storage (rclone as a
+// Cloud drives are mounted by nivaroos-local-storage (rclone as a
 // library), which publishes each mount's upload queue to this file while
 // someone touches the "want" file (see local-storage/service/vfs_status.go).
 const (
@@ -135,15 +115,11 @@ func localStorageVFSStats(mountPoint string) (vfsStats, bool) {
 	return st, true
 }
 
-// cloudStats reads a mount's upload queue from whichever process serves
-// it: local-storage (usual) or the rclone daemon.
+// cloudStats reads a mount's upload queue from nivaroos-local-storage.
 func cloudStats(m rcloneMount) (vfsStats, bool) {
 	// local-storage only starts publishing once asked; give it a moment.
 	for i := 0; i < 4; i++ {
 		if st, ok := localStorageVFSStats(m.point); ok {
-			return st, true
-		}
-		if st, err := rcloneVFSStats(m.remote); err == nil {
 			return st, true
 		}
 		time.Sleep(700 * time.Millisecond)

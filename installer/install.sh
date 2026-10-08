@@ -1145,7 +1145,6 @@ install_core_services() {
 		mkdir -p /usr/lib/systemd/system
 		service_mappings=(
 			\"${SRC_DIR}/services/core/build/sysroot/usr/lib/systemd/system/nivaroos.service:/usr/lib/systemd/system/nivaroos.service\"
-			\"${SRC_DIR}/services/core/build/sysroot/usr/lib/systemd/system/rclone.service:/usr/lib/systemd/system/rclone.service\"
 			\"${SRC_DIR}/services/core/build/sysroot/usr/share/nivaroos/shell/usb-mount@.service:/usr/lib/systemd/system/usb-mount@.service\"
 			\"${SRC_DIR}/services/gateway/build/sysroot/usr/lib/systemd/system/nivaroos-gateway.service:/usr/lib/systemd/system/nivaroos-gateway.service\"
 			\"${SRC_DIR}/services/message-bus/build/sysroot/usr/lib/systemd/system/nivaroos-message-bus.service:/usr/lib/systemd/system/nivaroos-message-bus.service\"

@@ -39,7 +39,6 @@ type Repository interface {
 	Shares() SharesService
 	QuickShares() QuickShareService
 	System() SystemService
-	Storage() StorageService
 	Schedule() ScheduleService
 	MessageBus() *message_bus.ClientWithResponses
 	Peer() PeerService
@@ -62,7 +61,6 @@ func NewService(db *gorm.DB, RuntimePath string) Repository {
 		health:      NewHealthService(),
 		shares:      NewSharesService(db),
 		quickShares: NewQuickShareService(db),
-		storage:     NewStorageService(),
 		schedule:    NewScheduleService(),
 		other:       NewOtherService(),
 
@@ -81,14 +79,9 @@ type store struct {
 	quickShares QuickShareService
 	connections ConnectionsService
 	gateway     external.ManagementService
-	storage     StorageService
 	schedule    ScheduleService
 	health      HealthService
 	other       OtherService
-}
-
-func (c *store) Storage() StorageService {
-	return c.storage
 }
 
 func (c *store) Schedule() ScheduleService {

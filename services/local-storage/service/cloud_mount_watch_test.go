@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -276,5 +277,28 @@ func TestCloudMountPointOK(t *testing.T) {
 	}
 	if !strings.HasPrefix(RcloneDaemonSocket, "/var/run/rclone/") {
 		t.Fatal("socket moved")
+	}
+}
+
+func TestRetireDaemonUnitWaitsForHandover(t *testing.T) {
+	daemonUnit = t.TempDir() + "/rclone.service"
+	if err := os.WriteFile(daemonUnit, []byte("[Unit]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	systemctl = func(args ...string) error { calls = append(calls, strings.Join(args, " ")); return nil }
+	d := &fakeDaemon{env: newFakeEnv(), mounts: []daemonMount{{Fs: "a:", MountPoint: "/mnt/a"}}}
+	if retireDaemonUnit(d) || len(calls) != 0 {
+		t.Fatalf("retired while the daemon still serves a mount: %v", calls)
+	}
+	d.mounts = nil
+	if !retireDaemonUnit(d) || len(calls) != 3 || calls[0] != "disable --now rclone.service" {
+		t.Fatalf("want stop+disable, daemon-reload, reset-failed: %v", calls)
+	}
+	if _, err := os.Stat(daemonUnit + ".prev"); err != nil {
+		t.Fatal("unit not kept as .prev")
+	}
+	if !retireDaemonUnit(d) || len(calls) != 3 {
+		t.Fatalf("second run should be a no-op: %v", calls)
 	}
 }

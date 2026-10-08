@@ -150,7 +150,6 @@ func main() {
 		// "/v1/cloud" is served by nivaroos-local-storage's in-process rclone
 		// engine now (Online Accounts feature) - registering it here too would
 		// race the gateway's routes.json between the two services.
-		"/v1/recover",
 		"/v1/other",
 		"/v1/tailscale",
 		"/v1/schedules",
@@ -231,7 +230,6 @@ func main() {
 	}
 
 	logger.Info("NivaroOS main service is listening...", zap.Any("address", listener.Addr().String()))
-	// defer service.MyService.Storage().UnmountAllStorage()
 	err = s.Serve(listener) // not using http.serve() to fix G114: Use of net/http serve function that has no support for setting timeouts (see https://github.com/securego/gosec)
 	if err != nil {
 		panic(err)

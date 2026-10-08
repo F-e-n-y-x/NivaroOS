@@ -83,6 +83,15 @@ inherited CasaOS history and is not kept up to date.)
 
 ### Security
 
+- The old CasaOS rclone daemon (`rclone.service`) is gone. It ran a
+  separate, outdated rclone (1.61, Jan 2023) with its remote-control API
+  open to anything on the box (no auth, any web origin), and nothing in
+  NivaroOS needed it any more: cloud drives are mounted by local-storage's
+  built-in rclone 1.75. On upgrade, local-storage stops and disables it
+  once it serves no mounts and keeps the unit as `rclone.service.prev`.
+  Also removed: core's unused legacy cloud OAuth callback (`/v1/recover`).
+  The `rclone` command itself stays installed (Terminal sign-in,
+  Scheduled Tasks).
 - Files > Extract can no longer write outside the folder it extracts into.
   A crafted zip or tar could use `../` names, absolute paths, or a symlink
   followed by a file "inside" it to write anywhere on the server

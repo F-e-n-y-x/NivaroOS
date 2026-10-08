@@ -39,7 +39,6 @@ func InitV1Router() http.Handler {
 	e.GET("/ping", func(ctx echo.Context) error {
 		return ctx.String(200, "pong")
 	})
-	e.GET("/v1/recover/:type", v1.GetRecoverStorage)
 	// Quick Share redemption is deliberately public (no JWT) - the opaque,
 	// unguessable :id is the only credential, exactly like a Dropbox/Drive
 	// share link. It never accepts a raw path, only a token that was
