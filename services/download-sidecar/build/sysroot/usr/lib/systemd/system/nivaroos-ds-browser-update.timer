@@ -1,0 +1,11 @@
+[Unit]
+Description=NivaroOS - weekly update of the Download Station browser
+
+[Timer]
+# Chrome ships every two weeks; weekly keeps it at most a week behind.
+OnCalendar=weekly
+RandomizedDelaySec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

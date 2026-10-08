@@ -1,0 +1,14 @@
+[Unit]
+Description=NivaroOS - update the Download Station browser (Chrome for Testing, uBO Lite)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Run weekly by its timer. Stops nothing: a running browser keeps its
+# version and the next start uses the new one; the previous version is
+# kept (install-ds-browser.sh --rollback goes back to it).
+Type=oneshot
+ExecStart=/usr/share/nivaroos/ds-browser/src/services/download-sidecar/build/scripts/install-ds-browser.sh --src /usr/share/nivaroos/ds-browser/src --update
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=idle

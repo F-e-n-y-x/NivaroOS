@@ -92,6 +92,19 @@ inherited CasaOS history and is not kept up to date.)
   Also removed: core's unused legacy cloud OAuth callback (`/v1/recover`).
   The `rclone` command itself stays installed (Terminal sign-in,
   Scheduled Tasks).
+- Download Station's browser keeps itself up to date. Chrome now ships
+  every two weeks, and this browser opens any website on the server, so
+  instead of a fixed Chrome for Testing build it installs the current
+  Stable (from Google's Chrome for Testing list, checked against the
+  storage's checksum and its own version) and the latest uBlock Origin
+  Lite (checked against GitHub's SHA-256). A weekly timer
+  (`nivaroos-ds-browser-update.timer`) repeats this; it does nothing when
+  nothing changed and never closes an open browser - the next start uses
+  the new version. The previous version is kept: `install-ds-browser.sh
+  --rollback` goes back to it (and the timer then waits for a newer
+  release). Offline, the pinned versions are the fallback, never a
+  downgrade. On x86_64 the browser now always uses this Chrome for Testing
+  rather than a Chrome or Chromium package the box already has.
 - Files > Extract can no longer write outside the folder it extracts into.
   A crafted zip or tar could use `../` names, absolute paths, or a symlink
   followed by a file "inside" it to write anywhere on the server
