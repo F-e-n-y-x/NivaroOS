@@ -526,6 +526,7 @@
 
 <script>
 import RFB from '@novnc/novnc'
+import { markRaw } from 'vue'
 import { vmSidecar } from '@/api/vmSidecar'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import VmDropdown from './VmDropdown.vue'
@@ -938,7 +939,8 @@ export default {
 			if (this.destroyed || !this.$refs.screen) return
 			if (this.rfb) this.disconnectRfb()
 			this.status = 'connecting'
-			const rfb = new RFB(this.$refs.screen, vmSidecar.consoleUrl(this.vmName))
+			// markRaw: a reactive proxy in this.rfb would never === rfb.
+			const rfb = markRaw(new RFB(this.$refs.screen, vmSidecar.consoleUrl(this.vmName)))
 			this.rfb = rfb
 			rfb.scaleViewport = this.scaleToFit
 			const preset = QUALITY_PRESETS[this.qualityMode] || QUALITY_PRESETS.balanced

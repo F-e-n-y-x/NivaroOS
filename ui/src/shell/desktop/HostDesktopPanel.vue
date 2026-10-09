@@ -688,6 +688,7 @@
 
 <script>
 import RFB from '@novnc/novnc'
+import { markRaw } from 'vue'
 import { instance as http } from '@/service/service'
 import { windowFitSizes } from '@/utils/windowFit'
 import { apiBase as sidecarApiBase, wsBase as sidecarWsBase } from '@/api/vmSidecar'
@@ -1185,7 +1186,9 @@ export default {
 			const url = `${sidecarWsBase()}/host/console?token=${encodeURIComponent(token)}`
 
 			try {
-				const rfb = new RFB(this.$refs.screen, url)
+				// markRaw: a reactive proxy in this.rfb would never === rfb, so the
+				// connect handler bailed and the overlay sat on "Connecting..." forever.
+				const rfb = markRaw(new RFB(this.$refs.screen, url))
 				this.rfb = rfb
 				rfb.scaleViewport = this.scaleToFit
 				rfb.resizeSession = false
