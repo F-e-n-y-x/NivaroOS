@@ -1,3 +1,4 @@
+import { isBuiltin } from 'node:module'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
@@ -15,6 +16,21 @@ const stripCssBom = {
 	},
 }
 
+// A Node builtin with no browser package installed becomes an empty stub
+// that crashes at runtime (jshint's `new EventEmitter` blanked the whole
+// dashboard). Fail the build instead: add the browser package (events,
+// util, assert...) as a dependency.
+const requireBrowserBuiltins = {
+	name: 'require-browser-builtins',
+	enforce: 'pre',
+	async resolveId(id, importer, opts) {
+		if (!isBuiltin(id) || !importer) return null
+		const r = await this.resolve(id, importer, { ...opts, skipSelf: true })
+		if (!r || r.id.includes('browser-external')) this.error(`"${id}" (imported by ${importer}) has no browser package - add it to dependencies`)
+		return r
+	},
+}
+
 export default defineConfig(({ mode }) => {
 	// .env.dev: where `pnpm dev` proxies the API to.
 	const env = loadEnv(mode, process.cwd(), 'VUE_APP_')
@@ -24,7 +40,7 @@ export default defineConfig(({ mode }) => {
 		base: process.env.NVOS_PUBLIC_PATH || '/',
 		// Only VUE_APP_* values reach the bundle (import.meta.env).
 		envPrefix: 'VUE_APP_',
-		plugins: [vue(), stripCssBom],
+		plugins: [requireBrowserBuiltins, vue(), stripCssBom],
 		resolve: {
 			alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
 			extensions: ['.mjs', '.js', '.json', '.vue'],
