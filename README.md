@@ -78,7 +78,7 @@
   </tr>
 </table>
 
-<p align="center"><sub>The app ships three looks (Rack, Tonal, Console), each in light, dark and true black. All screenshots use made-up demo data; see <a href="docs/images/screenshots/README.md">how they are made</a>.</sub></p>
+<p align="center"><sub>The app ships six styles (Rack, Tonal, Console, Soft, Terminal, Bold), each in light, dark and true black. All screenshots use made-up demo data; see <a href="docs/images/screenshots/README.md">how they are made</a>.</sub></p>
 
 ---
 
@@ -87,12 +87,12 @@
 ### 🖥️ Web desktop
 - Windowed apps you can move, resize, snap and pin to the dock; windows reopen at the size you last gave them, and open tabs survive reloads and updates.
 - Live widgets for CPU, memory (with *Free up memory*), storage, network (IPs, totals, LAN and internet speed tests), GPU (NVIDIA and AMD) and fans.
-- Wallpapers, light and dark themes, adjustable transparency and blur, a notification center, and profile pictures shown wherever your account is.
+- Wallpapers, light and dark themes, adjustable transparency and blur, a notification center (downloads, torrents, backups, app updates, drive health), and profile pictures shown wherever your account is.
 
 ### 📁 Files
 - Tabs with a shared clipboard, drag and drop, a single Transfers panel, and fast, reliable copy / move / upload.
 - **Trash** with Undo, restore and 30-day purge.
-- **Cloud drives** mounted as folders: Google Drive, OneDrive, Dropbox, iCloud Drive, TeraBox, WebDAV, SFTP, SMB, S3-compatible and Backblaze B2. Their cache lives on disk, with settings for mode, size, age and location.
+- **Cloud drives** mounted as folders: Google Drive, OneDrive, Dropbox, iCloud Drive, TeraBox, WebDAV, SFTP, SMB, S3-compatible and Backblaze B2. Sign in with rclone's shared app or [your own app](docs/guides/cloud-own-app.md) (Google Drive, OneDrive, Dropbox) for faster big backups. Their cache lives on disk, with settings for mode, size, age and location.
 - **Phones** show up as storage: browse, stream and transfer files on a paired Android phone, at home or away (over Tailscale or the app's tunnel).
 - Previews for video (seekable streaming), audio, images, PDF, Office documents, code and Markdown.
 - **Share links**: one-time, password-protected or expiring links, and folders shared as a ZIP.
@@ -105,7 +105,7 @@
 
 ### 🧩 Virtual machines & Host Desktop
 - **KVM / QEMU** virtual machines with live previews, an in-browser console with a clipboard panel, snapshots, shared folders and NivaroOS Guest Tools.
-- **Host Desktop** streams the server's own desktop over VNC, with frame-rate control and a whole-frame capture option for smoother video.
+- **Host Desktop** streams the server's own desktop. X11 desktops (x11vnc, with frame-rate control and a whole-frame capture option for smoother video) and Wayland: GNOME (no prompt; offers to unlock a locked screen), wlroots compositors (sway, Hyprland, labwc, river, wayfire) and KDE Plasma 6 or other xdg-desktop-portal desktops (allow once on the server). Wayland login screens can't be shared, and clipboard sync and resolution changes are X11 only. No desktop yet? It can install Xfce, Cinnamon or MATE.
 
 ### 💾 Backup & Sync
 - Scheduled backup and sync jobs to other drives, network shares or cloud accounts, with versions, restore, and clear status and problem reports.
@@ -119,6 +119,8 @@
 
 ### 🌡️ Hardware & health
 - **Fan control** for motherboard, AMD GPU, laptop and Raspberry Pi fans (hwmon) and NVIDIA GPUs (NVML): Auto / Fixed / Curve per fan, with a drag-to-edit curve and Quiet / Balanced / Performance profiles. Safety first: never below 20%, full speed at the emergency temperature, and every fan goes back to BIOS control if the service stops.
+- **Drive health (SMART)** for every drive, the system drive included: a Good / Watch / Failing verdict with the reason, the numbers that predict failure, 90 days of history, a notification when it gets worse, and short/long self-tests (admin).
+- **Power-cut safety**: a drive that doesn't mount at boot is reported with the cause and a *Repair drive* button (ntfsfix / e2fsck, never automatic), and apps that use it wait instead of starting on empty folders.
 - **Server health** in the Android app: one place that lists what needs attention.
 - Settings for storage, disks and pools, SMB shares, users, system packages and updates.
 
@@ -134,13 +136,13 @@
 
 The companion app (Flutter, in [`mobile/`](mobile/)) puts the server in your pocket:
 
-- **Home** with widgets (refresh down to 1 second or *Real time*) and **Server health**.
+- **Home** with widgets (refresh down to 1 second or *Real time*), **Server health** with drive health, and a **notifications inbox**; new entries show up as phone notifications (no Google push service).
 - **Files** with tabs, Trash, cloud drives, share links with QR codes, and your phone's own storage shared with the server.
 - **Host Desktop** and VM consoles in the style of Microsoft's Windows App: trackpad or touch, keyboard with modifier keys, clipboard.
 - **Download Station**: every download and torrent; share a link or magnet from any app to *Download on server*, or a file to *Upload to NivaroOS*.
 - **Backup & Sync** jobs and runs, and **phone backup** of photos, files, contacts, calendar, SMS, call log and apps.
 - **Fans**, **App Store** and **Edit app**, and **terminal sessions** that survive.
-- Three styles (Rack, Tonal, Console) in light, dark and true black; app lock.
+- Six styles (Rack, Tonal, Console, Soft, Terminal, Bold) in light, dark and true black; app lock.
 
 **Install:** download `NivaroOS.apk` from the [latest release](https://github.com/F-e-n-y-x/NivaroOS/releases/latest) and open it on your phone (allow installing from your browser or file manager when Android asks). The app finds NivaroOS servers on your network. Updates install from inside the app, which checks the APK's SHA-256 and that it is signed with the same key before installing. Requires Android 7.0 or newer.
 
@@ -154,7 +156,7 @@ On **Debian 12/13** or **Ubuntu 22.04/24.04/26.04**, amd64 or arm64 (other Debia
 curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash
 ```
 
-The installer first checks the machine (OS, architecture, systemd, memory, disk, internet, a free dashboard port, no CasaOS) and changes nothing if a check fails. It then asks which components you want (or takes the defaults with `-y`, or when no one is at the terminal), builds NivaroOS from source in numbered steps and starts it. Then open `http://<your-server-ip>` and create your account.
+The installer first checks the machine (OS, architecture, systemd, memory, disk, internet, a free dashboard port, no enabled or running CasaOS) and changes nothing if a check fails. It then asks which components you want (or takes the defaults with `-y`, or when no one is at the terminal), builds NivaroOS from source in numbered steps and starts it. Then open `http://<your-server-ip>` and create your account.
 
 It is safe to run again: every step can be repeated, so after a failure or Ctrl+C the same command picks up where it stopped. A failed step shows its last output lines; the full log is `/var/log/nivaroos/install.log`. Exit codes: `0` done, `1` failed, `2` bad option, `130` cancelled.
 
@@ -165,10 +167,11 @@ To pass flags, use `| sudo bash -s -- <flags>`:
 | `-y`, `--yes` | Unattended: accept the defaults, no questions |
 | `--dry-run` | Run the checks and show the planned steps; change nothing |
 | `--with-vm` / `--without-vm` | VM Manager with QEMU/KVM, libvirt and the web console |
-| `--with-host-desktop` / `--without-host-desktop` | Host Desktop streaming over VNC (needs VM Manager) |
+| `--with-host-desktop` / `--without-host-desktop` | Host Desktop streaming of an X11 or Wayland desktop (needs VM Manager) |
 | `--with-download-station` / `--without-download-station` | Download Station (default: on) |
 | `--without-ds-browser` | Keep Download Station's browser in Lite mode (no Chromium) |
 | `--without-ds-torrent` | Don't install `qbittorrent-nox` (torrents use the built-in engine) |
+| `--ds-torrent-distro` | Use the distro's `qbittorrent-nox` package instead of the official static build |
 | `--with-backup` / `--without-backup` | Backup & Sync (default: on) |
 | `--port <port>` | Dashboard port (default: 80, or the next free port) |
 | `--branch <ref>` | Git branch or tag to install (default: `master`) |
@@ -205,9 +208,10 @@ Every command takes `--help`, honours `NO_COLOR`, and exits `0` on success, `1` 
 sudo nivaroos-uninstall                    # asks before deleting any data
 sudo nivaroos-uninstall --yes              # unattended, keeps all data
 sudo nivaroos-uninstall --yes --delete-data
+sudo nivaroos-uninstall --dry-run          # show what would be removed
 ```
 
-It removes NivaroOS's services, units, binaries, command-line tools, dashboard, config and state. It asks separately about installed apps (their containers and `/DATA/AppData`), virtual machines (`/DATA/VMs`) and your other files in `/DATA`; every answer defaults to keeping them. Drives mounted under `/DATA`, or a `/DATA` that is a separate drive or storage pool, are never deleted from. Docker and other system packages stay installed. `--keep-data` keeps everything without asking, `--dry-run` shows what would happen.
+It removes NivaroOS's services, units, binaries, command-line tools, dashboard, config and state. It asks separately about installed apps (their containers and `/DATA/AppData`), virtual machines (`/DATA/VMs`) and your other files in `/DATA`; every answer defaults to keeping them. Drives mounted under `/DATA`, or a `/DATA` that is a separate drive or storage pool, are never deleted from. Docker and other system packages stay installed. `--keep-data` keeps everything without asking; `--remove-provisioned-desktop` also removes a desktop NivaroOS installed for Host Desktop (never one you already had).
 
 ---
 
@@ -229,9 +233,9 @@ nivaroos-cli healthcheck services             # service status, ports in use, lo
 
 The installer builds everything from source; to build by hand you need:
 
-- **Go** 1.26+ (the installer fetches it if needed)
-- **Node.js** 18+ and **pnpm** 9
-- **Flutter** 3.47+ for the Android app
+- **Go** 1.27.2+ (the installer fetches 1.27.2 if needed)
+- **Node.js** 20.19+ or 22.12+ (Vite 8) and **pnpm** 9 for the web UI (Vue 3)
+- **Flutter** 3.47.5+ for the Android app
 
 ```bash
 # Web UI -> ui/build/sysroot/var/lib/nivaroos/www/
@@ -288,4 +292,4 @@ Created by **Ayush** ([@F-e-n-y-x](https://github.com/F-e-n-y-x)), with contribu
 
 Distributed under the **Apache 2.0 License**. See [`LICENSE`](LICENSE).
 
-[Privacy Policy](PRIVACY.md) · [Terms of Service](TERMS.md)
+[Privacy Policy](PRIVACY.md) · [Terms of Service](TERMS.md) · [Changelog](CHANGELOG.md) · [Using your own cloud sign-in app](docs/guides/cloud-own-app.md)
