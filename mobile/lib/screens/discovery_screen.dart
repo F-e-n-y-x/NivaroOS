@@ -7,6 +7,7 @@ import '../services/storage_service.dart';
 import '../ui/ui.dart';
 import 'home_shell.dart';
 import 'login_screen.dart';
+import 'pair_screen.dart';
 
 /// First run: find the server. NivaroOS servers on this Wi-Fi announce
 /// themselves over mDNS and are listed as they answer; any other server
@@ -216,6 +217,15 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                         ? FilledButton.tonal(style: style.merge(tonalButtonStyle(context)), onPressed: onPressed, child: child)
                         : FilledButton(style: style, onPressed: onPressed, child: child);
                   },
+                ),
+                const SizedBox(height: Space.md),
+                // Scan the web's "Pair a phone" QR code, or type its code:
+                // no password on the phone.
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  onPressed: busy ? null : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PairScreen())),
+                  icon: const Icon(Icons.qr_code_scanner_outlined),
+                  label: const Text('Pair with a code from the web'),
                 ),
               ],
             ),

@@ -83,6 +83,7 @@ var notifySources = map[string]bool{
 	"app-management":    true,
 	"local-storage":     true,
 	"nivaroos-download": true,
+	"user-service":      true, // "A phone was paired" (user-service:pairing:notify)
 }
 
 type appOutcome struct {

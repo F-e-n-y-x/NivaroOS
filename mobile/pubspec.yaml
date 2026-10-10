@@ -49,8 +49,13 @@ dependencies:
   # QR codes for share links (pure Dart encoder; drawn by the app).
   qr: ^4.0.0
   # Profile picture from the gallery or the camera (the camera through the
-  # system's capture intent: no CAMERA permission).
+  # system's capture intent; it asks for CAMERA itself, which the app now
+  # declares for the scanner below).
   image_picker: ^1.2.4
+  # Scans the web's "Pair a phone" QR code (Add server > Pair with a code).
+  # The maintained Flutter scanner (CameraX + ML Kit on Android, on-device,
+  # no network); adds the CAMERA permission, asked for only when scanning.
+  mobile_scanner: ^7.4.2
 
 dev_dependencies:
   flutter_test:

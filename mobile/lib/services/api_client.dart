@@ -715,6 +715,50 @@ class ApiClient {
     throw ApiException(body['message']?.toString() ?? 'Sign-in failed (HTTP ${res.statusCode}).', statusCode: res.statusCode);
   }
 
+  /// Trades a one-time pairing code (shown on the web, Settings > Companion
+  /// Devices > Pair a phone) for a session on the server at [baseUrl], as a
+  /// sign-in would. Throws an [ApiException] saying whether the code was
+  /// wrong, expired, already used or tried too often.
+  static Future<({String accessToken, String refreshToken, String username})> redeemPairCode(String baseUrl, String code, {String device = ''}) async {
+    final uri = Uri.parse('${baseUrl.replaceAll(RegExp(r'/+$'), '')}/v1/users/pair');
+    final http.Response res;
+    try {
+      res = await http
+          .post(uri, headers: {'Content-Type': 'application/json'}, body: jsonEncode({'code': code, 'device': device}))
+          .timeout(const Duration(seconds: 20));
+    } catch (e) {
+      throw describeError(e, uri, method: 'POST');
+    }
+    Object? body;
+    try {
+      body = jsonDecode(res.body);
+    } catch (_) {}
+    final data = body is Map ? body['data'] : null;
+    final token = data is Map ? data['token'] : null;
+    final user = data is Map ? data['user'] : null;
+    final access = token is Map ? token['access_token']?.toString() ?? '' : '';
+    final refresh = token is Map ? token['refresh_token']?.toString() ?? '' : '';
+    if (res.statusCode == 200 && access.isNotEmpty && refresh.isNotEmpty) {
+      return (accessToken: access, refreshToken: refresh, username: user is Map ? user['username']?.toString() ?? '' : '');
+    }
+    final details = 'POST /v1/users/pair → HTTP ${res.statusCode}';
+    switch (data is Map ? data['reason'] : null) {
+      case 'invalid':
+        throw ApiException('That code is wrong. Check it and try again.', statusCode: res.statusCode, kind: ApiErrorKind.auth, details: details);
+      case 'expired':
+        throw ApiException('That code has expired. Show a new one in Settings on the web.', statusCode: res.statusCode, kind: ApiErrorKind.auth, details: details);
+      case 'used':
+        throw ApiException('That code was already used. Show a new one in Settings on the web.', statusCode: res.statusCode, kind: ApiErrorKind.auth, details: details);
+      case 'too_many_attempts':
+        throw ApiException('Too many attempts. Wait a minute, then show a new code on the web.', statusCode: res.statusCode, kind: ApiErrorKind.rateLimited, details: details);
+    }
+    if (res.statusCode == 404) {
+      throw ApiException('This server is too old to pair by code. Update NivaroOS, or sign in with your password.', statusCode: 404, details: details);
+    }
+    throw ApiException("The server couldn't pair this phone right now (HTTP ${res.statusCode}). Try again in a moment.",
+        statusCode: res.statusCode, kind: res.statusCode >= 500 ? ApiErrorKind.network : ApiErrorKind.server, details: details);
+  }
+
   // ---------------------------------------------------------------------
   // Refresh
   // ---------------------------------------------------------------------

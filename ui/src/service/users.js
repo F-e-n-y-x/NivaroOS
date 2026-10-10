@@ -38,6 +38,12 @@ const users = {
 		return api.delete(`${PREFIX}/current/sessions`);
 	},
 
+	// A one-time code (5 min) the phone app trades for a session of this
+	// account: {code, expires_at, lifetime}.
+	createPairCode() {
+		return api.post(`${PREFIX}/current/pair`);
+	},
+
 	getLinkAppDetail() {
 		return api.get(`${PREFIX}/current/custom/link`);
 	},
