@@ -5,10 +5,10 @@
 			<div class="step-body">
 				<p class="step-title">{{ $t('Choose how to sign in') }}</p>
 				<div class="segmented-control" role="radiogroup">
-					<button type="button" class="segmented-option" role="radio" :aria-checked="!own" :class="{ active: !own }" @click="setOwn(false)">
+					<button type="button" class="segmented-option" role="radio" :aria-checked="!own" :class="{ active: !own }" @click="own = false">
 						{{ $t("rclone's app") }}
 					</button>
-					<button type="button" class="segmented-option" role="radio" :aria-checked="own" :class="{ active: own }" @click="setOwn(true)">
+					<button type="button" class="segmented-option" role="radio" :aria-checked="own" :class="{ active: own }" @click="own = true">
 						{{ $t('Your own app') }}
 					</button>
 				</div>
@@ -19,10 +19,10 @@
 				</p>
 				<template v-if="own">
 					<b-field :label="$t('Client ID')" :type="idError ? 'is-danger' : ''" :message="idError">
-						<b-input v-model.trim="clientId" size="is-small" autocomplete="off" spellcheck="false" @input="emit"></b-input>
+						<b-input v-model.trim="clientId" size="is-small" autocomplete="off" spellcheck="false"></b-input>
 					</b-field>
 					<b-field :label="$t('Client secret')" :type="secretError ? 'is-danger' : ''" :message="secretError">
-						<b-input v-model.trim="clientSecret" type="password" password-reveal size="is-small" autocomplete="off" @input="emit"></b-input>
+						<b-input v-model.trim="clientSecret" type="password" password-reveal size="is-small" autocomplete="off"></b-input>
 					</b-field>
 				</template>
 			</div>
@@ -43,7 +43,7 @@
 			<div class="step-body">
 				<p class="step-title">{{ $t('Paste what it prints back') }}</p>
 				<b-field :type="tokenError ? 'is-danger' : ''" :message="tokenError">
-					<b-input v-model="token" type="textarea" size="is-small" rows="3" :placeholder="$t('Paste it here')" @input="emit"></b-input>
+					<b-input v-model="token" type="textarea" size="is-small" rows="3" :placeholder="$t('Paste it here')"></b-input>
 				</b-field>
 			</div>
 		</div>
@@ -95,25 +95,30 @@ export default {
 		credsOk() {
 			return !this.own || (SAFE.test(this.clientId) && SAFE.test(this.clientSecret))
 		},
+		payload() {
+			if (!this.tokenOk || !this.credsOk) return null
+			return {
+				token: this.token.trim(),
+				client_id: this.own ? this.clientId : '',
+				client_secret: this.own ? this.clientSecret : '',
+			}
+		},
 		command() {
 			if (!this.own) return `rclone authorize "${this.type}"`
 			return `rclone authorize "${this.type}" "${this.clientId || 'CLIENT_ID'}" "${this.clientSecret || 'CLIENT_SECRET'}"`
 		},
 	},
+	// Emitted from a watcher, not the inputs' input events: those fire
+	// before v-model updates, so the value sent was always one edit behind.
+	watch: {
+		payload: {
+			handler(v) {
+				this.$emit('change', v)
+			},
+			immediate: true,
+		},
+	},
 	methods: {
-		setOwn(v) {
-			this.own = v
-			this.emit()
-		},
-		emit() {
-			const token = this.token.trim()
-			if (!this.tokenOk || !this.credsOk) return this.$emit('change', null)
-			this.$emit('change', {
-				token,
-				client_id: this.own ? this.clientId : '',
-				client_secret: this.own ? this.clientSecret : '',
-			})
-		},
 		openTerminal() {
 			// `rclone authorize` always prints a 127.0.0.1:53682 link (hardcoded
 			// upstream), and the provider's redirect back after sign-in is
