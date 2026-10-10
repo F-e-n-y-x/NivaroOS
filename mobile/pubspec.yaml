@@ -16,6 +16,11 @@ dependencies:
   # Held on 10.x for one release: 10 migrates the EncryptedSharedPreferences
   # data that 9.x wrote, and 11 removed that migration, so a user jumping
   # straight from a 9.x build to 11 would lose every stored token (plan M-38).
+  # 10.x has shipped since 1.2.1, so 11.x (11.2.0) is unblocked: the Dart API
+  # the app uses is unchanged (AndroidOptions() / storageNamespace), minSdk 24
+  # matches Flutter's. Not bumped yet because it changes the native Android
+  # code: it needs an APK build and an on-device upgrade check (1.4.11 signed
+  # in -> new build -> still signed in, app lock still set) before release.
   flutter_secure_storage: ^10.3.4
   multicast_dns: ^0.3.3+1
   intl: ^0.20.3
