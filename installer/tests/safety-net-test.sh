@@ -35,9 +35,17 @@ start() {
 }
 case "$1" in
 	show)
-		# show -p PROP --value UNIT
-		p="$3"; u="${@: -1}"
-		prop "$u" "$p"
+		if [ "$4" = --value ]; then
+			# show -p PROP --value UNIT
+			prop "${@: -1}" "$3"
+		else
+			# show -p P1,P2 UNIT... : one block per unit, blank line between
+			ps="$3"; shift 3; first=1
+			for u in "$@"; do
+				[ -n "$first" ] || echo; first=
+				for p in ${ps//,/ }; do echo "$p=$(prop "$u" "$p")"; done
+			done
+		fi
 		;;
 	list-unit-files)
 		for d in "$SD"/*/; do
@@ -113,6 +121,15 @@ unit nivaroos.service nivaroos active
 wd
 check '! calls | grep -q "restart"' "healthy: no restart expected, got: $(calls)"
 check '[ ! -s "$T/log" ]' "healthy: nothing should be logged"
+check '[ "$(calls | grep -c "^show")" -eq 1 ]' "healthy: one batched systemctl show expected, got: $(calls | grep "^show")"
+
+echo "watchdog: a failed gateway restarted this run is probed over HTTP (state read live)"
+reset_env
+echo good >"$T/bin/nivaroos-gateway"
+unit nivaroos-gateway.service nivaroos-gateway failed failed
+wd
+check 'calls | grep -q "^restart nivaroos-gateway.service"' "gateway restart expected"
+check '[ -s "$FAKE_SD/curl-calls" ]' "gateway should be probed after its restart"
 
 echo "watchdog: a failed unit with no fresh binary is restarted"
 reset_env

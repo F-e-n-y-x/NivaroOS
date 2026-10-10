@@ -48,6 +48,33 @@ state_get() { cat "$NV_STATE_DIR/$1" 2>/dev/null || true; }
 state_set() { printf '%s\n' "$2" >"$NV_STATE_DIR/$1" 2>/dev/null || true; }
 state_del() { rm -f "$NV_STATE_DIR/$1" 2>/dev/null || true; }
 
+# One `systemctl show` per run instead of one fork per unit per property
+# (was ~60 forks, 0.5 s CPU a run). prop UNIT PROP answers from it; a unit
+# restarted during the run is read live again.
+declare -A PROPS=() LOADED=()
+load_props() {
+	local out line i=0
+	[ $# -gt 0 ] || return 0
+	out="$("$NV_SYSTEMCTL" show -p Type,ActiveState,SubState,NRestarts "$@" 2>/dev/null)" || return 0
+	# Blocks come in argument order, one blank line apart; anything else
+	# (a unit systemctl skipped) and every read stays live.
+	[ "$(printf '%s\n' "$out" | grep -c '^$')" -eq $(($# - 1)) ] || return 0
+	local units=("$@")
+	while IFS= read -r line; do
+		if [ -z "$line" ]; then i=$((i + 1)); continue; fi
+		PROPS["${units[$i]} ${line%%=*}"]="${line#*=}"
+		LOADED["${units[$i]}"]=1
+	done <<<"$out"
+}
+prop() {
+	if [ -n "${LOADED[$1]:-}" ]; then
+		printf '%s\n' "${PROPS["$1 $2"]:-}"
+	else
+		nv_prop "$1" "$2"
+	fi
+}
+restart() { unset 'LOADED[$1]'; nv_restart "$1"; }
+
 int_or_zero() { case "$1" in '' | *[!0-9]*) echo 0 ;; *) echo "$1" ;; esac; }
 
 # unit_failing UNIT - failed, restarting right now, or restarted at least
@@ -55,9 +82,9 @@ int_or_zero() { case "$1" in '' | *[!0-9]*) echo 0 ;; *) echo "$1" ;; esac; }
 # "running" at the moment we look).
 unit_failing() {
 	local unit="$1" active sub nr last
-	active="$(nv_prop "$unit" ActiveState)"
-	sub="$(nv_prop "$unit" SubState)"
-	nr="$(int_or_zero "$(nv_prop "$unit" NRestarts)")"
+	active="$(prop "$unit" ActiveState)"
+	sub="$(prop "$unit" SubState)"
+	nr="$(int_or_zero "$(prop "$unit" NRestarts)")"
 	last="$(state_get "$unit.nrestarts")"
 	state_set "$unit.nrestarts" "$nr"
 	WHY=""
@@ -73,9 +100,9 @@ unit_failing() {
 
 check_unit() {
 	local unit="$1" active type bin fails changed
-	type="$(nv_prop "$unit" Type)"
+	type="$(prop "$unit" Type)"
 	[ "$type" = "oneshot" ] && return 0
-	active="$(nv_prop "$unit" ActiveState)"
+	active="$(prop "$unit" ActiveState)"
 
 	if ! unit_failing "$unit"; then
 		if [ -n "$(state_get "$unit.fails")" ] && [ "$active" = "active" ]; then
@@ -97,7 +124,7 @@ check_unit() {
 				state_del "$unit.fails"
 				local u
 				for u in $(nv_units_for_binary "$bin"); do
-					nv_restart "$u" || nv_log "restart of $u after rollback failed"
+					restart "$u" || nv_log "restart of $u after rollback failed"
 				done
 				return 0
 			fi
@@ -106,7 +133,7 @@ check_unit() {
 	fi
 
 	if [ "$active" = "failed" ]; then
-		if nv_restart "$unit"; then
+		if restart "$unit"; then
 			nv_log "restarted $unit ($WHY, check $fails)"
 		else
 			nv_log "restart of $unit failed ($WHY, check $fails)"
@@ -123,11 +150,11 @@ check_remote_access() {
 	for unit in $REMOTE_UNITS; do
 		enabled="$("$NV_SYSTEMCTL" is-enabled "$unit" 2>/dev/null || true)"
 		[ "$enabled" = "enabled" ] || continue
-		active="$(nv_prop "$unit" ActiveState)"
+		active="$(prop "$unit" ActiveState)"
 		case "$active" in
 			active | activating | reloading) continue ;;
 		esac
-		if nv_restart "$unit"; then
+		if restart "$unit"; then
 			nv_log "started $unit (was $active)"
 		else
 			nv_log "start of $unit failed (was $active)"
@@ -144,7 +171,7 @@ gateway_port() {
 # Any HTTP answer at all counts: "000" means no connection/timeout.
 check_gateway_http() {
 	local unit=nivaroos-gateway.service code fails
-	[ "$(nv_prop "$unit" ActiveState)" = "active" ] || { state_del gateway.http; return 0; }
+	[ "$(prop "$unit" ActiveState)" = "active" ] || { state_del gateway.http; return 0; }
 	command -v "$CURL" >/dev/null 2>&1 || return 0
 	code="$("$CURL" -s -o /dev/null -m 8 -w '%{http_code}' "http://127.0.0.1:$(gateway_port)/" 2>/dev/null || true)"
 	if [ -n "$code" ] && [ "$code" != "000" ]; then
@@ -154,7 +181,7 @@ check_gateway_http() {
 	fails=$(($(int_or_zero "$(state_get gateway.http)") + 1))
 	state_set gateway.http "$fails"
 	if [ "$fails" -ge 2 ]; then
-		if nv_restart "$unit"; then
+		if restart "$unit"; then
 			nv_log "restarted $unit: not answering HTTP on port $(gateway_port) ($fails checks)"
 		else
 			nv_log "restart of $unit failed: not answering HTTP ($fails checks)"
@@ -165,8 +192,11 @@ check_gateway_http() {
 	fi
 }
 
+UNITS="$(nv_units)"
+# shellcheck disable=SC2086 # unit names have no spaces
+load_props $UNITS $REMOTE_UNITS nivaroos-gateway.service
 check_remote_access
-for u in $(nv_units); do
+for u in $UNITS; do
 	check_unit "$u"
 done
 check_gateway_http
