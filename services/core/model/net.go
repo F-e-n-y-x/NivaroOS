@@ -14,4 +14,8 @@ type IOCountersStat struct {
 	Fifoout     uint64 `json:"fifoout"`     // total number of FIFO buffers errors while sending
 	State       string `json:"state"`
 	Time        int64  `json:"time"`
+	Speed       int    `json:"speed"`              // negotiated link speed in Mbit/s, 0 = unknown (down, Wi-Fi)
+	Wireless    bool   `json:"wireless,omitempty"` // a Wi-Fi interface
+	TodayRecv   uint64 `json:"todayRecv"`          // received since local midnight
+	TodaySent   uint64 `json:"todaySent"`          // sent since local midnight
 }

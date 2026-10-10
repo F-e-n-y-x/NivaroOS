@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { formatRate, stateClass, defaultInterface, ipOf, sparkPath } from './netWidget'
+import { formatRate, stateClass, defaultInterface, ipOf, sparkPath, linkSpeedText } from './netWidget'
 
 describe('netWidget', () => {
 	test('formatRate picks a 1024-based unit', () => {
@@ -18,6 +18,16 @@ describe('netWidget', () => {
 		expect(stateClass('lowerlayerdown')).toBe('down')
 		expect(stateClass('unknown')).toBe('unknown')
 		expect(stateClass(undefined)).toBe('unknown')
+	})
+
+	test('linkSpeedText names the negotiated speed', () => {
+		expect(linkSpeedText({ speed: 1000 })).toBe('1 Gbit/s')
+		expect(linkSpeedText({ speed: 2500 })).toBe('2.5 Gbit/s')
+		expect(linkSpeedText({ speed: 100 })).toBe('100 Mbit/s')
+		expect(linkSpeedText({ speed: 0, wireless: true })).toBe('Wi-Fi')
+		expect(linkSpeedText({ speed: -1 })).toBe('')
+		expect(linkSpeedText({ name: 'eth0' })).toBe('')
+		expect(linkSpeedText(null)).toBe('')
 	})
 
 	test('defaultInterface prefers a link that is up', () => {

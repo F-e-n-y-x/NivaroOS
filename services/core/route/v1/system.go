@@ -17,7 +17,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"unsafe"
 
 	http2 "github.com/F-e-n-y-x/NivaroOS/services/common/utils/http"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/port"
@@ -784,23 +783,7 @@ func GetSystemUtilization(ctx *echo.Context) error {
 	memData["dimms"] = service.MyService.System().GetMemoryDIMMs()
 	data["mem"] = memData
 
-	// 拼装网络信息
-	netList := service.MyService.System().GetNetInfo()
-	newNet := []model.IOCountersStat{}
-	nets := service.MyService.System().GetNet(true)
-	for _, n := range netList {
-		for _, netCardName := range nets {
-			if n.Name == netCardName {
-				item := *(*model.IOCountersStat)(unsafe.Pointer(&n))
-				item.State = strings.TrimSpace(service.MyService.System().GetNetState(n.Name))
-				item.Time = time.Now().Unix()
-				newNet = append(newNet, item)
-				break
-			}
-		}
-	}
-
-	data["net"] = newNet
+	data["net"] = NetStats(service.MyService.System().GetNet(true), netStateOf, time.Now())
 	systemMap := service.MyService.Notify().GetSystemTempMap()
 	systemMap.Range(func(key, value interface{}) bool {
 		data[key.(string)] = value
@@ -857,21 +840,12 @@ func GetSystemDiskInfo(ctx *echo.Context) error {
 // @Success 200 {string} string "ok"
 // @Router /sys/net [get]
 func GetSystemNetInfo(ctx *echo.Context) error {
-	netList := service.MyService.System().GetNetInfo()
-	newNet := []model.IOCountersStat{}
-	for _, n := range netList {
-		for _, netCardName := range service.MyService.System().GetNet(true) {
-			if n.Name == netCardName {
-				item := *(*model.IOCountersStat)(unsafe.Pointer(&n))
-				item.State = strings.TrimSpace(service.MyService.System().GetNetState(n.Name))
-				item.Time = time.Now().Unix()
-				newNet = append(newNet, item)
-				break
-			}
-		}
-	}
-
+	newNet := NetStats(service.MyService.System().GetNet(true), netStateOf, time.Now())
 	return ctx.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: newNet})
+}
+
+func netStateOf(name string) string {
+	return strings.TrimSpace(service.MyService.System().GetNetState(name))
 }
 
 func GetSystemProxy(ctx *echo.Context) error {

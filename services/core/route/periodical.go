@@ -15,9 +15,8 @@ package route
 import (
 	"strings"
 	"time"
-	"unsafe"
 
-	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
+	v1 "github.com/F-e-n-y-x/NivaroOS/services/core/route/v1"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 )
 
@@ -56,19 +55,7 @@ func refreshSlowFacts(now time.Time) {
 func SendAllHardwareStatusBySocket(name string) {
 	now := time.Now()
 	refreshSlowFacts(now)
-	netList := service.MyService.System().GetNetInfo()
-	newNet := []model.IOCountersStat{}
-	for _, n := range netList {
-		for _, netCardName := range slowNets {
-			if n.Name == netCardName {
-				item := *(*model.IOCountersStat)(unsafe.Pointer(&n))
-				item.State = slowNetStates[n.Name]
-				item.Time = now.Unix()
-				newNet = append(newNet, item)
-				break
-			}
-		}
-	}
+	newNet := v1.NetStats(slowNets, func(n string) string { return slowNetStates[n] }, now)
 	cpu := service.MyService.System().GetCpuPercent()
 	cpuModel := slowCPUModel
 

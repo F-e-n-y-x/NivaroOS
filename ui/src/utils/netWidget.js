@@ -17,6 +17,14 @@ export function stateClass(state) {
 	return 'unknown';
 }
 
+// An interface's negotiated link speed for display: "100 Mbit/s",
+// "2.5 Gbit/s", "Wi-Fi" when the driver reports none, '' when unknown.
+export function linkSpeedText(iface) {
+	const mbit = Number(iface && iface.speed) || 0;
+	if (mbit <= 0) return iface && iface.wireless ? 'Wi-Fi' : '';
+	return mbit >= 1000 ? `${parseFloat((mbit / 1000).toFixed(1))} Gbit/s` : `${mbit} Mbit/s`;
+}
+
 // The interface to show when the stored one is missing: first with link up.
 export function defaultInterface(list) {
 	return list.find(n => stateClass(n.state) === 'up') || list[0] || null;

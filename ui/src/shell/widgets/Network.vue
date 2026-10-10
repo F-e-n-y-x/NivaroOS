@@ -19,7 +19,7 @@
 								aria-hidden="true"
 							></i>
 							<span v-if="activeInterface" class="is-sr-only">{{ activeInterfaceStateLabel }}</span>
-							{{ activeInterfaceName }}
+							{{ activeInterfaceName }}<template v-if="activeLink"> · {{ activeLink }}</template>
 						</span>
 					</div>
 				</div>
@@ -149,7 +149,13 @@
 						<dt>{{ $t('Tailscale') }}</dt>
 						<dd><button type="button" class="net-copy" :title="$t('Copy {ip}', { ip: tailscaleIp })" :aria-label="$t('Copy Tailscale IP {ip}', { ip: tailscaleIp })" @click="copyIp(tailscaleIp)">{{ tailscaleIp }}<i class="mdi mdi-content-copy" aria-hidden="true"></i></button></dd>
 					</template>
-					<template v-if="activeInterface">
+					<template v-if="activeInterface && activeInterface.todayRecv !== undefined">
+						<dt>{{ $t('Today') }}</dt>
+						<dd :title="$t('Received and sent on {name} since midnight ({boot} since the last boot)', { name: activeInterfaceName, boot: '↓ ' + renderSize(Number(activeInterface.bytesRecv) || 0) + ' · ↑ ' + renderSize(Number(activeInterface.bytesSent) || 0) })">
+							↓ {{ renderSize(Number(activeInterface.todayRecv) || 0) }} · ↑ {{ renderSize(Number(activeInterface.todaySent) || 0) }}
+						</dd>
+					</template>
+					<template v-else-if="activeInterface">
 						<dt>{{ $t('Since boot') }}</dt>
 						<dd :title="$t('Received and sent on {name} since the last boot', { name: activeInterfaceName })">
 							↓ {{ renderSize(Number(activeInterface.bytesRecv) || 0) }} · ↑ {{ renderSize(Number(activeInterface.bytesSent) || 0) }}
@@ -190,7 +196,7 @@
 <script>
 import copy from 'clipboard-copy';
 import { mixin } from '@/mixins/mixin';
-import { formatRate, stateClass, defaultInterface, ipOf, sparkPath } from '@/utils/netWidget';
+import { formatRate, stateClass, defaultInterface, ipOf, sparkPath, linkSpeedText } from '@/utils/netWidget';
 
 const LAN_STREAMS = 6;
 const LAN_DURATION = 10000;
@@ -342,6 +348,10 @@ export default {
 		lanIp() {
 			const ip = this.ipOf(this.networkName);
 			return ip === this.tailscaleIp ? '' : ip;
+		},
+		// Negotiated speed ("1 Gbit/s", "Wi-Fi"); '' from servers that don't send it.
+		activeLink() {
+			return linkSpeedText(this.activeInterface);
 		},
 		activeInterfaceStateClass() {
 			return this.stateClass(this.activeInterface && this.activeInterface.state);
