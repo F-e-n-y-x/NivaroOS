@@ -7,6 +7,7 @@
 import 'package:flutter/services.dart';
 
 import 'pb_manifest.dart';
+import 'pb_messages.dart' show MmsInsert;
 import 'pb_tus.dart';
 
 /// A calendar exported to an .ics file.
@@ -250,6 +251,22 @@ class ChannelPhoneSources implements PhoneSources {
   /// Writes the messages of an SMS Backup & Restore file into the phone
   /// (only as the default SMS app); {inserted, skipped, failed}.
   static Future<Map<String, int>> restoreSms(String path) async => _counts(await _call<Map<Object?, Object?>>('restoreSms', {'path': path}));
+
+  /// Writes one MMS (see mmsInsertOf); the default SMS app only.
+  static Future<void> insertMms(MmsInsert m) => _call('insertMms', m.toArgs());
+
+  // Installing backed-up apps goes through the self-update's installer
+  // (AppUpdateInstaller.kt, channel com.fenyx.nivaroos/app_update).
+  static const _installer = MethodChannel('com.fenyx.nivaroos/app_update');
+
+  /// Whether Android lets NivaroOS install apps ("Install unknown apps").
+  static Future<bool> canInstallApps() async => await _installer.invokeMethod<bool>('canRequestInstalls') ?? false;
+
+  /// Opens "Install unknown apps" for NivaroOS.
+  static Future<void> openInstallSettings() => _installer.invokeMethod('openInstallSettings');
+
+  /// One app (base.apk first, then its splits) in one installer session.
+  static Future<void> installApks(List<String> paths, String package) => _installer.invokeMethod('install', {'paths': paths, 'package': package});
 
   static Future<Map<String, int>> restoreCallLog(String path) async => _counts(await _call<Map<Object?, Object?>>('restoreCallLog', {'path': path}));
 

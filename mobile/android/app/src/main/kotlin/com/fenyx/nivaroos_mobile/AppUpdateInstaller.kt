@@ -104,31 +104,47 @@ object AppUpdateInstaller {
         context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
-    /** Streams the APK into a PackageInstaller session and commits it; Android then asks the user. */
-    fun install(context: Context, path: String) {
-        val file = File(path)
+    /**
+     * Streams the APKs (base.apk first, then any splits of the same app) into
+     * one PackageInstaller session and commits it; Android then asks the user.
+     * The self-update installs this app; a phone-backup restore installs [appPackage].
+     */
+    fun install(context: Context, paths: List<String>, appPackage: String = context.packageName) {
         val installer = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-        params.setAppPackageName(context.packageName)
+        params.setAppPackageName(appPackage)
         val sessionId = installer.createSession(params)
-        installer.openSession(sessionId).use { session ->
-            file.inputStream().use { input ->
-                session.openWrite("base.apk", 0, file.length()).use { out ->
-                    input.copyTo(out)
-                    session.fsync(out)
+        try {
+            installer.openSession(sessionId).use { session ->
+                paths.forEachIndexed { i, path ->
+                    val file = File(path)
+                    file.inputStream().use { input ->
+                        session.openWrite(if (i == 0) "base.apk" else "split_$i.apk", 0, file.length()).use { out ->
+                            input.copyTo(out)
+                            session.fsync(out)
+                        }
+                    }
                 }
+                var flags = PendingIntent.FLAG_UPDATE_CURRENT
+                // The installer fills in the status extras, so the intent must be mutable.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) flags = flags or PendingIntent.FLAG_MUTABLE
+                val status = PendingIntent.getBroadcast(
+                    context, sessionId,
+                    Intent(context, InstallStatusReceiver::class.java).setPackage(context.packageName).putExtra(EXTRA_APP, appPackage),
+                    flags
+                )
+                session.commit(status.intentSender)
             }
-            var flags = PendingIntent.FLAG_UPDATE_CURRENT
-            // The installer fills in the status extras, so the intent must be mutable.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) flags = flags or PendingIntent.FLAG_MUTABLE
-            val status = PendingIntent.getBroadcast(
-                context, sessionId,
-                Intent(context, InstallStatusReceiver::class.java).setPackage(context.packageName),
-                flags
-            )
-            session.commit(status.intentSender)
+        } catch (e: Exception) {
+            try {
+                installer.abandonSession(sessionId)
+            } catch (_: Exception) {
+            }
+            throw e
         }
     }
+
+    private const val EXTRA_APP = "com.fenyx.nivaroos.APP"
 
     /** Status of an install: asks the user to confirm, or records why it failed. */
     class InstallStatusReceiver : BroadcastReceiver() {
@@ -143,8 +159,14 @@ object AppUpdateInstaller {
                 else -> {
                     val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "status $status"
                     Log.w(TAG, "Install failed: $message")
-                    context.getSharedPreferences("nivaroos_update", Context.MODE_PRIVATE)
-                        .edit().putString("last_install_error", message).apply()
+                    val app = intent.getStringExtra(EXTRA_APP)
+                    if (app == null || app == context.packageName) {
+                        context.getSharedPreferences("nivaroos_update", Context.MODE_PRIVATE)
+                            .edit().putString("last_install_error", message).apply()
+                    } else if (status != PackageInstaller.STATUS_FAILURE_ABORTED) {
+                        // A restored app (phone backup): the restore screen has no result to wait on.
+                        android.widget.Toast.makeText(context, "Couldn't install $app: $message", android.widget.Toast.LENGTH_LONG).show()
+                    }
                 }
             }
         }

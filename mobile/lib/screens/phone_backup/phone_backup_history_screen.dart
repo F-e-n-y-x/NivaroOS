@@ -12,6 +12,7 @@ import '../../phone_backup/pb_service.dart';
 import '../../ui/ui.dart';
 import '../../utils/format.dart';
 import '../backup/backup_widgets.dart';
+import 'phone_backup_apps_restore.dart';
 import 'phone_backup_common.dart';
 import 'phone_backup_messages_restore.dart';
 import 'phone_backup_other_phones.dart';
@@ -244,6 +245,16 @@ class _PhoneSnapshotScreenState extends State<PhoneSnapshotScreen> {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _browse(c),
               ),
+          ]),
+        if (cats.contains(PhoneCategory.apks.wire))
+          TileGroup(title: 'Apps', children: [
+            ListTile(
+              leading: const Icon(Icons.install_mobile_outlined),
+              title: const Text('Reinstall apps'),
+              subtitle: const Text('The apps of this backup that aren’t on the phone'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PhoneAppsRestoreScreen(service: widget.service, snapshot: widget.snapshot))),
+            ),
           ]),
         if (ex == null && _error == null) const Padding(padding: EdgeInsets.all(Space.lg), child: LinearProgressIndicator()),
         if (_error != null) PhoneBackupHint('Couldn’t load the rest of this backup: ${_phoneErrorText(_error!)}'),

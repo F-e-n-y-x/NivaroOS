@@ -17,8 +17,8 @@ import 'phone_backup_common.dart';
 ///
 /// Android lets only the default SMS app write messages, so for SMS the
 /// app asks to be the default for the restore and then sends you to
-/// switch back; MMS stay in the file (they can be restored with SMS Backup
-/// & Restore from the saved file). The call log needs the call log
+/// switch back. Text messages are written natively, picture messages (MMS)
+/// one by one from Dart (restoreMms). The call log needs the call log
 /// permission, asked here.
 class PhoneMessagesRestoreScreen extends StatefulWidget {
   const PhoneMessagesRestoreScreen({super.key, this.service, required this.snapshot, required this.category, this.permissions});
@@ -42,6 +42,10 @@ class _PhoneMessagesRestoreScreenState extends State<PhoneMessagesRestoreScreen>
   int _items = 0;
   bool? _isDefault;
   Map<String, int>? _result;
+
+  /// Picture messages written so far, while they are (null: not yet).
+  int? _mmsDone;
+  int _mmsTotal = 0;
   String _busy = '';
   String _error = '';
 
@@ -117,7 +121,34 @@ class _PhoneMessagesRestoreScreenState extends State<PhoneMessagesRestoreScreen>
             if (have.values.any((v) => !v)) return;
           }
         }
-        final r = _sms ? await ChannelPhoneSources.restoreSms(f.path) : await ChannelPhoneSources.restoreCallLog(f.path);
+        if (!_sms) {
+          final r = await ChannelPhoneSources.restoreCallLog(f.path);
+          if (mounted) setState(() => _result = r);
+          return;
+        }
+        final r = await ChannelPhoneSources.restoreSms(f.path);
+        final pictures = r['mms'] ?? 0;
+        if (pictures > 0) {
+          if (mounted) {
+            setState(() {
+              _mmsTotal = pictures;
+              _mmsDone = 0;
+            });
+          }
+          try {
+            final m = await restoreMms(f,
+                readExisting: const ChannelPhoneSources().readMms,
+                insert: ChannelPhoneSources.insertMms,
+                onProgress: (n) {
+                  if (mounted) setState(() => _mmsDone = n);
+                });
+            for (final k in const ['inserted', 'skipped', 'failed']) {
+              r[k] = (r[k] ?? 0) + (m[k] ?? 0);
+            }
+          } finally {
+            if (mounted) setState(() => _mmsDone = null);
+          }
+        }
         if (mounted) setState(() => _result = r);
       });
 
@@ -151,7 +182,7 @@ class _PhoneMessagesRestoreScreenState extends State<PhoneMessagesRestoreScreen>
       title: _sms ? 'Restore messages' : 'Restore the call log',
       body: ListView(children: [
         PhoneBackupHint(_sms
-            ? 'Android lets only the default messaging app write messages. For the restore, NivaroOS becomes the default for a few minutes; afterwards you switch back. Messages already on the phone are skipped. Picture messages (MMS) aren’t written back: save the file and restore them with SMS Backup & Restore if you need them.'
+            ? 'Android lets only the default messaging app write messages. For the restore, NivaroOS becomes the default for a few minutes; afterwards you switch back. Text and picture messages already on the phone are skipped.'
             : 'The calls of this backup are added to the phone’s call log. Calls already there are skipped.'),
         if (_error.isNotEmpty) Notice(status: Status.error, message: _error),
         TileGroup(children: [
@@ -161,7 +192,7 @@ class _PhoneMessagesRestoreScreenState extends State<PhoneMessagesRestoreScreen>
             step(2, 'Make NivaroOS the default SMS app', 'Android asks you to confirm', finished: _isDefault == true, enabled: _file != null,
                 action: _isDefault == true || _file == null ? null : busyOr('role', FilledButton.tonal(style: tonalButtonStyle(context), onPressed: _busy.isEmpty ? _becomeDefault : null, child: const Text('Allow')))),
           step(_sms ? 3 : 2, _sms ? 'Write the messages' : 'Write the calls',
-              done ? '${formatNumber(r!['inserted'] ?? 0)} added, ${formatNumber(r['skipped'] ?? 0)} already there${(r['failed'] ?? 0) > 0 ? ', ${formatNumber(r['failed']!)} failed' : ''}${_sms && (r['mms'] ?? 0) > 0 ? ', ${formatNumber(r['mms']!)} picture messages left in the file' : ''}' : 'Takes a minute for many thousands',
+              done ? '${formatNumber(r!['inserted'] ?? 0)} added, ${formatNumber(r['skipped'] ?? 0)} already there${(r['failed'] ?? 0) > 0 ? ', ${formatNumber(r['failed']!)} failed' : ''}' : _mmsDone != null ? 'Picture messages: ${formatNumber(_mmsDone!)} of ${formatNumber(_mmsTotal)}' : 'Takes a minute for many thousands',
               finished: done,
               enabled: _file != null && (!_sms || _isDefault == true),
               action: done || _file == null || (_sms && _isDefault != true) ? null : busyOr('restore', FilledButton(onPressed: _busy.isEmpty ? _restore : null, child: const Text('Restore')))),

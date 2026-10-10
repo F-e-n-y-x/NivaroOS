@@ -122,6 +122,21 @@ class PhoneBackupBridge(private val context: Context, private val activity: Acti
                     background(result) { PhoneBackupData.restoreSms(context, s("path")) }
                 }
             }
+            "insertMms" -> {
+                if (!isDefaultSms()) {
+                    result.error("NOT_DEFAULT_SMS", "NivaroOS is not the default SMS app", null)
+                } else {
+                    background(result) {
+                        PhoneBackupData.insertMms(
+                            context,
+                            call.argument<Map<String, Any?>>("pdu") ?: emptyMap(),
+                            call.argument<List<String>>("recipients") ?: emptyList(),
+                            call.argument<List<Map<String, Any?>>>("addrs") ?: emptyList(),
+                            call.argument<List<Map<String, Any?>>>("parts") ?: emptyList(),
+                        )
+                    }
+                }
+            }
             "restoreCallLog" -> background(result) { PhoneBackupData.restoreCallLog(context, s("path")) }
             // The rest need a screen.
             else -> {

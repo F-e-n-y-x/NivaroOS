@@ -635,7 +635,44 @@ object PhoneBackupData {
         return Uri.fromFile(f).toString()
     }
 
-    /** SMS Backup & Restore messages into the SMS provider (the app must be the default SMS app). MMS are counted, not written. */
+    /**
+     * One MMS of a backup into the provider (lib/phone_backup/pb_messages.dart
+     * mmsInsertOf; the app must be the default SMS app): the message row in
+     * its conversation, then its addresses and parts, a part's bytes written
+     * through the provider. On a failure the half-written message is removed.
+     */
+    fun insertMms(ctx: Context, pdu: Map<String, Any?>, recipients: List<String>, addrs: List<Map<String, Any?>>, parts: List<Map<String, Any?>>): String {
+        fun values(m: Map<String, Any?>) = ContentValues().apply {
+            for ((k, x) in m) when (x) {
+                is Int -> put(k, x)
+                is Long -> put(k, x)
+                is String -> put(k, x)
+            }
+        }
+        if (recipients.isEmpty()) throw IllegalArgumentException("The message has no address")
+        val cr = ctx.contentResolver
+        val v = values(pdu)
+        v.put(Telephony.Mms.THREAD_ID, Telephony.Threads.getOrCreateThreadId(ctx, recipients.toSet()))
+        val uri = cr.insert(Telephony.Mms.CONTENT_URI, v) ?: throw java.io.IOException("The MMS provider refused the message")
+        val id = ContentUris.parseId(uri)
+        try {
+            for (a in addrs) cr.insert(Uri.parse("content://mms/$id/addr"), values(a)) ?: throw java.io.IOException("The MMS provider refused an address")
+            for (part in parts) {
+                val pu = cr.insert(Uri.parse("content://mms/$id/part"), values(part - "data")) ?: throw java.io.IOException("The MMS provider refused a part")
+                val data = part["data"] as? ByteArray ?: continue
+                (cr.openOutputStream(pu) ?: throw java.io.IOException("Can't write $pu")).use { it.write(data) }
+            }
+        } catch (e: Exception) {
+            try {
+                cr.delete(uri, null, null)
+            } catch (_: Exception) {
+            }
+            throw e
+        }
+        return uri.toString()
+    }
+
+    /** SMS Backup & Restore messages into the SMS provider (the app must be the default SMS app). MMS are counted here; Dart writes them one by one (insertMms). */
     fun restoreSms(ctx: Context, path: String): Map<String, Int> {
         val cr = ctx.contentResolver
         var inserted = 0

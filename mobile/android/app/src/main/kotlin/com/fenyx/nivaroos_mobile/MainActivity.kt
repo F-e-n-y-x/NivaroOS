@@ -270,10 +270,12 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                     "install" -> {
-                        val path = call.argument<String>("path") ?: ""
+                        // One APK (the self-update) or an app of a phone backup with its splits.
+                        val paths = call.argument<List<String>>("paths") ?: listOf(call.argument<String>("path") ?: "")
+                        val app = call.argument<String>("package") ?: packageName
                         Thread {
                             val error = try {
-                                AppUpdateInstaller.install(this, path)
+                                AppUpdateInstaller.install(this, paths, app)
                                 null
                             } catch (e: Exception) {
                                 e.message ?: e.javaClass.simpleName

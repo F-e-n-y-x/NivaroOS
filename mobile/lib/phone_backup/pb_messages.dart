@@ -251,3 +251,126 @@ Future<void> _write(File file, String root, List<MessageItem> items, {DateTime? 
     await sink.close();
   }
 }
+
+// --- MMS restore ----------------------------------------------------------
+
+final _attrRe = RegExp(r'''([A-Za-z_][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')''');
+final _entityRe = RegExp(r'&(#x[0-9A-Fa-f]+|#[0-9]+|amp|lt|gt|quot|apos);');
+
+String _unescape(String s) => !s.contains('&')
+    ? s
+    : s.replaceAllMapped(_entityRe, (m) {
+        final e = m[1]!;
+        if (e.startsWith('#')) {
+          final code = e.startsWith('#x') ? int.tryParse(e.substring(2), radix: 16) : int.tryParse(e.substring(1));
+          return code == null ? m[0]! : String.fromCharCode(code);
+        }
+        return const {'amp': '&', 'lt': '<', 'gt': '>', 'quot': '"', 'apos': "'"}[e]!;
+      });
+
+Map<String, String> _attrs(String tag) => {for (final m in _attrRe.allMatches(tag)) m[1]!: _unescape(m[2] ?? m[3] ?? '')};
+
+/// One `<mms ...>...</mms>` element of an SMS Backup & Restore file.
+MessageItem parseMmsElement(String xml) {
+  final end = xml.indexOf('>');
+  return MessageItem(
+    'mms',
+    _attrs(xml.substring(0, end < 0 ? xml.length : end)),
+    parts: [for (final m in RegExp(r'<part\b([^>]*)>').allMatches(xml)) _attrs(m[1]!)],
+    addrs: [for (final m in RegExp(r'<addr\b([^>]*)>').allMatches(xml)) _attrs(m[1]!)],
+  );
+}
+
+/// The `<mms>` elements of an SMS Backup & Restore file, read in chunks
+/// (attachments make these files large); `<sms>` elements are skipped.
+Stream<MessageItem> readMmsXml(File file) async* {
+  var buf = '';
+  await for (final chunk in file.openRead().transform(utf8.decoder)) {
+    buf += chunk;
+    while (true) {
+      final s = buf.indexOf(RegExp(r'<mms[\s>/]'));
+      if (s < 0) {
+        // Keep a tail that may be the start of "<mms ".
+        buf = buf.length > 4 ? buf.substring(buf.length - 4) : buf;
+        break;
+      }
+      final tagEnd = buf.indexOf('>', s);
+      if (tagEnd < 0) {
+        buf = buf.substring(s);
+        break;
+      }
+      final selfClosing = buf[tagEnd - 1] == '/';
+      final e = selfClosing ? tagEnd + 1 : buf.indexOf('</mms>', tagEnd);
+      if (e < 0) {
+        buf = buf.substring(s);
+        break;
+      }
+      final stop = selfClosing ? e : e + 6;
+      yield parseMmsElement(buf.substring(s, stop));
+      buf = buf.substring(stop);
+    }
+  }
+}
+
+/// The key an MMS is recognised by on the phone, so a restore skips the
+/// ones already there (same rule as the backup's [mmsKey]). The provider
+/// keeps seconds, a file may carry milliseconds: compared in seconds.
+String mmsDedupKey(MessageItem m) {
+  final ms = int.tryParse(m.attrs['date'] ?? '') ?? 0;
+  return mmsKey(m.attrs['address'] ?? '', '${ms ~/ 1000 * 1000}', m.attrs['msg_box'] ?? '', m.attrs['m_id'] ?? '');
+}
+
+/// What insertMms writes: the content://mms row, its addresses and parts.
+class MmsInsert {
+  const MmsInsert({required this.pdu, required this.recipients, required this.addrs, required this.parts});
+
+  /// Columns of content://mms (date in seconds).
+  final Map<String, Object> pdu;
+
+  /// The other party, for the conversation (Threads.getOrCreateThreadId).
+  final List<String> recipients;
+  final List<Map<String, Object>> addrs;
+
+  /// Columns of `content://mms/<id>/part`; `data` (bytes) is the file.
+  final List<Map<String, Object>> parts;
+
+  Map<String, Object> toArgs() => {'pdu': pdu, 'recipients': recipients, 'addrs': addrs, 'parts': parts};
+}
+
+const _pduText = ['m_id', 'sub', 'ct_t', 'ct_l', 'tr_id', 'm_cls'];
+const _pduInt = ['date_sent', 'msg_box', 'read', 'm_type', 'text_only', 'sub_id', 'locked', 'sub_cs', 'v', 'pri', 'rr', 'd_rpt', 'exp', 'm_size', 'resp_st', 'st', 'retr_st', 'read_status', 'ct_cls'];
+const _partText = ['ct', 'name', 'cd', 'fn', 'cid', 'cl', 'ctt_t', 'text'];
+const _partInt = ['seq', 'chset', 'ctt_s'];
+
+bool _has(String? v) => v != null && v != 'null';
+
+/// An `<mms>` of a backup file as the rows to insert. "null" values are
+/// left out; only known columns are written (the provider rejects others).
+MmsInsert mmsInsertOf(MessageItem m) {
+  Map<String, Object> pick(Map<String, String> a, List<String> text, List<String> ints) => {
+        for (final k in text)
+          if (_has(a[k])) k: a[k]!,
+        for (final k in ints)
+          if (_has(a[k]) && int.tryParse(a[k]!) != null) k: int.parse(a[k]!),
+      };
+  final a = m.attrs;
+  final ms = int.tryParse(a['date'] ?? '') ?? 0;
+  final pdu = {...pick(a, _pduText, _pduInt), 'date': ms ~/ 1000, 'seen': 1};
+  pdu.putIfAbsent('msg_box', () => 1);
+  pdu.putIfAbsent('read', () => 1);
+  final addrs = [
+    for (final x in m.addrs)
+      if (_has(x['address'])) {'address': x['address']!, 'type': int.tryParse(x['type'] ?? '') ?? mmsAddrTo, 'charset': int.tryParse(x['charset'] ?? '') ?? 106},
+  ];
+  bool real(String s) => s.isNotEmpty && s != 'null' && s != 'insert-address-token';
+  var recipients = (a['address'] ?? '').split('~').where(real).toList();
+  if (recipients.isEmpty) recipients = [for (final x in addrs) x['address'] as String].where(real).toSet().toList();
+  final parts = [
+    for (final p in m.parts)
+      {
+        ...pick(p, _partText, _partInt),
+        if (_has(p['data']) && p['data']!.isNotEmpty) 'data': base64.decode(p['data']!),
+      },
+  ];
+  return MmsInsert(pdu: pdu, recipients: recipients, addrs: addrs, parts: parts);
+}
