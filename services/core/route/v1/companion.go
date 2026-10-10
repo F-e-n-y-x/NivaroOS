@@ -1008,31 +1008,8 @@ func ProxyCompanionFileRename(dev *CompanionDevice, oldPath, newPath string) err
 		return err
 	}
 
-	// Fallback: download old -> upload new -> delete old
-	tmpFile, err := os.CreateTemp("", "nivaroos-comp-rename-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmpFile.Name()
-	defer os.Remove(tmpName)
-
-	dl, err := companionDo(context.Background(), dev, companionRequest{Method: http.MethodGet, Path: "/download", Query: url.Values{"path": {oldPath}, "download": {"1"}}, Timeout: 60 * time.Minute})
-	if err != nil {
-		tmpFile.Close()
-		return err
-	}
-	defer dl.Body.Close()
-	if dl.StatusCode != http.StatusOK {
-		tmpFile.Close()
-		return fmt.Errorf("failed to read companion file for rename (status %d)", dl.StatusCode)
-	}
-	if _, err := io.Copy(tmpFile, dl.Body); err != nil {
-		tmpFile.Close()
-		return err
-	}
-	tmpFile.Close()
-
-	if err := ProxyCompanionUploadFile(dev, tmpName, newPath); err != nil {
+	// Fallback: stream old -> new on the device, then delete old.
+	if err := relayCompanionFile(context.Background(), dev, oldPath, dev, newPath, nil); err != nil {
 		return err
 	}
 	return ProxyCompanionFileDelete(dev, oldPath)
@@ -2103,6 +2080,12 @@ func (h *companionIOHandlerImpl) GetSize(ctx context.Context, p string) (int64, 
 	if err == nil && len(items) > 0 {
 		var total int64 = 0
 		for _, it := range items {
+			if it.IsDir {
+				// Subfolders count too, or a folder copy runs past 100%.
+				n, _ := h.GetSize(ctx, filepath.Join(p, it.Name))
+				total += n
+				continue
+			}
 			total += it.Size
 		}
 		return total, nil
@@ -2258,7 +2241,7 @@ func (h *companionIOHandlerImpl) downloadFileFromCompanion(ctx context.Context, 
 			}
 			written += int64(n)
 			if onProgress != nil {
-				onProgress(written)
+				onProgress(int64(n))
 			}
 		}
 		if readErr != nil {
@@ -2326,13 +2309,10 @@ func (h *companionIOHandlerImpl) uploadFileToCompanion(ctx context.Context, dev 
 	srcStat, _ := srcFile.Stat()
 	fileSize := srcStat.Size()
 
-	var sent int64
-	body := &progressReader{r: srcFile, fn: func(n int64) {
-		sent += n
-		if onProgress != nil {
-			onProgress(sent)
-		}
-	}}
+	var body io.Reader = srcFile
+	if onProgress != nil {
+		body = &progressReader{r: srcFile, fn: onProgress}
+	}
 	return companionUpload(ctx, dev, targetPhonePath, body, fileSize)
 }
 
@@ -2347,6 +2327,93 @@ func (p *progressReader) Read(b []byte) (int, error) {
 	n, err := p.r.Read(b)
 	if n > 0 {
 		p.fn(int64(n))
+	}
+	return n, err
+}
+
+func (h *companionIOHandlerImpl) CopyBetweenCompanions(ctx context.Context, companionSrc, companionDstDir string, onProgress func(int64)) error {
+	src, srcPath := GetCompanionDeviceByStoragePath(companionSrc)
+	if src == nil {
+		return fmt.Errorf("device not found for path: %s", companionSrc)
+	}
+	dst, dstDir := GetCompanionDeviceByStoragePath(companionDstDir)
+	if dst == nil {
+		return fmt.Errorf("companion device not found for target %s", companionDstDir)
+	}
+	target := filepath.Join(dstDir, filepath.Base(srcPath))
+	if isCompanionFile(src, srcPath) {
+		return relayCompanionFile(ctx, src, srcPath, dst, target, onProgress)
+	}
+	files, err := FetchCompanionFilesFromDevice(src, srcPath)
+	if err != nil {
+		return err
+	}
+	if err := ProxyCompanionMkdir(dst, target); err != nil {
+		return err
+	}
+	// Every child's failure is returned, so a move never deletes what
+	// didn't arrive.
+	var errs []error
+	for _, it := range files {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if it.IsDir {
+			err = h.CopyBetweenCompanions(ctx, filepath.Join(companionSrc, it.Name), filepath.Join(companionDstDir, filepath.Base(companionSrc)), onProgress)
+		} else {
+			p := it.Path
+			if p == "" {
+				p = filepath.Join(srcPath, it.Name)
+			}
+			err = relayCompanionFile(ctx, src, p, dst, filepath.Join(target, it.Name), onProgress)
+		}
+		if err != nil {
+			var ue *errCompanionUnreachable
+			if errors.As(err, &ue) {
+				return err
+			}
+			errs = append(errs, fmt.Errorf("%s: %w", it.Name, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// relayCompanionFile streams one file from src to dst: the download body is
+// the upload body, so nothing is staged on the server and memory stays at
+// the transports' buffers. A failure on either side ends both requests;
+// the target phone writes to a temp name and only keeps a complete file.
+func relayCompanionFile(ctx context.Context, src *CompanionDevice, srcPath string, dst *CompanionDevice, dstPath string, onProgress func(int64)) error {
+	resp, err := companionDo(ctx, src, companionRequest{
+		Method: http.MethodGet, Path: "/download", Query: url.Values{"path": {srcPath}, "download": {"1"}}, Timeout: 6 * time.Hour,
+	})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("companion download failed with status %d", resp.StatusCode)
+	}
+	var body io.Reader = &exactReader{r: resp.Body, left: resp.ContentLength}
+	if onProgress != nil {
+		body = &progressReader{r: body, fn: onProgress}
+	}
+	return companionUpload(ctx, dst, dstPath, body, resp.ContentLength)
+}
+
+// exactReader fails a body that ends before its Content-Length (left < 0:
+// unknown length), so the upload is aborted instead of finishing short.
+type exactReader struct {
+	r    io.Reader
+	left int64
+}
+
+func (e *exactReader) Read(b []byte) (int, error) {
+	n, err := e.r.Read(b)
+	if e.left >= 0 {
+		e.left -= int64(n)
+		if err == io.EOF && e.left > 0 {
+			err = io.ErrUnexpectedEOF
+		}
 	}
 	return n, err
 }

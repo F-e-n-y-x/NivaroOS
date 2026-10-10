@@ -67,8 +67,15 @@ func (w *writer) Write(p []byte) (n int, err error) {
 type CompanionIOHandler interface {
 	IsCompanionPath(path string) bool
 	GetSize(ctx context.Context, path string) (int64, error)
-	CopyFromCompanion(ctx context.Context, companionSrc, dst, style string, onProgress func(processed int64)) error
-	CopyToCompanion(ctx context.Context, src, companionDst, style string, onProgress func(processed int64)) error
+	// onProgress (may be nil) gets byte deltas: what was just written to
+	// the target. (It used to get bytes-so-far per file, which a caller
+	// can't tell apart from the next file's first bytes.)
+	CopyFromCompanion(ctx context.Context, companionSrc, dst, style string, onProgress func(n int64)) error
+	CopyToCompanion(ctx context.Context, src, companionDst, style string, onProgress func(n int64)) error
+	// CopyBetweenCompanions streams companionSrc into the folder
+	// companionDstDir (another device or the same one) with nothing staged
+	// on the server.
+	CopyBetweenCompanions(ctx context.Context, companionSrc, companionDstDir string, onProgress func(n int64)) error
 	DeleteCompanionPath(ctx context.Context, path string) error
 }
 

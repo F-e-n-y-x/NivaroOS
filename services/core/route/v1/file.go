@@ -296,7 +296,12 @@ func GetDownloadFile(ctx *echo.Context) error {
 	for _, v := range list {
 		if dev, _ := GetCompanionDeviceByStoragePath(v); dev != nil {
 			if tempStageDir == "" {
-				tempStageDir, _ = os.MkdirTemp(service.UploadStagingDir, "comp-batch-dl-*")
+				_ = os.MkdirAll(service.UploadStagingDir, 0o700)
+				var err error
+				if tempStageDir, err = os.MkdirTemp(service.UploadStagingDir, "comp-batch-dl-*"); err != nil {
+					failures = append(failures, fmt.Sprintf("%s: %v", v, err))
+					continue
+				}
 			}
 			stagedPath := filepath.Join(tempStageDir, filepath.Base(v))
 			if err := DownloadCompanionItemToLocal(ctx.Request().Context(), v, stagedPath); err != nil {
@@ -645,7 +650,10 @@ func resolveRemuxSource(ctx *echo.Context, filePath string) (string, func(), err
 		return "", noop, fmt.Errorf("companion device returned status %d", resp.StatusCode)
 	}
 
-	tmp, err := os.CreateTemp("", "nivaroos-companion-remux-src-*"+filepath.Ext(filePath))
+	// ffmpeg needs a seekable file, so this one is staged - on disk: /tmp
+	// is RAM on many boxes and this is a whole video.
+	_ = os.MkdirAll(service.UploadStagingDir, 0o700)
+	tmp, err := os.CreateTemp(service.UploadStagingDir, "companion-remux-src-*"+filepath.Ext(filePath))
 	if err != nil {
 		return "", noop, err
 	}

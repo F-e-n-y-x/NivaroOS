@@ -148,34 +148,17 @@ func (companionRemote) Transfer(ctx context.Context, src, destDir string, confli
 	if conflict == transfer.ConflictSkip || conflict == transfer.ConflictResume {
 		style = "skip"
 	}
-	// CompanionHandler reports progress as bytes-so-far per file; the engine
-	// wants deltas.
-	var last int64
-	delta := func(p int64) {
-		if p < last {
-			last = 0
-		}
-		progress(p - last)
-		last = p
-	}
 	fromC := CompanionHandler.IsCompanionPath(src)
 	toC := CompanionHandler.IsCompanionPath(destDir)
 	switch {
 	case fromC && toC:
-		tmp, err := os.MkdirTemp("", "nivaroos-comp-xfer-*")
-		if err != nil {
-			return err
-		}
-		defer os.RemoveAll(tmp)
-		if err := CompanionHandler.CopyFromCompanion(ctx, src, tmp+"/", "overwrite", delta); err != nil {
-			return err
-		}
-		last = 0
-		return CompanionHandler.CopyToCompanion(ctx, filepath.Join(tmp, filepath.Base(src)), destDir, style, func(int64) {})
+		// Streamed phone to phone: no staging (it used to fill /tmp, which is
+		// RAM on many boxes) and progress is the bytes the target received.
+		return CompanionHandler.CopyBetweenCompanions(ctx, src, destDir, progress)
 	case fromC:
-		return CompanionHandler.CopyFromCompanion(ctx, src, destDir+"/", style, delta)
+		return CompanionHandler.CopyFromCompanion(ctx, src, destDir+"/", style, progress)
 	default:
-		return CompanionHandler.CopyToCompanion(ctx, src, destDir, style, delta)
+		return CompanionHandler.CopyToCompanion(ctx, src, destDir, style, progress)
 	}
 }
 
