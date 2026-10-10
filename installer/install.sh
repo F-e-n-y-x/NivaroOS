@@ -42,7 +42,7 @@ OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"
 # older than the highest `go` directive in services/*/go.mod + cli/go.mod
 # (see clone_or_update_repo; GO_MIN_VERSION is the floor if that can't be
 # read). Bump GO_VERSION whenever a go.mod needs a newer release.
-GO_VERSION="1.27.1"
+GO_VERSION="1.27.2"
 GO_MIN_VERSION="1.26.0"
 MIN_RECOMMENDED_MEMORY_MB="1024"
 MIN_REQUIRED_MEMORY_MB="384"
