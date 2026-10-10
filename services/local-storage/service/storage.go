@@ -39,7 +39,6 @@ type StorageService interface {
 	GetAttributeValueByName(name, key string) string
 	SetAttributeValue(name, key, value string, isPassword bool) error
 	DeleteConfigByName(name string)
-	GetConfig() (httper.RemotesResult, error)
 }
 
 type storageStruct struct {
@@ -321,15 +320,6 @@ func (s *storageStruct) SetAttributeValue(name, key, value string, isPassword bo
 
 func (s *storageStruct) DeleteConfigByName(name string) {
 	rconfig.DeleteRemote(name)
-}
-func (s *storageStruct) GetConfig() (httper.RemotesResult, error) {
-	//TODO: check data
-	// section, err := httper.GetAllConfigName()
-	// if err != nil {
-	// 	return httper.RemotesResult{}, err
-	// }
-	// return section, nil
-	return httper.RemotesResult{}, nil
 }
 func NewStorageService() StorageService {
 	return &storageStruct{}

@@ -16,7 +16,7 @@ const batch = {
 		return api.post(`${PREFIX}/download`, { files, format });
 	},
 
-	// File operate task TODO:wait for the api
+	// start a copy/move/delete job
 	task(data) {
 		return api.post(`${PREFIX}/task`, data);
 	},

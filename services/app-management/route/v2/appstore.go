@@ -448,7 +448,6 @@ func (a *AppManagement) UpgradableAppList(ctx *echo.Context) error {
 		}
 		tag, err := storeComposeApp.MainTag()
 		if err != nil {
-			// TODO
 			logger.Error("failed to get compose app main tag", zap.Error(err), zap.String("appStoreID", id))
 			continue
 		}

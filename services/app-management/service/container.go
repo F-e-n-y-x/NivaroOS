@@ -37,10 +37,6 @@ import (
 	client2 "github.com/moby/moby/client"
 )
 
-var (
-	NewVersionApp map[string]string // TODO - make use of NewVersionApp map
-)
-
 type DockerService interface {
 	// image
 	IsExistImage(imageName string) bool
@@ -267,7 +263,6 @@ func (ds *dockerService) GetContainerAppList(name, image, state *string) (*[]mod
 
 		if m.Labels["casaos"] == "casaos" {
 
-			_, newVersion := NewVersionApp[m.ID]
 			name := strings.ReplaceAll(m.Names[0], "/", "")
 			icon := m.Labels["icon"]
 			if len(m.Labels["name"]) > 0 {
@@ -289,7 +284,6 @@ func (ds *dockerService) GetContainerAppList(name, image, state *string) (*[]mod
 				Port:       m.Labels["web"],
 				Index:      m.Labels["index"],
 				Image:      m.Image,
-				Latest:     newVersion,
 				Host:       m.Labels["host"],
 				Protocol:   m.Labels["protocol"],
 				Created:    m.Created,
