@@ -100,7 +100,6 @@ func (r *APIRoute) TriggerAction(c *echo.Context, sourceID codegen.SourceID, nam
 		Timestamp:  utils.Ptr(time.Now()),
 	})
 
-	go r.services.SocketIOService.Publish(action)
 	go r.services.ActionServiceWS.Trigger(action)
 
 	return c.JSON(http.StatusOK, out.ActionAdapter(action))

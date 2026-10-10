@@ -24,10 +24,6 @@ tags:
     description: |-
       Endpoint paths for subscribing to events and actions via WebSocket
 
-  - name: SocketIO Endpoints
-    description: |-
-      Endpoint paths for subscribing to events and actions via SocketIO
-
   - name: Notification methods
     description: |-
       The persisted notification feed: outcomes worth telling someone about
@@ -41,8 +37,7 @@ tags:
 
       Live updates: the bus publishes `message-bus:notification:created` (the
       new entry as properties) and `message-bus:notification:state` (a user's
-      read/dismissed state changed) under source `message-bus`, on socket.io and
-      on `/event/message-bus`.
+      read/dismissed state changed) under source `message-bus`, on `/event/message-bus`.
 
   - name: EventType
     description: |-
@@ -76,7 +71,6 @@ x-tagGroups:
   - name: Endpoints
     tags:
       - WebSocket Endpoints
-      - SocketIO Endpoints
 
   - name: Schemas
     tags:
@@ -294,61 +288,6 @@ paths:
           description: |
             The connection will be upgraded to a WebSocket connection and the client will receive actions as they are triggered.
 
-  /socket.io:
-    get:
-      summary: Subscribe to events and actions (SocketIO)
-      description: |
-        Subscribe to events and actions via SocketIO.
-
-        - SocketIO `room` should be either `event` or `action`
-
-      operationId: subscribeSIO
-      tags:
-        - SocketIO Endpoints
-      responses:
-        "101":
-          description: |
-            The connection will be upgraded to a SocketIO connection and the client will receive events as they are published.
-        "200":
-          description: |
-            Polling initialized for SocketIO
-
-    post:
-      summary: Poll events and actions (SocketIO)
-      description: |
-        Poll events and actions by via SocketIO.
-      operationId: pollSIO
-      tags:
-        - SocketIO Endpoints
-      responses:
-        "200":
-          description: |
-            Polling continued from SocketIO
-
-  /socket.io/:
-    get:
-      summary: Subscribe to events and actions (SocketIO)
-      description: |
-        > Same as `/socket.io` except it comes with a trailing slash `/` - a workaround to maximize compatibility
-      operationId: subscribeSIO2
-      responses:
-        "101":
-          description: |
-            The connection will be upgraded to a SocketIO connection and the client will receive events as they are published.
-        "200":
-          description: |
-            Polling initialized for SocketIO
-
-    post:
-      summary: Poll events and actions (SocketIO)
-      description: |
-        > Same as `/socket.io` except it comes with a trailing slash `/` - a workaround to maximize compatibility
-      operationId: pollSIO2
-      responses:
-        "200":
-          description: |
-            Polling continued from SocketIO
-
   /notifications:
     get:
       summary: List the caller's notification feed
@@ -444,7 +383,7 @@ components:
       in: header
       name: Authorization
       description: |
-        An access token, raw or as `Bearer <token>`. WebSocket and socket.io
+        An access token, raw or as `Bearer <token>`. WebSocket
         subscriptions may pass it as `?token=` instead (browsers can't set
         headers on a WebSocket).
 

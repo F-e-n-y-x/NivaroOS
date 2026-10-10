@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	json2 "encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/syncmap"
 
-	socketio "github.com/googollee/go-socket.io"
 	"github.com/gorilla/websocket"
 	"gorm.io/gorm"
 )
@@ -73,11 +71,6 @@ func (i *notifyServer) SendNotify(name string, message map[string]interface{}) {
 // func (i *notifyServer) SendUninstallAppBySocket(app notifyCommon.Application) {
 // 	SocketServer.BroadcastToRoom("/", "public", "app_uninstall", app)
 // }
-
-func (i *notifyServer) SSR() {
-	server := socketio.NewServer(nil)
-	fmt.Println(server)
-}
 
 func (i *notifyServer) GetList(c int) (list []model.AppNotify) {
 	i.db.Where("class = ?", c).Where(i.db.Where("state = ?", types.NOTIFY_DYNAMICE).Or("state = ?", types.NOTIFY_UNREAD)).Find(&list)

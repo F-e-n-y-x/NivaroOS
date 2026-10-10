@@ -19,10 +19,7 @@ import (
 var json2 = jsoniter.ConfigCompatibleWithStandardLibrary
 
 func TestEventRoute(t *testing.T) {
-	defer goleak.VerifyNone(
-		t,
-		goleak.IgnoreTopFunction("github.com/googollee/go-socket.io/engineio.(*Server).Accept"), // there is a goroutine leak in go-socket.io
-	)
+	defer goleak.VerifyNone(t)
 
 	sourceID := "Foo"
 	name := "Bar"

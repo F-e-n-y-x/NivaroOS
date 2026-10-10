@@ -15,7 +15,7 @@ import (
 )
 
 // Feed events, published by the message bus itself (source "message-bus")
-// on socket.io and on /event/message-bus:
+// on /event/message-bus:
 //
 //   - NotificationCreatedEvent: a new feed entry; its properties are the
 //     entry (id, time, source_id, event_name, category, level, title,

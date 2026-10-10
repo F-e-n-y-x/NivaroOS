@@ -32,7 +32,7 @@ type authFixture struct {
 }
 
 // newAuthFixture serves the real message-bus router (JWT, origin guard,
-// CORS, OpenAPI validation, socket.io) on a loopback test server, with a
+// CORS, OpenAPI validation) on a loopback test server, with a
 // throwaway key pair standing in for the user service's JWKS.
 func newAuthFixture(t *testing.T) *authFixture {
 	t.Helper()
@@ -146,10 +146,6 @@ func TestEventWebSocketAuth(t *testing.T) {
 		{"foreign Origin, bad token", path + "?token=not-a-jwt", http.Header{"Origin": {"https://evil.example"}}, http.StatusUnauthorized},
 		{"action stream via gateway, no token", "/v2/message_bus/action/Foo", viaGateway(), http.StatusUnauthorized},
 		{"action stream via gateway, token", "/v2/message_bus/action/Foo?token=" + url.QueryEscape(f.token), viaGateway(), http.StatusSwitchingProtocols},
-		{"socket.io websocket via gateway, no token", "/v2/message_bus/socket.io/?EIO=3&transport=websocket", viaGateway(), http.StatusUnauthorized},
-		{"socket.io websocket via gateway, token", "/v2/message_bus/socket.io/?EIO=3&transport=websocket&token=" + url.QueryEscape(f.token), viaGateway(), http.StatusSwitchingProtocols},
-		{"socket.io websocket, cross-site page, no token", "/v2/message_bus/socket.io/?EIO=3&transport=websocket", http.Header{"Origin": {"https://evil.example"}}, http.StatusForbidden},
-		{"socket.io websocket, foreign Origin (Host-rewriting proxy), token", "/v2/message_bus/socket.io/?EIO=3&transport=websocket&token=" + url.QueryEscape(f.token), http.Header{"Origin": {"https://nas.example.com"}, "X-Forwarded-For": {"203.0.113.9"}}, http.StatusSwitchingProtocols},
 	}
 
 	for _, tc := range cases {
@@ -174,39 +170,6 @@ func TestEventWebSocketRemotePeerNeedsToken(t *testing.T) {
 
 	f.handler.ServeHTTP(rec, req)
 	assert.Equal(t, rec.Code, http.StatusUnauthorized)
-}
-
-func TestSocketIOPollingAuth(t *testing.T) {
-	f := newAuthFixture(t)
-
-	get := func(query string, header http.Header) *http.Response {
-		req, err := http.NewRequest(http.MethodGet, f.server.URL+"/v2/message_bus/socket.io/?EIO=3&transport=polling"+query, nil)
-		assert.NilError(t, err)
-		for k, v := range header {
-			req.Header[k] = v
-		}
-		resp, err := http.DefaultClient.Do(req)
-		assert.NilError(t, err)
-		resp.Body.Close()
-		return resp
-	}
-
-	assert.Equal(t, get("", viaGateway()).StatusCode, http.StatusUnauthorized)
-	assert.Equal(t, get("&token=garbage", viaGateway()).StatusCode, http.StatusUnauthorized)
-	assert.Equal(t, get("&token="+url.QueryEscape(f.token), viaGateway()).StatusCode, http.StatusOK)
-	assert.Equal(t, get("", http.Header{}).StatusCode, http.StatusOK) // same-host automation
-
-	crossSite := get("", http.Header{"Origin": {"https://evil.example"}})
-	assert.Equal(t, crossSite.StatusCode, http.StatusForbidden)
-	// With a token the JWT decides; a cross-site page still gets no CORS
-	// headers, so its browser can't read the answer.
-	withToken := get("&token="+url.QueryEscape(f.token), http.Header{"Origin": {"https://evil.example"}})
-	assert.Equal(t, withToken.Header.Get("Access-Control-Allow-Origin"), "")
-	assert.Equal(t, get("&token=garbage", http.Header{"Origin": {"https://evil.example"}}).StatusCode, http.StatusUnauthorized)
-
-	sameHost := get("&token="+url.QueryEscape(f.token), http.Header{"Origin": {"http://127.0.0.1:8080"}})
-	assert.Equal(t, sameHost.StatusCode, http.StatusOK)
-	assert.Equal(t, sameHost.Header.Get("Access-Control-Allow-Origin"), "http://127.0.0.1:8080")
 }
 
 func TestCORSOnlyForSameHost(t *testing.T) {

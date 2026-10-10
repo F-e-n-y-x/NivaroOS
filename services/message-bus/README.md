@@ -30,7 +30,7 @@ about:
   `POST /v2/message_bus/notifications/read` and `/dismiss` with
   `{"ids":[..]}` or `{"all":true,"up_to":<id>}`.
 - Live: `message-bus:notification:created` and
-  `message-bus:notification:state` (source `message-bus`) on socket.io and
+  `message-bus:notification:state` (source `message-bus`) on
   `/event/message-bus`.
 
 To raise a notification from a new service, register and publish an event

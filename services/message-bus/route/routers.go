@@ -27,22 +27,16 @@ func NewAPIRouter(swagger *openapi3.T, services *service.Services) (http.Handler
 	})
 }
 
-// isSubscription reports whether r opens (or continues) an event stream:
-// a WebSocket upgrade on /event/{source_id} or /action/{source_id}, or any
-// socket.io request (its websocket transport and its HTTP long-polling
-// transport alike).
+// isSubscription reports whether r opens an event stream: a WebSocket
+// upgrade on /event/{source_id} or /action/{source_id}.
 func isSubscription(r *http.Request) bool {
-	if strings.EqualFold(r.Header.Get(echo.HeaderUpgrade), "websocket") {
-		return true
-	}
-	return strings.Contains(r.URL.Path, "/socket.io")
+	return strings.EqualFold(r.Header.Get(echo.HeaderUpgrade), "websocket")
 }
 
 // tokenFromRequest finds the caller's access token: the Authorization
 // header (raw or "Bearer <token>"), else a `token` query parameter. Browsers
-// can't set headers on a WebSocket, so the web UI's socket.io client
-// sends ?token= (engine.io repeats the query on every polling and
-// websocket request of the session).
+// can't set headers on a WebSocket, so the web UI's message-bus sockets
+// send ?token=.
 func tokenFromRequest(c *echo.Context) ([]string, echo_middleware.ExtractorSource, error) {
 	if h := c.Request().Header.Get(echo.HeaderAuthorization); h != "" {
 		return []string{strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))}, echo_middleware.ExtractorSourceHeader, nil
@@ -94,7 +88,7 @@ func newAPIRouter(swagger *openapi3.T, services *service.Services, publicKeyFunc
 		}
 	})
 
-	// Every request - including every event/action/socket.io subscription -
+	// Every request - including every event/action subscription -
 	// needs a valid access token, except same-host automation (other
 	// NivaroOS services, nivaroos-cli) as decided by IsLocalAutomation.
 	e.Use(echojwt.WithConfig(echojwt.Config{
