@@ -40,6 +40,9 @@ func notifyProps(e Event) map[string]string {
 	}
 	if e.Kind == "failed" {
 		title, level, key = "Download failed", "error", "notify.download.failed"
+		if e.Torrent {
+			title = "Torrent failed"
+		}
 		if e.Message != "" {
 			msg = e.Filename + ": " + e.Message
 		}

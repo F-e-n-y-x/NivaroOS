@@ -664,7 +664,7 @@ func (t *Torrents) List(ctx context.Context) ([]TorrentInfo, bool, error) {
 }
 
 // remember keeps the list (for while the engine is stopped) and raises a
-// notification for every torrent that just finished.
+// notification for every torrent that just finished or just failed.
 func (t *Torrents) remember(list []TorrentInfo) {
 	t.mu.Lock()
 	prev := map[string]TorrentInfo{}
@@ -672,7 +672,7 @@ func (t *Torrents) remember(list []TorrentInfo) {
 		prev[c.Hash] = c
 	}
 	changed := len(prev) != len(list)
-	var done []TorrentInfo
+	var done, failed []TorrentInfo
 	for _, c := range list {
 		p, ok := prev[c.Hash]
 		if !ok || p.State != c.State {
@@ -681,11 +681,17 @@ func (t *Torrents) remember(list []TorrentInfo) {
 		if ok && !p.finished() && c.finished() {
 			done = append(done, c)
 		}
+		if ok && p.State != tsError && c.State == tsError {
+			failed = append(failed, c)
+		}
 	}
 	t.cache = list
 	t.mu.Unlock()
 	for _, c := range done {
 		t.events.Push(Event{Kind: "completed", ID: c.Hash, Filename: c.Name, Path: c.Dir, Torrent: true})
+	}
+	for _, c := range failed {
+		t.events.Push(Event{Kind: "failed", ID: c.Hash, Filename: c.Name, Path: c.Dir, Message: c.Error, Torrent: true})
 	}
 	if changed {
 		if err := writeJSONAtomic(t.path("torrents-cache.json"), list); err != nil {

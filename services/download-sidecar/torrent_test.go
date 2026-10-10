@@ -361,6 +361,15 @@ func TestTorrentManagerIdleAndCache(t *testing.T) {
 			t.Fatal("not stopped when idle")
 		}
 	})
+	// A torrent going into the error state raises one "failed" event.
+	tm.remember([]TorrentInfo{{Hash: strings.Repeat("a", 40), Name: "x", State: tsError, Error: "qBittorrent reports missingFiles"}})
+	tm.remember([]TorrentInfo{{Hash: strings.Repeat("a", 40), Name: "x", State: tsError, Error: "qBittorrent reports missingFiles"}})
+	if ev, _ := tm.events.Since(1); len(ev) != 1 || ev[0].Kind != "failed" || !ev[0].Torrent || ev[0].Message == "" {
+		t.Fatalf("failed events: %+v", ev)
+	}
+	var back []TorrentInfo
+	fe.with(func() { back = append(back, fe.list...) })
+	tm.remember(back)
 	// Stopped: List serves the cache (speeds zeroed) and doesn't start it.
 	list, running, err := tm.List(ctx)
 	var starts int

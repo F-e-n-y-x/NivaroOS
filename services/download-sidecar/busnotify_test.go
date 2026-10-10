@@ -31,6 +31,11 @@ func TestNotifyProps(t *testing.T) {
 	if p["title"] != "Torrent finished" || !json.Valid([]byte(p["action"])) || json.Unmarshal([]byte(p["action"]), &action) != nil || action.Props["kind"] != "torrent" {
 		t.Fatalf("torrent: %v", p)
 	}
+	p = notifyProps(Event{Kind: "failed", ID: "hash", Filename: "linux", Message: "qBittorrent reports missingFiles", Torrent: true})
+	if p["title"] != "Torrent failed" || p["level"] != "error" || p["message"] != "linux: qBittorrent reports missingFiles" ||
+		json.Unmarshal([]byte(p["action"]), &action) != nil || action.Target != "download" || action.Props["kind"] != "torrent" || action.Props["id"] != "hash" {
+		t.Fatalf("torrent failed: %v", p)
+	}
 }
 
 // A pushed event reaches a (fake) message bus: type registered, then published.
