@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 // heartbeatMain) must be part of the app's code for release builds.
 // ignore: unused_import
 import 'background_sync_isolate.dart';
+import 'notification_feed.dart';
 
 /// Where a sharing session stands, as the native service reports it.
 @immutable
@@ -143,6 +144,7 @@ class BackgroundService {
   /// session and the heartbeat. Before signing out or switching servers
   /// (plan M-17), so nothing keeps talking to the old one.
   Future<void> stopAll() async {
+    NotificationFeed.instance.stopLive();
     await stopSharing();
     await cancelHeartbeat();
   }

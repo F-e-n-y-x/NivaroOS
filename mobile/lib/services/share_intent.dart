@@ -11,7 +11,8 @@ import 'share_upload.dart';
 ///   magnet: link or .torrent file opened with NivaroOS (ACTION_VIEW)
 ///   arrives the same way, the file in [pendingTorrent];
 /// - in: files shared to "Upload to NivaroOS" wait in [pendingFiles];
-///   a tap on an upload's notification in [pendingOpen];
+///   a tap on an upload's notification in [pendingOpen], on a server
+///   notification (notification_feed.dart) in [pendingFeed];
 /// - out: [shareText] opens the share sheet with a link.
 abstract final class ShareIntent {
   static const _channel = MethodChannel('com.fenyx.nivaroos/share_intent');
@@ -28,6 +29,9 @@ abstract final class ShareIntent {
   /// An upload's notification was tapped: its batch, and the folder to
   /// open when it went well.
   static final ValueNotifier<({String batch, String? folder})?> pendingOpen = ValueNotifier(null);
+
+  /// A server notification was tapped: its feed entry's id, on [server].
+  static final ValueNotifier<({String server, int id})?> pendingFeed = ValueNotifier(null);
 
   static bool _listening = false;
 
@@ -59,6 +63,7 @@ abstract final class ShareIntent {
     if (v['data'] is Uint8List) pendingTorrent.value = TorrentFile(v['name']?.toString() ?? 'file.torrent', v['data'] as Uint8List);
     final files = SharedFiles.fromPayload(v);
     if (files != null && (files.files.isNotEmpty || files.rejected > 0)) pendingFiles.value = files;
+    if (v['feed'] is int && v['server'] is String) pendingFeed.value = (server: v['server'] as String, id: v['feed'] as int);
     if (v['open'] is String) pendingOpen.value = (batch: v['open'] as String, folder: v['folder'] is String ? v['folder'] as String : null);
   }
 

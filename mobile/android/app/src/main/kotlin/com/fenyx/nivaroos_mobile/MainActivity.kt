@@ -25,7 +25,8 @@ class MainActivity : FlutterActivity() {
     // "Download on server": a link shared to the app, a magnet: link or a
     // .torrent file ({name, data}) opened with it; "Upload to NivaroOS":
     // files shared to it ({files}); a finished upload's notification
-    // ({open}), until Dart takes it (lib/services/share_intent.dart).
+    // ({open}) or feed notification ({feed, server}), until Dart takes it
+    // (lib/services/share_intent.dart).
     private var shareChannel: MethodChannel? = null
     private var pendingShare: Any? = null
 
@@ -68,6 +69,8 @@ class MainActivity : FlutterActivity() {
             "open" to (i.getStringExtra("batch") ?: "").filter { it.isLetterOrDigit() || it == '-' },
             "folder" to i.getStringExtra("folder"),
         )
+        // A tapped feed notification (FeedNotifier): which entry, on which server.
+        FeedNotifier.ACTION_OPEN -> mapOf("feed" to i.getLongExtra("id", 0), "server" to (i.getStringExtra("server") ?: ""))
         else -> if (sharedFiles(i)) null else sharedText(i)
     }
 
@@ -187,6 +190,9 @@ class MainActivity : FlutterActivity() {
         phoneBackup = PhoneBackupBridge(applicationContext, this).also {
             MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PhoneBackupBridge.CHANNEL).setMethodCallHandler(it)
         }
+
+        // The server's notification feed on the phone (FeedNotifier).
+        FeedNotifier.register(flutterEngine, this)
 
         // Device Info channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/device_info").setMethodCallHandler { call, result ->

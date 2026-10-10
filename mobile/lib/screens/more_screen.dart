@@ -15,6 +15,8 @@ import 'backup/backup_screen.dart';
 import 'companion_devices_screen.dart';
 import 'download_station/download_station_screen.dart';
 import 'host_desktop_screen.dart';
+import 'notifications_screen.dart';
+import '../services/notification_feed.dart';
 import 'server_profiles_screen.dart';
 import 'settings_screen.dart';
 import 'system_logs_screen.dart';
@@ -191,6 +193,16 @@ class _MoreScreenState extends State<MoreScreen> {
               title: const Text('Backup & Sync'),
               subtitle: Text(_backup?.summary ?? 'Copies of your files on other drives and clouds'),
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BackupScreen())).then((_) => _loadBackup()),
+            ),
+            ValueListenableBuilder<int?>(
+              valueListenable: NotificationFeed.instance.unread,
+              builder: (context, n, _) => ListTile(
+                leading: const Icon(Icons.notifications_outlined),
+                title: const Text('Notifications'),
+                subtitle: const Text('Downloads, backups, apps and drives'),
+                trailing: n == null || n == 0 ? null : StatusChip(label: '$n unread', status: Status.info),
+                onTap: () => _push(const NotificationsScreen()),
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.download_outlined),

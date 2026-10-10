@@ -22,7 +22,8 @@ import io.flutter.plugin.common.MethodChannel
  * JobScheduler (part of Android, no library) runs it; it survives reboots
  * (persisted job) and Doze batches it with other work. Each run starts a
  * headless Flutter engine with `heartbeatMain`, which registers once and
- * says "done". A run is cut off after [RUN_LIMIT_MS] whatever happens.
+ * says "done" - after showing what is new in the server's notification
+ * feed (FeedNotifier). A run is cut off after [RUN_LIMIT_MS] whatever happens.
  */
 class HeartbeatJobService : JobService() {
     companion object {
@@ -63,6 +64,8 @@ class HeartbeatJobService : JobService() {
         params = p
         return try {
             engine = HeadlessDart.start(this, "heartbeatMain") { e ->
+                // The heartbeat also checks the notification feed.
+                FeedNotifier.register(e, this)
                 MethodChannel(e.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/heartbeat").setMethodCallHandler { call, result ->
                     if (call.method == "done") {
                         result.success(true)

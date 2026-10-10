@@ -13,6 +13,8 @@ import '../services/session_service.dart';
 import '../services/api_client.dart';
 import '../services/share_intent.dart';
 import '../services/share_upload.dart';
+import '../services/notification_feed.dart';
+import 'notifications_screen.dart';
 import 'share_upload_sheet.dart';
 import 'download_station/download_station_screen.dart';
 import 'download_station/ds_add_sheet.dart';
@@ -66,19 +68,30 @@ class _HomeShellState extends State<HomeShell> {
     const MoreScreen(),
   ];
 
+  // Shells alive: a server switch builds the new one before the old one
+  // goes, so the live feed stops only with the last.
+  static int _alive = 0;
+
   @override
   void initState() {
     super.initState();
+    _alive++;
     ApiClient.sessionExpiredNotifier.addListener(_onSessionExpired);
     ShareIntent.pending.addListener(_onShared);
     ShareIntent.pendingTorrent.addListener(_onShared);
     ShareIntent.pendingFiles.addListener(_onShared);
     ShareIntent.pendingOpen.addListener(_onShared);
+    ShareIntent.pendingFeed.addListener(_onFeedTapped);
     // After the first frame, not during the route transition: registers
     // the phone and schedules the 15-minute heartbeat. Nothing here asks
     // for a permission; features ask when they need one.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && ApiClient.instance.hasSession) SessionService.started();
+      if (mounted && ApiClient.instance.hasSession) {
+        SessionService.started();
+        // New notifications live while the app runs (the heartbeat job
+        // checks when it doesn't).
+        NotificationFeed.instance.startLive();
+      }
       ShareIntent.listen().then((_) => _onShared());
     });
   }
@@ -90,6 +103,8 @@ class _HomeShellState extends State<HomeShell> {
     ShareIntent.pendingTorrent.removeListener(_onShared);
     ShareIntent.pendingFiles.removeListener(_onShared);
     ShareIntent.pendingOpen.removeListener(_onShared);
+    ShareIntent.pendingFeed.removeListener(_onFeedTapped);
+    if (--_alive == 0) NotificationFeed.instance.stopLive();
     super.dispose();
   }
 
@@ -183,6 +198,30 @@ class _HomeShellState extends State<HomeShell> {
       _showingShare = false;
     }
     if (_anyShared) unawaited(_onShared());
+  }
+
+  // A tapped server notification: what it is about (read again from the
+  // server - the intent carries only its id), or the inbox.
+  Future<void> _onFeedTapped() async {
+    final tap = ShareIntent.pendingFeed.value;
+    if (tap == null || !mounted || !ApiClient.instance.hasSession) return;
+    ShareIntent.pendingFeed.value = null;
+    final feed = NotificationFeed.instance;
+    if (tap.server != ApiClient.instance.baseUrl) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('That notification is from ${ApiClient.displayHost(tap.server)}. Switch to that server to see it.')));
+      return;
+    }
+    FeedItem? item;
+    try {
+      item = await feed.item(tap.id);
+    } catch (_) {}
+    if (!mounted) return;
+    if (item != null && !item.read) unawaited(feed.markRead([item.id]).catchError((Object _) {}));
+    if (item?.target == null) {
+      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()));
+    } else {
+      await openFeedTarget(context, item!);
+    }
   }
 
   // Only a real 401 from /users/refresh gets here (ApiClient keeps the

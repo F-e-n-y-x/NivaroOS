@@ -8,6 +8,7 @@ import '../phone_backup/pb_service.dart' show runPhoneBackupJob;
 import 'api_client.dart';
 import 'companion_file_server.dart';
 import 'device_sync_service.dart';
+import 'notification_feed.dart';
 import 'share_upload.dart' show runShareUploadJob;
 import 'storage_service.dart';
 
@@ -54,21 +55,29 @@ Future<void> shareServiceMain() async {
     await CompanionFileServer.instance.start();
     DeviceSyncService.instance.startSharingHeartbeat();
     Timer.periodic(const Duration(minutes: 1), (_) => CompanionFileServer.instance.refreshAddress());
+    // The heartbeat job (which checks the feed) doesn't run while sharing.
+    Timer.periodic(const Duration(minutes: 15), (_) => NotificationFeed.instance.checkAndNotify().catchError((Object _) {}));
   } catch (e) {
     debugPrint('[share] Could not start: ${e.runtimeType}');
     await stop('error');
   }
 }
 
-/// One heartbeat (HeartbeatJobService): register with the server, then
-/// tell the job it may finish.
+/// One heartbeat (HeartbeatJobService): register with the server, show
+/// what's new in its notification feed, then tell the job it may finish.
 @pragma('vm:entry-point')
 Future<void> heartbeatMain() async {
   const channel = MethodChannel('com.fenyx.nivaroos/heartbeat');
   try {
     await _bootHeadless();
     if (ApiClient.instance.hasSession) {
-      await DeviceSyncService.instance.syncWithServer().timeout(const Duration(seconds: 60));
+      // Each on its own: a failed sync doesn't skip the feed.
+      await DeviceSyncService.instance.syncWithServer().timeout(const Duration(seconds: 60)).catchError((Object e) {
+        debugPrint('[heartbeat] ${e.runtimeType}');
+        return false;
+      });
+      // What's new in the server's notification feed, on the phone.
+      await NotificationFeed.instance.checkAndNotify().timeout(const Duration(seconds: 20));
     }
   } catch (e) {
     debugPrint('[heartbeat] ${e.runtimeType}');

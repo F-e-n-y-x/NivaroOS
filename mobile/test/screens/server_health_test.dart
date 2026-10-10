@@ -93,7 +93,7 @@ void main() {
   testWidgets('all good: a calm "All good" with when it was checked and every check that passed', (tester) async {
     await _run(tester, const DashboardScreen(), overrides: allGood, () async {
       expect(find.bySemanticsLabel(RegExp('^Server health, All good')), findsOneWidget);
-      expect(find.byType(Badge), findsNothing);
+      expect(find.descendant(of: find.byType(ServerHeader), matching: find.byType(Badge)), findsNothing);
       expect(find.text('Needs attention'), findsNothing);
       await _openHealth(tester);
       final page = find.byType(ServerHealthScreen);

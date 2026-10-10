@@ -78,6 +78,23 @@ The APK from the "Android app" GitHub Actions check is a test build signed
 with a throwaway key: it can't update an installed NivaroOS app. Use the
 release one.
 
+## Notifications
+
+The server keeps a notification feed (message bus, `GET /v2/message_bus/notifications`;
+what goes in it: `services/message-bus/service/notification_classify.go`) -
+finished/failed downloads and torrents, Backup & Sync runs, app installs and
+updates, drive health. The app shows it under Home's bell and More ->
+Notifications (`lib/screens/notifications_screen.dart`), and posts new entries
+on the phone in three channels (Downloads, Backups, System) without Google's
+push service: live over the bus WebSocket while the app runs, and from the
+15-minute heartbeat job (`heartbeatMain`) when it doesn't. Each entry is posted
+once: unread, newer than the last id seen on that server, in a channel left on
+(the tune icon in the inbox). The first check on a server only records where
+the feed is. The Android permission is asked from the inbox, never at launch.
+Logic and tests: `lib/services/notification_feed.dart`,
+`test/services/notification_feed_test.dart`; posting:
+`android/.../FeedNotifier.kt`.
+
 ## Regenerating the app icon
 
 Source images live in `assets/icon/` (`icon.png` - the full app icon;
@@ -110,5 +127,6 @@ widgets are in `docs/specs/2026-09-25-mobile-design-system.md`.
 - Self-signed/untrusted HTTPS certificates aren't handled specially -
   either use plain HTTP on your LAN (cleartext traffic is allowed), or a
   certificate a real CA (or one Android already trusts) has issued.
-- No push notifications / biometric app-lock yet.
+- Background notifications arrive within about 15 minutes (Android
+  batches the job); only the server the app is signed in to is checked.
 - iOS: not yet added.

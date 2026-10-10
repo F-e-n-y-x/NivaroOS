@@ -191,6 +191,8 @@ class CompanionShareService : Service() {
     private fun startEngine() {
         try {
             engine = HeadlessDart.start(this, "shareServiceMain") { e ->
+                // The heartbeat doesn't run while sharing: this engine checks the feed.
+                FeedNotifier.register(e, this)
                 MethodChannel(e.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/share_engine").setMethodCallHandler { call, result ->
                     when (call.method) {
                         // Dart asks to end the session (signed out, no server).

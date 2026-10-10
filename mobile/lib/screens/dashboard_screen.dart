@@ -11,6 +11,7 @@ import 'fans/fans_screen.dart';
 import '../services/api_client.dart';
 import '../services/background_service.dart';
 import '../services/download_station_api.dart';
+import '../services/notification_feed.dart';
 import '../services/tailscale_service.dart';
 import '../services/utilization_feed.dart';
 import '../services/vm_client.dart';
@@ -21,6 +22,7 @@ import '../widgets/free_memory_sheet.dart';
 import '../widgets/monitor_modals.dart';
 import '../widgets/server_power.dart';
 import '../widgets/vm_console_preview.dart';
+import 'notifications_screen.dart';
 import 'server_health_screen.dart';
 import 'vm_console_screen.dart';
 import 'vm_list_screen.dart' show VmStateChip;
@@ -562,6 +564,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _refresh.addListener(_retime);
     _c.refreshAll();
     _startPolling();
+    // The bell's count, until the shell's live feed keeps it current.
+    if (NotificationFeed.instance.unread.value == null) unawaited(NotificationFeed.instance.load(limit: 1).then((_) {}, onError: (Object _) {}));
   }
 
   @override
@@ -706,6 +710,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       onRefresh: _c.refreshAll,
       banner: live != null && live.stale ? OfflineBanner(lastUpdated: live.updatedAt, onRetry: _c.refreshLive) : null,
       actions: [
+        const NotificationBell(),
         // Power only once the server has answered; before that it would
         // just fail.
         if (live != null) PopupMenuButton<String>(

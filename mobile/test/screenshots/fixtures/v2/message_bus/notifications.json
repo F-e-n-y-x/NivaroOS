@@ -1,0 +1,13 @@
+{
+  "data": [
+    {"id": 412, "time": "2026-09-25T13:41:00", "source_id": "nivaroos-download", "event_name": "nivaroos-download:download:notify", "category": "system", "level": "success", "title": "Download finished", "message": "debian-13.1.0-amd64-netinst.iso", "key": "notify.download.done", "icon": "", "args": {"kind": "download", "id": "d7f2", "filename": "debian-13.1.0-amd64-netinst.iso"}, "action": {"target": "download", "props": {"kind": "download", "id": "d7f2"}}, "read": false},
+    {"id": 411, "time": "2026-09-25T11:12:00", "source_id": "nivaroos-download", "event_name": "nivaroos-download:download:notify", "category": "system", "level": "success", "title": "Torrent finished", "message": "ubuntu-24.04.3-desktop-amd64", "key": "notify.download.done", "icon": "", "args": {"kind": "torrent", "id": "3b1f0c2a", "filename": "ubuntu-24.04.3-desktop-amd64"}, "action": {"target": "download", "props": {"kind": "torrent", "id": "3b1f0c2a"}}, "read": false},
+    {"id": 409, "time": "2026-09-25T03:05:00", "source_id": "nivaroos-backup", "event_name": "nivaroos:backup:notify", "category": "backup", "level": "error", "title": "Backup & Sync", "message": "Photos to cloud failed: the cloud sign-in expired.", "key": "backup.notify.failed", "icon": "", "args": {"job": "Photos to cloud"}, "action": {"target": "backup", "window": {"kind": "app", "props": {"section": "activity", "runId": "run_8c1"}}}, "read": false},
+    {"id": 405, "time": "2026-09-24T18:30:00", "source_id": "app-management", "event_name": "app:update-end", "category": "app", "level": "success", "title": "App updated", "message": "Jellyfin", "key": "notify.app.updated", "icon": "", "args": {"app": "Jellyfin"}, "action": {"target": "app", "props": {"name": "jellyfin"}}, "read": true},
+    {"id": 401, "time": "2026-09-24T09:15:00", "source_id": "local-storage", "event_name": "local-storage:drive:notify", "category": "storage", "level": "warning", "title": "Media needs watching", "message": "2 reallocated sectors, up from 0 this week. Open Settings > Storage > the drive's Health for details.", "key": "", "icon": "", "args": {"path": "/dev/sdb", "reason": "smart_watch"}, "action": {"target": "settings", "props": {"section": "storage"}}, "read": true},
+    {"id": 388, "time": "2026-09-21T16:02:00", "source_id": "nivaroos-download", "event_name": "nivaroos-download:download:notify", "category": "system", "level": "error", "title": "Download failed", "message": "archive.zip: HTTP 404", "key": "notify.download.failed", "icon": "", "args": {"kind": "download", "id": "a11c"}, "action": {"target": "download", "props": {"kind": "download", "id": "a11c"}}, "read": true}
+  ],
+  "unread_count": 3,
+  "latest_id": 412,
+  "has_more": false
+}
