@@ -362,14 +362,16 @@ func TestTorrentManagerIdleAndCache(t *testing.T) {
 		}
 	})
 	// A torrent going into the error state raises one "failed" event.
-	tm.remember([]TorrentInfo{{Hash: strings.Repeat("a", 40), Name: "x", State: tsError, Error: "qBittorrent reports missingFiles"}})
-	tm.remember([]TorrentInfo{{Hash: strings.Repeat("a", 40), Name: "x", State: tsError, Error: "qBittorrent reports missingFiles"}})
+	stamp := func() uint64 { tm.mu.Lock(); defer tm.mu.Unlock(); tm.listSeq++; return tm.listSeq }
+	errored := []TorrentInfo{{Hash: strings.Repeat("a", 40), Name: "x", State: tsError, Error: "qBittorrent reports missingFiles"}}
+	tm.remember(stamp(), errored)
+	tm.remember(stamp(), errored)
 	if ev, _ := tm.events.Since(1); len(ev) != 1 || ev[0].Kind != "failed" || !ev[0].Torrent || ev[0].Message == "" {
 		t.Fatalf("failed events: %+v", ev)
 	}
 	var back []TorrentInfo
 	fe.with(func() { back = append(back, fe.list...) })
-	tm.remember(back)
+	tm.remember(stamp(), back)
 	// Stopped: List serves the cache (speeds zeroed) and doesn't start it.
 	list, running, err := tm.List(ctx)
 	var starts int
@@ -403,6 +405,30 @@ func TestTorrentManagerIdleAndCache(t *testing.T) {
 			t.Fatalf("alt limit not applied: %v", fe.limits)
 		}
 	})
+}
+
+// List and tick run concurrently: a list fetched before the torrent
+// finished but remembered after a newer one must not undo "completed", or
+// the next reading announces it again.
+func TestTorrentCompletionAnnouncedOnceOutOfOrder(t *testing.T) {
+	tm, _, _ := newTestTorrents(t)
+	h := strings.Repeat("e", 40)
+	downloading := []TorrentInfo{{Hash: h, Name: "y", State: tsDownloading, Size: 10, Done: 5}}
+	done := []TorrentInfo{{Hash: h, Name: "y", State: tsCompleted, Size: 10, Done: 10}}
+	tm.remember(1, downloading)
+	tm.remember(3, done)        // newer call, finished first
+	tm.remember(2, downloading) // older call, landing last: stale
+	tm.remember(4, done)
+	ev, _ := tm.events.Since(0)
+	n := 0
+	for _, e := range ev {
+		if e.Kind == "completed" && e.ID == h {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("completion announced %d times: %+v", n, ev)
+	}
 }
 
 func TestWatchFolder(t *testing.T) {

@@ -550,6 +550,11 @@ type Torrents struct {
 	trackers   TrackerList
 	applied    map[string]int // hash -> tracker list version added
 	refreshing bool
+	// listSeq numbers engine List calls as they start; cacheSeq is the
+	// newest one remembered. List and tick run concurrently, and an older
+	// list landing last would move a torrent back to "downloading" and get
+	// its completion announced a second time.
+	listSeq, cacheSeq uint64
 }
 
 func NewTorrents(dataDir string, st *SettingsStore, transport http.RoundTripper, events *eventLog) *Torrents {
@@ -644,9 +649,8 @@ func (t *Torrents) applySettings() {
 func (t *Torrents) List(ctx context.Context) ([]TorrentInfo, bool, error) {
 	eng, _ := t.engine(ctx, false)
 	if eng.Running() {
-		list, err := eng.List(ctx)
+		list, err := t.listEngine(ctx, eng)
 		if err == nil {
-			t.remember(list)
 			return list, true, nil
 		}
 		if eng.Running() {
@@ -663,10 +667,29 @@ func (t *Torrents) List(ctx context.Context) ([]TorrentInfo, bool, error) {
 	return out, false, nil
 }
 
-// remember keeps the list (for while the engine is stopped) and raises a
-// notification for every torrent that just finished or just failed.
-func (t *Torrents) remember(list []TorrentInfo) {
+// listEngine is eng.List, remembered in the order the calls started.
+func (t *Torrents) listEngine(ctx context.Context, eng TorrentEngine) ([]TorrentInfo, error) {
 	t.mu.Lock()
+	t.listSeq++
+	seq := t.listSeq
+	t.mu.Unlock()
+	list, err := eng.List(ctx)
+	if err == nil {
+		t.remember(seq, list)
+	}
+	return list, err
+}
+
+// remember keeps the list (for while the engine is stopped) and raises a
+// notification for every torrent that just finished or just failed. A list
+// older than the one already kept (seq) is stale and ignored.
+func (t *Torrents) remember(seq uint64, list []TorrentInfo) {
+	t.mu.Lock()
+	if seq < t.cacheSeq {
+		t.mu.Unlock()
+		return
+	}
+	t.cacheSeq = seq
 	prev := map[string]TorrentInfo{}
 	for _, c := range t.cache {
 		prev[c.Hash] = c
@@ -876,11 +899,10 @@ func (t *Torrents) tick(ctx context.Context) {
 		t.limits = [2]int64{dl, up}
 		t.mu.Unlock()
 	}
-	list, err := eng.List(ctx)
+	list, err := t.listEngine(ctx, eng)
 	if err != nil {
 		return
 	}
-	t.remember(list)
 	t.syncTrackers(ctx, eng, s, list)
 
 	busy := false
