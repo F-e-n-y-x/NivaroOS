@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nivaroos_mobile/backup/backup_models.dart';
 import 'package:nivaroos_mobile/screens/backup/backup_decide_screen.dart';
+import 'package:nivaroos_mobile/screens/backup/backup_job_form_screen.dart';
 import 'package:nivaroos_mobile/screens/backup/backup_job_screen.dart';
 import 'package:nivaroos_mobile/screens/backup/backup_restore_screen.dart';
 import 'package:nivaroos_mobile/screens/backup/backup_run_screen.dart';
@@ -49,9 +50,12 @@ final Map<String, Object> backupMissing = {
 BackupJob photosJob() => BackupJob.fromJson(fixture('backup/job_photos')['data']);
 
 class _Shot {
-  const _Shot(this.build, {this.overrides = const {}, this.full = true});
+  const _Shot(this.build, {this.overrides = const {}, this.full = true, this.before});
   final Widget Function() build;
   final Map<String, Object> overrides;
+
+  /// Taps to make before the shot (open a group, a menu).
+  final Future<void> Function(WidgetTester tester)? before;
 
   /// Every mode x size x text scale; otherwise light and black at 412.
   final bool full;
@@ -64,7 +68,29 @@ final Map<String, _Shot> _shots = {
   'backup_run': _Shot(() => const BackupRunScreen(runId: 'run_docs_2'), full: false),
   'backup_decide': _Shot(() => const BackupDecideScreen(runId: 'run_phone_2', jobId: 'bk_phone'), full: false),
   'backup_not_installed': _Shot(() => const BackupScreen(), overrides: backupMissing, full: false),
+  'backup_job_menu': _Shot(() => const BackupJobScreen(jobId: 'bk_photos'), full: false, before: (tester) => _tapAndSettle(tester, find.byTooltip('More actions'))),
+  'backup_job_form': _Shot(() => BackupJobFormScreen(job: photosJob()), full: false),
+  // The collapsed groups opened: what to skip, and when it may run.
+  'backup_job_form_skip': _Shot(() => BackupJobFormScreen(job: photosJob()), full: false, before: (tester) => _openGroup(tester, 'Skip')),
+  'backup_job_form_when': _Shot(() => BackupJobFormScreen(job: photosJob()), full: false, before: (tester) => _openGroup(tester, 'Only run when…')),
 };
+
+/// Opens a collapsed group of the job form and scrolls it to the top.
+Future<void> _openGroup(WidgetTester tester, String title) async {
+  final f = find.text(title);
+  await tester.scrollUntilVisible(f, 200, scrollable: find.byType(Scrollable).first);
+  await _tapAndSettle(tester, f);
+  await tester.runAsync(() => Scrollable.ensureVisible(tester.element(f)));
+  await _tapAndSettle(tester, null);
+}
+
+Future<void> _tapAndSettle(WidgetTester tester, Finder? f) async {
+  if (f != null) await tester.tap(f);
+  for (var i = 0; i < 6; i++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
 
 const _styles = [DesignDirection.rack, DesignDirection.tonal, DesignDirection.console];
 
@@ -93,6 +119,7 @@ void main() {
               textScale: scale,
               pushed: true,
               overrides: {...backupServer, ...s.overrides},
+              before: s.before,
             );
           });
         }

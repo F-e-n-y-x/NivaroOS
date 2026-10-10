@@ -193,8 +193,161 @@ class _BackupJobScreenState extends State<BackupJobScreen> with WidgetsBindingOb
     }
   }
 
+  /// Starts a preview (or a "Check backup") run and opens it.
+  Future<void> _startRun({bool preview = false, bool check = false}) async {
+    final job = _job;
+    if (job == null) return;
+    setState(() => _busy = true);
+    try {
+      final runId = await _api.run(job.id, preview: preview, check: check);
+      if (!mounted) return;
+      await _load(quiet: true);
+      if (mounted && runId.isNotEmpty) {
+        unawaited(_open(preview ? BackupDecideScreen(runId: runId, jobId: job.id, api: widget.api) : BackupRunScreen(runId: runId, api: widget.api)));
+      }
+    } catch (e) {
+      if (mounted) showBackupError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Delete, optionally with what it backed up (the web's confirm with
+  /// its "Also delete the backup data" box).
+  Future<void> _delete() async {
+    final job = _job;
+    if (job == null) return;
+    var purge = false;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) {
+          final scheme = Theme.of(context).colorScheme;
+          return AlertDialog(
+            title: Text(bt('backup.jobs.delete_title', {'name': job.name})),
+            content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(bt('backup.jobs.delete_message')),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: purge,
+                onChanged: (v) => setLocal(() => purge = v ?? false),
+                title: Text(bt('backup.jobs.delete_purge')),
+                subtitle: Text(bt(purge ? 'backup.jobs.delete_purge_on' : 'backup.jobs.delete_purge_off'), style: purge ? TextStyle(color: scheme.error) : null),
+              ),
+            ]),
+            actions: [
+              TextButton(autofocus: true, onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+              TextButton(
+                style: TextButton.styleFrom(foregroundColor: scheme.error),
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(bt('backup.jobs.menu.delete')),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await _api.deleteJob(job.id, purgeData: purge);
+      if (!mounted) return;
+      showBackupSnack(context, bt('backup.jobs.deleted', {'name': job.name}));
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      final err = BackupError.from(e);
+      if (err.code == 'invalid_state') {
+        showBackupSnack(context, bt('backup.jobs.delete_running'));
+      } else {
+        showBackupError(context, e);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// "Test password": whether a password (or the recovery key) still
+  /// opens this job's encrypted backup.
+  Future<void> _testPassword() async {
+    final job = _job;
+    if (job == null) return;
+    final pw = TextEditingController();
+    String? result;
+    var testing = false;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) {
+          Future<void> test() async {
+            if (pw.text.isEmpty || testing) return;
+            setLocal(() {
+              testing = true;
+              result = null;
+            });
+            try {
+              final ok = await _api.testEncryption(job.id, pw.text);
+              result = bt(ok ? 'backup.encrypt.test_ok' : 'backup.encrypt.test_bad');
+              if (ok) pw.clear();
+            } catch (e) {
+              result = BackupError.from(e).title;
+            }
+            if (context.mounted) setLocal(() => testing = false);
+          }
+
+          return AlertDialog(
+            title: Text(bt('backup.encrypt.test_label')),
+            content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              TextField(
+                controller: pw,
+                obscureText: true,
+                autofocus: true,
+                autocorrect: false,
+                enableSuggestions: false,
+                onSubmitted: (_) => test(),
+                decoration: InputDecoration(labelText: bt('backup.encrypt.password')),
+              ),
+              if (result != null) Padding(padding: const EdgeInsets.only(top: Space.md), child: Text(result!)),
+            ]),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(bt('backup.close'))),
+              FilledButton(onPressed: testing ? null : test, child: Text(bt('backup.encrypt.test'))),
+            ],
+          );
+        },
+      ),
+    );
+    pw.dispose();
+  }
+
+  /// "Reconnect to this folder" after dest_marker_mismatch; a folder that
+  /// holds another job's backup asks again before taking it over.
+  Future<void> _reconnect({bool adoptOtherJob = false}) async {
+    final job = _job;
+    if (job == null) return;
+    final dest = job.dest.label;
+    final ok = await ConfirmDialog.destructive(
+      context,
+      title: bt('backup.action.reconnect_dest'),
+      message: bt(adoptOtherJob ? 'backup.jobs.reconnect_other_message' : 'backup.jobs.reconnect_message', {'dest': dest}),
+      confirmLabel: bt(adoptOtherJob ? 'backup.jobs.reconnect_other_confirm' : 'backup.action.reconnect_dest'),
+      permanent: false,
+    );
+    if (!ok || !mounted) return;
+    try {
+      final saved = await _api.reconnectDest(job.id, adoptOtherJob: adoptOtherJob);
+      if (mounted) setState(() => _job = saved);
+    } catch (e) {
+      if (!mounted) return;
+      if (!adoptOtherJob && BackupError.from(e).code == 'dest_marker_mismatch') return _reconnect(adoptOtherJob: true);
+      showBackupError(context, e);
+    }
+  }
+
   void _openAttention(BackupAttention a) {
-    if (a.reason == 'waiting' && a.runId.isNotEmpty) {
+    if (a.job.needsAttention == 'dest_changed') {
+      _reconnect();
+    } else if (a.reason == 'waiting' && a.runId.isNotEmpty) {
       _open(BackupDecideScreen(runId: a.runId, jobId: a.job.id, api: widget.api));
     } else if (a.runId.isNotEmpty) {
       _open(BackupRunScreen(runId: a.runId, api: widget.api));
@@ -223,12 +376,14 @@ class _BackupJobScreenState extends State<BackupJobScreen> with WidgetsBindingOb
                 title: attention.title,
                 message: attention.cause,
                 status: attention.severity == BackupSeverity.problem ? Status.error : Status.warning,
-                actionLabel: attention.reason == 'waiting'
-                    ? bt('backup.action.review')
-                    : attention.runId.isNotEmpty
-                        ? bt('backup.action.view_log')
-                        : null,
-                onAction: attention.runId.isNotEmpty ? () => _openAttention(attention) : null,
+                actionLabel: job.needsAttention == 'dest_changed'
+                    ? bt('backup.action.reconnect_dest')
+                    : attention.reason == 'waiting'
+                        ? bt('backup.action.review')
+                        : attention.runId.isNotEmpty
+                            ? bt('backup.action.view_log')
+                            : null,
+                onAction: attention.runId.isNotEmpty || job.needsAttention == 'dest_changed' ? () => _openAttention(attention) : null,
               ),
           TileGroup(title: bt('backup.jobs.tab.summary'), children: [
             ListTile(
@@ -246,6 +401,7 @@ class _BackupJobScreenState extends State<BackupJobScreen> with WidgetsBindingOb
                 leading: const Icon(Icons.lock_outline),
                 title: Text(bt('backup.jobs.fact.encryption')),
                 subtitle: Text(bt('backup.encrypt.mode_${job.dest.encryptionMode}')),
+                trailing: TextButton(onPressed: _testPassword, child: Text(bt('backup.encrypt.test'))),
               ),
             ListTile(
               leading: Icon(jobTypeIcon(job.type)),
@@ -309,6 +465,37 @@ class _BackupJobScreenState extends State<BackupJobScreen> with WidgetsBindingOb
             tooltip: bt('backup.jobs.menu.edit'),
             icon: const Icon(Icons.edit_outlined),
             onPressed: () => _open(BackupJobFormScreen(job: job, api: widget.api)),
+          ),
+        if (job != null)
+          PopupMenuButton<String>(
+            tooltip: 'More actions',
+            enabled: !_busy,
+            onSelected: (a) => switch (a) {
+              'preview' => _startRun(preview: true),
+              'check' => _startRun(check: true),
+              'duplicate' => _open(BackupJobFormScreen(copyOf: job, api: widget.api)),
+              'delete' => _delete(),
+              _ => null,
+            },
+            itemBuilder: (_) => [
+              if (!job.isActive) PopupMenuItem(value: 'preview', child: ListTile(leading: const Icon(Icons.visibility_outlined), title: Text(bt('backup.jobs.menu.preview')))),
+              if (!job.isActive)
+                PopupMenuItem(value: 'check', child: ListTile(leading: const Icon(Icons.fact_check_outlined), title: Text(bt('backup.jobs.menu.check')))),
+              PopupMenuItem(
+                value: 'duplicate',
+                child: ListTile(
+                  leading: const Icon(Icons.content_copy_outlined),
+                  title: Text(job.dest.encryptionMode.isNotEmpty ? bt('backup.encrypt.new_copy') : bt('backup.jobs.menu.duplicate')),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'delete',
+                child: ListTile(
+                  leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
+                  title: Text(bt('backup.jobs.menu.delete'), style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                ),
+              ),
+            ],
           ),
       ],
       slivers: slivers,

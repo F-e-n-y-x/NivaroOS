@@ -113,9 +113,24 @@ class BackupApi {
   Future<BackupJob> toggle(String id, bool enabled) =>
       _call(() => _c.post('$base/jobs/${Uri.encodeComponent(id)}/toggle', body: {'enabled': enabled}), BackupJob.fromJson);
 
-  /// Starts a run (or joins the one already queued); its id.
-  Future<String> run(String id, {bool preview = false}) =>
-      _call(() => _c.post('$base/jobs/${Uri.encodeComponent(id)}/run', body: {'preview': preview}), (d) => (d as Map?)?['run_id']?.toString() ?? '');
+  /// Starts a run (or joins the one already queued); its id. [check]
+  /// starts a "Check backup" (verify) run instead.
+  Future<String> run(String id, {bool preview = false, bool check = false}) => _call(
+      () => _c.post('$base/jobs/${Uri.encodeComponent(id)}/run', body: {'preview': preview, if (check) 'check': true}), (d) => (d as Map?)?['run_id']?.toString() ?? '');
+
+  /// Deletes a job; [purgeData] also deletes what it backed up (a prune
+  /// run, whose id comes back). 409 invalid_state while a run is active.
+  Future<String> deleteJob(String id, {bool purgeData = false}) => _call(
+      () => _c.delete('$base/jobs/${Uri.encodeComponent(id)}', query: {if (purgeData) 'purge_data': 'true'}), (d) => (d as Map?)?['purge_run_id']?.toString() ?? '');
+
+  /// Whether [password] (or the recovery key) unlocks an encrypted job.
+  Future<bool> testEncryption(String id, String password) =>
+      _call(() => _c.post('$base/jobs/${Uri.encodeComponent(id)}/encryption/test', body: {'password': password}), (d) => (d as Map?)?['ok'] == true);
+
+  /// Makes the folder at the destination this job's again (after
+  /// dest_marker_mismatch); [adoptOtherJob] takes over another job's.
+  Future<BackupJob> reconnectDest(String id, {bool adoptOtherJob = false}) =>
+      _call(() => _c.post('$base/jobs/${Uri.encodeComponent(id)}/reconnect-dest', body: {'adopt_other_job': adoptOtherJob}), BackupJob.fromJson);
 
   Future<BackupJob> create(Map<String, Object?> job) => _call(() => _c.post('$base/jobs', body: job), BackupJob.fromJson);
 
