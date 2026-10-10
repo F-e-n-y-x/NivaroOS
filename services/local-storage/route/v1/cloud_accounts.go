@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -128,6 +130,23 @@ type createAccountRequest struct {
 	Params map[string]string `json:"params"`
 }
 
+// checkOAuthToken refuses a pasted `rclone authorize` token that isn't the
+// whole JSON line (a partial copy from a wrapped terminal line, or the
+// command's other output) before it reaches rclone.conf.
+func checkOAuthToken(params map[string]string) error {
+	raw, ok := params["token"]
+	if !ok {
+		return nil
+	}
+	var t struct {
+		AccessToken string `json:"access_token"`
+	}
+	if json.Unmarshal([]byte(strings.TrimSpace(raw)), &t) != nil || t.AccessToken == "" {
+		return errors.New(`that isn't the whole token - copy the full line that starts with {"access_token" and ends with }`)
+	}
+	return nil
+}
+
 // PostCloudAccount creates and mounts a new online account for any
 // non-interactive provider: the "form" providers (S3/B2/WebDAV/SFTP/SMB)
 // with plain credentials, and the "token" providers (Drive/Dropbox/OneDrive)
@@ -141,6 +160,10 @@ func PostCloudAccount(c *gin.Context) {
 	}
 	if !isKnownProvider(req.Type) {
 		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.CLIENT_ERROR, Message: common_err.GetMsg(common_err.CLIENT_ERROR), Data: "unknown provider type"})
+		return
+	}
+	if err := checkOAuthToken(req.Params); err != nil {
+		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.CLIENT_ERROR, Message: err.Error(), Data: err.Error()})
 		return
 	}
 	name := remoteName(req.Label, req.Type)
@@ -404,6 +427,10 @@ func PostCloudAccountReconnect(c *gin.Context) {
 		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.CLIENT_ERROR, Message: common_err.GetMsg(common_err.CLIENT_ERROR), Data: err.Error()})
 		return
 	}
+	if err := checkOAuthToken(req.Params); err != nil {
+		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.CLIENT_ERROR, Message: err.Error(), Data: err.Error()})
+		return
+	}
 
 	ri, err := fs.Find(t)
 	if err != nil {
@@ -421,15 +448,32 @@ func PostCloudAccountReconnect(c *gin.Context) {
 	}
 	time.Sleep(500 * time.Millisecond)
 
+	// The old values come back if the new ones don't mount: a failed
+	// reconnect must never leave a working account broken.
+	old := make(map[string]string, len(req.Params))
+	for k := range req.Params {
+		old[k] = service.MyService.Storage().GetAttributeValueByName(name, k)
+	}
+	restore := func() {
+		for k, v := range old {
+			_ = service.MyService.Storage().SetAttributeValue(name, k, v, false) // already in stored (obscured) form
+		}
+		if err := service.MyService.Storage().MountStorage(mountPoint, name); err != nil {
+			logger.Error("reconnect: remounting with the old credentials failed", zap.Error(err), zap.String("name", name))
+		}
+	}
 	for k, v := range req.Params {
 		if err := service.MyService.Storage().SetAttributeValue(name, k, v, isPassword[k]); err != nil {
+			restore()
 			c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
 			return
 		}
 	}
 
 	if err := service.MyService.Storage().MountStorage(mountPoint, name); err != nil {
-		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
+		restore()
+		msg := fmt.Sprintf("the new sign-in didn't work, so the account keeps its previous one: %v", err)
+		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: msg, Data: msg})
 		return
 	}
 	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: gin.H{"name": name, "mount_point": mountPoint}})

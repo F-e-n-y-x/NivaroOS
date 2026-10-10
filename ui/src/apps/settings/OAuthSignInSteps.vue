@@ -42,7 +42,9 @@
 			<span class="step-number">3</span>
 			<div class="step-body">
 				<p class="step-title">{{ $t('Paste what it prints back') }}</p>
-				<b-input v-model="token" type="textarea" size="is-small" rows="3" :placeholder="$t('Paste it here')" @input="emit"></b-input>
+				<b-field :type="tokenError ? 'is-danger' : ''" :message="tokenError">
+					<b-input v-model="token" type="textarea" size="is-small" rows="3" :placeholder="$t('Paste it here')" @input="emit"></b-input>
+				</b-field>
 			</div>
 		</div>
 	</div>
@@ -80,6 +82,16 @@ export default {
 		secretError() {
 			return this.clientSecret && !SAFE.test(this.clientSecret) ? this.$t('That does not look like a client secret') : ''
 		},
+		tokenOk() {
+			try {
+				return !!JSON.parse(this.token.trim()).access_token
+			} catch (e) {
+				return false
+			}
+		},
+		tokenError() {
+			return this.token.trim() && !this.tokenOk ? this.$t('That isn\'t the whole token. Copy the full line that starts with {start} and ends with {end}', { start: '{"access_token"', end: '}' }) : ''
+		},
 		credsOk() {
 			return !this.own || (SAFE.test(this.clientId) && SAFE.test(this.clientSecret))
 		},
@@ -95,7 +107,7 @@ export default {
 		},
 		emit() {
 			const token = this.token.trim()
-			if (!token || !this.credsOk) return this.$emit('change', null)
+			if (!this.tokenOk || !this.credsOk) return this.$emit('change', null)
 			this.$emit('change', {
 				token,
 				client_id: this.own ? this.clientId : '',

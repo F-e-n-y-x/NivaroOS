@@ -3512,5 +3512,6 @@
   "Client secret": "Client secret",
   "That does not look like a client ID": "That does not look like a client ID",
   "That does not look like a client secret": "That does not look like a client secret",
-  "Sign in again - the account keeps its name and place in Files, and backups carry on.": "Sign in again - the account keeps its name and place in Files, and backups carry on."
+  "Sign in again - the account keeps its name and place in Files, and backups carry on.": "Sign in again - the account keeps its name and place in Files, and backups carry on.",
+  "That isn't the whole token. Copy the full line that starts with {start} and ends with {end}": "That isn't the whole token. Copy the full line that starts with {start} and ends with {end}"
 }
