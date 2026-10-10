@@ -3501,5 +3501,16 @@
   "The drive tests itself in the background and stays usable. A long test reads the whole surface and can take hours.": "The drive tests itself in the background and stays usable. A long test reads the whole surface and can take hours.",
   "Good": "Good",
   "Watch": "Watch",
-  "Failing": "Failing"
+  "Failing": "Failing",
+  "Choose how to sign in": "Choose how to sign in",
+  "rclone's app": "rclone's app",
+  "Your own app": "Your own app",
+  "Quickest to set up. rclone's app is shared by every rclone user, so {provider} slows it down - fine for small folders.": "Quickest to set up. rclone's app is shared by every rclone user, so {provider} slows it down - fine for small folders.",
+  "Your own {provider} app gets its own speed limits - much faster for big backups like photo libraries. It takes about 10 minutes to create, once.": "Your own {provider} app gets its own speed limits - much faster for big backups like photo libraries. It takes about 10 minutes to create, once.",
+  "How to create one": "How to create one",
+  "Client ID": "Client ID",
+  "Client secret": "Client secret",
+  "That does not look like a client ID": "That does not look like a client ID",
+  "That does not look like a client secret": "That does not look like a client secret",
+  "Sign in again - the account keeps its name and place in Files, and backups carry on.": "Sign in again - the account keeps its name and place in Files, and backups carry on."
 }

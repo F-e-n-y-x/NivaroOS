@@ -22,6 +22,7 @@ type MountPoint struct {
 	Size       string `json:"size,omitempty"`
 	Avail      string `json:"avail,omitempty"`
 	Used       string `json:"used,omitempty"`
+	OwnClient  bool   `json:"own_client,omitempty"` // OAuth through the user's own app, not rclone's shared one
 }
 type MountResult struct {
 	Error string `json:"error"`

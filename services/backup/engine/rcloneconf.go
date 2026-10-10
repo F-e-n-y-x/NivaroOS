@@ -157,6 +157,10 @@ func cloudFsOptions(q fsQuirks) configmap.Simple {
 		// round trips to Google (measured ~1-1.7 MB/s on a 22 MB/s line
 		// with 8). Each transfer buffers one piece: 4 x 64 MiB.
 		o["chunk_size"] = "64M"
+		// rclone waits 100 ms between Drive calls by default - with photo
+		// folders (one create call per file) that caps a run near 10
+		// files/s. It still backs off on Google's 403 rate limits.
+		o["pacer_min_sleep"] = "10ms"
 	}
 	return o
 }

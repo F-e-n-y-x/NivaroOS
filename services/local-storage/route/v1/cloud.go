@@ -71,6 +71,7 @@ func ListStorages(c *gin.Context) {
 			MountPoint: v.MountPoint,
 			Name:       name,
 			Type:       t,
+			OwnClient:  service.MyService.Storage().GetAttributeValueByName(v.Fs, "client_id") != "",
 		}
 		if size, avail, used, ok := statfsUsage(v.MountPoint); ok {
 			item.Size = strconv.FormatUint(size, 10)

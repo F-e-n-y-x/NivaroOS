@@ -11,6 +11,7 @@
 						<div class="setting-title">{{ a.name || a.fs }}</div>
 						<div class="setting-desc">
 							{{ a.mount_point }}
+							<template v-if="a.own_client">&middot; {{ $t('Your own app') }}</template>
 							<span v-if="speedLive[a.mount_point]" class="speed-result is-live">
 								&middot; {{ speedPhaseLabel(speedLive[a.mount_point]) }}<template v-if="speedLive[a.mount_point].live_mbps > 0"> {{ fmtMbps(speedLive[a.mount_point].live_mbps) }} Mbps</template>
 								<a class="speed-stop" @click="stopSpeedTest(a)">{{ $t('Stop') }}</a>
@@ -51,12 +52,10 @@
 
 			<!-- Reconnect: token-kind (Drive/Dropbox/OneDrive) - paste a fresh token -->
 			<div v-if="reconnectingKey === a.mount_point && reconnectableKinds[a.type] === 'token'" class="reconnect-form">
-				<p class="field-help">{{ $t('Run this, sign in again, then paste the fresh token below.') }}</p>
-				<code class="authorize-cmd">rclone authorize "{{ a.type }}"</code>
-				<a class="advanced-toggle" @click="openTerminal(a)">{{ $t('Run it in Terminal') }}</a>
-				<b-input v-model="reconnectToken" type="textarea" size="is-small" rows="3" :placeholder="$t('Paste it here')"></b-input>
+				<p class="field-help">{{ $t('Sign in again - the account keeps its name and place in Files, and backups carry on.') }}</p>
+				<OAuthSignInSteps :type="a.type" :provider="providerLabels[a.type] || a.type" :own-client="!!a.own_client" @change="reconnectOAuth = $event" />
 				<div class="form-actions">
-					<b-button rounded size="is-small" type="is-primary" :loading="reconnecting" :disabled="!reconnectToken.trim()" @click="submitReconnectToken(a)">{{ $t('Reconnect') }}</b-button>
+					<b-button rounded size="is-small" type="is-primary" :loading="reconnecting" :disabled="!reconnectOAuth" @click="submitReconnectToken(a)">{{ $t('Reconnect') }}</b-button>
 					<b-button rounded size="is-small" @click="reconnectingKey = null">{{ $t('Cancel') }}</b-button>
 				</div>
 				<p v-if="reconnectError" class="error-note">{{ reconnectError }}</p>
@@ -121,6 +120,7 @@ import { apiError } from '@/utils/apiError'
 import events from '@/events/events'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import { browserSigninAvailability, openBrowserSignin } from '@/apps/download-station/rb/browserSignin'
+import OAuthSignInSteps from './OAuthSignInSteps.vue'
 
 // Cookie-login providers: reconnecting means signing in again in Download
 // Station's browser (rb/RbSigninWindow.vue).
@@ -128,6 +128,7 @@ const BROWSER_SIGNIN_TYPES = ['terabox']
 
 export default {
 	name: 'cloud-accounts-list',
+	components: { OAuthSignInSteps },
 	mixins: [confirmWindowMixin],
 	data() {
 		return {
@@ -139,6 +140,8 @@ export default {
 			reconnectableKinds: {},
 			reconnectingKey: null,
 			reconnectToken: '',
+			reconnectOAuth: null,
+			providerLabels: {},
 			reconnecting: false,
 			reconnectError: '',
 			pasteCookie: false,
@@ -159,6 +162,7 @@ export default {
 		this.$api.cloud.providers().then(res => {
 			if (res.data.success === 200) {
 				const kinds = {}
+				const labels = {}
 				;(res.data.data || []).forEach(p => {
 					// Reconnect only makes sense for kinds whose credentials can
 					// expire/revoke independent of the stored fields themselves
@@ -167,8 +171,10 @@ export default {
 					if (p.auth_kind === 'token' || p.auth_kind === 'interactive') kinds[p.type] = p.auth_kind
 					// A cookie sign-in expires too; it is renewed by signing in again.
 					if (BROWSER_SIGNIN_TYPES.includes(p.type)) kinds[p.type] = 'browser'
+					labels[p.type] = p.label
 				})
 				this.reconnectableKinds = kinds
+				this.providerLabels = labels
 			}
 		})
 	},
@@ -205,6 +211,7 @@ export default {
 			}
 			this.reconnectingKey = a.mount_point
 			this.reconnectToken = ''
+			this.reconnectOAuth = null
 			this.pasteCookie = false
 			this.icloud = { appleId: '', password: '', sessionId: '', question: null, answer: '' }
 			if (this.reconnectableKinds[a.type] === 'browser') {
@@ -249,7 +256,7 @@ export default {
 		submitReconnectToken(a) {
 			this.reconnectError = ''
 			this.reconnecting = true
-			this.$api.cloud.reconnect(a.fs, { token: this.reconnectToken.trim() }).then(res => {
+			this.$api.cloud.reconnect(a.fs, this.reconnectOAuth).then(res => {
 				if (res.data.success === 200) {
 					this.reconnectingKey = null
 					this.refresh()
@@ -390,18 +397,6 @@ export default {
 			]
 			return lines.join('\n')
 		},
-		openTerminal(a) {
-			const host = window.location.hostname
-			const initCommand = `rclone authorize "${a.type}" 2>&1 | sed -u "s/127\\.0\\.0\\.1:53682/${host}:53682/g"`
-			this.$store.commit('OPEN_WINDOW', {
-				id: 'terminal-' + Date.now(),
-				title: this.$t('Terminal'),
-				component: 'TerminalPanel',
-				width: 720,
-				height: 480,
-				props: { initCommand }
-			})
-		},
 		confirmRemove(account) {
 			this.confirmWindow({
 				title: this.$t('Remove account'),
@@ -514,14 +509,6 @@ export default {
 	margin-bottom: var(--space-1);
 }
 
-.authorize-cmd {
-	display: block;
-	background: var(--theme-card-subtle, #f8fafc);
-	border-radius: var(--radius-sm);
-	padding: var(--space-2) var(--space-2);
-	font-size: var(--font-xs);
-	margin-bottom: var(--space-2);
-}
 
 .advanced-toggle {
 	display: inline-block;

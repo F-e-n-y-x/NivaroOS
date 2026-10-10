@@ -77,26 +77,10 @@
 				<b-input v-model="form.label" size="is-small" :placeholder="activeProvider.label"></b-input>
 			</b-field>
 
-			<div class="step">
-				<span class="step-number">1</span>
-				<div class="step-body">
-					<p class="step-title">{{ $t('Sign in to {provider}', { provider: activeProvider.label }) }}</p>
-					<p class="step-help">{{ $t('Run this on the server, open the link it prints, and sign in.') }}</p>
-					<code class="authorize-cmd">rclone authorize "{{ activeProvider.type }}"</code>
-					<a class="advanced-toggle" @click="openTerminal">{{ $t('Run it in Terminal') }}</a>
-				</div>
-			</div>
-
-			<div class="step">
-				<span class="step-number">2</span>
-				<div class="step-body">
-					<p class="step-title">{{ $t('Paste what it prints back') }}</p>
-					<b-input v-model="form.token" type="textarea" size="is-small" rows="3" :placeholder="$t('Paste it here')"></b-input>
-				</div>
-			</div>
+			<OAuthSignInSteps :type="activeProvider.type" :provider="activeProvider.label" @change="form.oauth = $event" />
 
 			<div class="form-actions">
-				<b-button rounded size="is-small" type="is-primary" :loading="submitting" :disabled="!form.token.trim()" @click="submitToken">{{ $t('Connect') }}</b-button>
+				<b-button rounded size="is-small" type="is-primary" :loading="submitting" :disabled="!form.oauth" @click="submitToken">{{ $t('Connect') }}</b-button>
 				<b-button rounded size="is-small" @click="cancelAdd">{{ $t('Cancel') }}</b-button>
 			</div>
 			<p v-if="error" class="error-note">{{ error }}</p>
@@ -149,6 +133,7 @@
 
 <script>
 import { browserSigninAvailability, openBrowserSignin } from '@/apps/download-station/rb/browserSignin'
+import OAuthSignInSteps from './OAuthSignInSteps.vue'
 
 // Providers whose sign-in is a site cookie, which Download Station's
 // browser can pick up after a normal sign-in.
@@ -174,6 +159,7 @@ const PROVIDER_ACCENTS = {
 }
 
 export default {
+	components: { OAuthSignInSteps },
 	emits: ['added'],
 	name: 'cloud-accounts-panel',
 	data() {
@@ -184,7 +170,7 @@ export default {
 			showAdvanced: false,
 			submitting: false,
 			error: '',
-			form: { label: '', values: {}, token: '' },
+			form: { label: '', values: {}, oauth: null },
 			icloud: { appleId: '', password: '', sessionId: '', question: null, answer: '' },
 			browserSignin: { provider: '', available: false, checking: false, hint: '' }
 		}
@@ -224,7 +210,7 @@ export default {
 			}
 			this.addingType = provider.type
 			this.error = ''
-			this.form = { label: '', values: {}, token: '' }
+			this.form = { label: '', values: {}, oauth: null }
 			this.icloud = { appleId: '', password: '', sessionId: '', question: null, answer: '' }
 			this.formOptions = []
 			this.showAdvanced = false
@@ -313,7 +299,7 @@ export default {
 			this.error = ''
 			this.submitting = true
 			this.$api.cloud
-				.createAccount({ type: this.addingType, label: this.form.label || this.activeProvider.label, params: { token: this.form.token.trim() } })
+				.createAccount({ type: this.addingType, label: this.form.label || this.activeProvider.label, params: Object.fromEntries(Object.entries(this.form.oauth).filter(([, v]) => v)) })
 				.then(res => {
 					if (res.data.success === 200) {
 						this.cancelAdd()
@@ -375,30 +361,6 @@ export default {
 			this.icloud.sessionId = step.session_id
 			this.icloud.question = step.question
 			this.icloud.answer = ''
-		},
-		openTerminal() {
-			// `rclone authorize` always prints a 127.0.0.1:53682 link (hardcoded
-			// upstream), and the provider's redirect back after sign-in is
-			// hardcoded to that same literal address too - unreachable unless
-			// the browser is on this exact machine. A small always-on proxy
-			// (services/local-storage/pkg/oauthproxy) listens on port 53682
-			// on this box's real LAN address(es), same port rclone uses, just
-			// not on loopback - so swapping only the host (not the port) in
-			// whatever 127.0.0.1:53682 link/redirect shows up, here or by
-			// hand in the URL bar, lands somewhere real.
-			const host = window.location.hostname
-			const type = this.addingType
-			const initCommand = type
-				? `rclone authorize "${type}" 2>&1 | sed -u "s/127\\.0\\.0\\.1:53682/${host}:53682/g"`
-				: ''
-			this.$store.commit('OPEN_WINDOW', {
-				id: 'terminal-' + Date.now(),
-				title: this.$t('Terminal'),
-				component: 'TerminalPanel',
-				width: 720,
-				height: 480,
-				props: { initCommand }
-			})
 		}
 	}
 }
@@ -509,14 +471,6 @@ export default {
 	margin-bottom: var(--space-2);
 }
 
-.authorize-cmd {
-	display: block;
-	background: var(--theme-card-subtle, #f8fafc);
-	border-radius: var(--radius-sm);
-	padding: var(--space-2) var(--space-2);
-	font-size: var(--font-xs);
-	margin-bottom: var(--space-2);
-}
 
 .advanced-toggle {
 	display: inline-block;
