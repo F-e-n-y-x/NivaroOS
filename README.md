@@ -287,3 +287,5 @@ Created by **Ayush** ([@F-e-n-y-x](https://github.com/F-e-n-y-x)), with contribu
 ## 📄 License
 
 Distributed under the **Apache 2.0 License**. See [`LICENSE`](LICENSE).
+
+[Privacy Policy](PRIVACY.md) · [Terms of Service](TERMS.md)
