@@ -16,6 +16,7 @@
 					</div>
 				</div>
 				<div class="widget-header-right">
+					<widget-fields-menu :fields="fieldItems" @toggle="toggleField"></widget-fields-menu>
 					<button
 						v-if="percpu.length > 1"
 						type="button"
@@ -42,8 +43,8 @@
 			</div>
 
 			<!-- Hero Grid: Left = Dial, Right = 2x2 Bento Spec Grid -->
-			<div class="widget-hero-grid">
-				<div class="hero-gauge-box">
+			<div class="widget-hero-grid" :class="{ 'no-gauge': !shows('usage') }">
+				<div v-if="shows('usage')" class="hero-gauge-box">
 					<radial-bar
 						:percent="parseInt(cpuSeries)"
 						label="CPU"
@@ -51,15 +52,16 @@
 				</div>
 				<div class="hero-info-bento">
 					<div class="bento-specs-grid">
-						<div class="spec-tile" :title="$t('Clock Speed')">
+						<div v-if="shows('clock')" class="spec-tile" :title="$t('Clock Speed')">
 							<span class="spec-label">{{ $t('Clock') }}</span>
 							<span class="spec-val">{{ mhz ? (mhz / 1000).toFixed(1) + ' GHz' : $t('Dynamic') }}</span>
 						</div>
-						<div class="spec-tile" :title="$t('Cores and Threads')">
+						<div v-if="shows('cores')" class="spec-tile" :title="$t('Cores and Threads')">
 							<span class="spec-label">{{ $t('Cores') }}</span>
 							<span class="spec-val">{{ coresLabel }}</span>
 						</div>
 						<button
+							v-if="shows('temp')"
 							type="button"
 							class="spec-tile spec-tile-btn"
 							:title="$t('Temperature / Power (click to switch °C/°F)')"
@@ -69,7 +71,7 @@
 							<span class="spec-label">{{ $t('Thermals') }}</span>
 							<span class="spec-val">{{ temperature }}{{ power ? ' · ' + power : '' }}</span>
 						</button>
-						<div class="spec-tile" :title="$t('Load State')">
+						<div v-if="shows('load')" class="spec-tile" :title="$t('Load State')">
 							<span class="spec-label">{{ $t('Load') }}</span>
 							<span class="spec-val">{{ loadState }}</span>
 						</div>
@@ -123,6 +125,7 @@ import orderBy from "lodash/orderBy";
 import slice from "lodash/slice";
 import { mixin } from "@/mixins/mixin";
 import RadialBar from "@/shared/widgets/RadialBar.vue";
+import { widgetFieldsMixin } from "@/utils/widgetFields.js";
 import { subscribeContainerUsage } from "@/utils/containerUsagePoller.js";
 
 // °C/°F is one setting for every widget (CPU and GPU): stored in
@@ -152,7 +155,14 @@ export default {
 	gridCols: 3,
 	gridRows: 2,
 	initShow: true,
-	mixins: [smoothReflow, mixin],
+	fields: [
+		{ key: "usage", label: "Usage" },
+		{ key: "clock", label: "Clock" },
+		{ key: "cores", label: "Cores" },
+		{ key: "temp", label: "Thermals" },
+		{ key: "load", label: "Load" },
+	],
+	mixins: [smoothReflow, mixin, widgetFieldsMixin],
 	components: {
 		RadialBar,
 	},

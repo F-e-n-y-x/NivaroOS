@@ -198,6 +198,17 @@
 		margin: 0.1rem 0;
 	}
 
+	// Field toggles (WidgetFieldsMenu): gauge hidden -> info takes the row;
+	// one of a pair hidden -> the other spans it.
+	.widget-hero-grid.no-gauge {
+		grid-template-columns: 1fr;
+	}
+
+	.bento-specs-grid > :only-child,
+	.net-hero > :only-child {
+		grid-column: 1 / -1;
+	}
+
 	.hero-gauge-box {
 		display: flex;
 		align-items: center;

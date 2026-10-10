@@ -16,6 +16,7 @@
 					</div>
 				</div>
 				<div class="widget-header-right">
+					<widget-fields-menu :fields="diskFieldItems" @toggle="toggleDisk"></widget-fields-menu>
 					<button
 						type="button"
 						class="widget-icon-btn"
@@ -79,6 +80,7 @@
 <script>
 import { mixin } from '@/mixins/mixin';
 import events from '@/events/events'
+import WidgetFieldsMenu from '@/shared/widgets/WidgetFieldsMenu.vue'
 
 const storageWidgetConfigKey = "storage_widget_config"
 const REFRESH_MS = 20000
@@ -105,6 +107,7 @@ export default {
 	gridRows: 2,
 	initShow: true,
 	mixins: [mixin],
+	components: { WidgetFieldsMenu },
 
 	data() {
 		return {
@@ -123,6 +126,10 @@ export default {
 				return this.disksUsage.filter(d => !this.isEfiPartition(d))
 			}
 			return this.disksUsage.filter(d => !this.hiddenMounts.includes(d.mount_point))
+		},
+		// Per-drive toggles: the same hidden-mounts list Settings edits.
+		diskFieldItems() {
+			return this.disksUsage.map(d => ({ key: d.mount_point, label: this.getDiskTitle(d), raw: true, on: this.visibleDisks.includes(d) }))
 		}
 	},
 
@@ -199,6 +206,18 @@ export default {
 
 		isEfiPartition(disk) {
 			return disk.fstype === 'vfat' && /efi/i.test(disk.mount_point || '')
+		},
+
+		toggleDisk(mount) {
+			const before = this.hasCustomHiddenMounts ? this.hiddenMounts : this.disksUsage.filter(this.isEfiPartition).map(d => d.mount_point)
+			const next = before.includes(mount) ? before.filter(m => m !== mount) : before.concat([mount])
+			const wasCustom = this.hasCustomHiddenMounts
+			this.setHiddenMounts(next)
+			this.$api.users.setCustomStorage(storageWidgetConfigKey, { hiddenMounts: next }).catch(() => {
+				this.hiddenMounts = before
+				this.hasCustomHiddenMounts = wasCustom
+				this.$buefy.toast.open({ message: this.$t("Couldn't save the widget setting"), type: 'is-danger' })
+			})
 		},
 
 		setHiddenMounts(hiddenMounts) {

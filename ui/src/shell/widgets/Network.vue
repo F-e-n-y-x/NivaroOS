@@ -19,11 +19,12 @@
 								aria-hidden="true"
 							></i>
 							<span v-if="activeInterface" class="is-sr-only">{{ activeInterfaceStateLabel }}</span>
-							{{ activeInterfaceName }}<template v-if="activeLink"> · {{ activeLink }}</template>
+							{{ activeInterfaceName }}<template v-if="activeLink && shows('link')"> · {{ activeLink }}</template>
 						</span>
 					</div>
 				</div>
 				<div class="widget-header-right">
+					<widget-fields-menu :fields="fieldItems" @toggle="toggleField"></widget-fields-menu>
 					<button
 						type="button"
 						class="widget-icon-btn speedtest-btn"
@@ -50,12 +51,12 @@
 			</div>
 
 			<!-- Hero: the two numbers that matter -->
-			<div class="net-hero">
-				<div class="net-rate is-down" :class="{ 'is-testing': isTesting && testPhase === 'download' }">
+			<div v-if="shows('down') || shows('up')" class="net-hero">
+				<div v-if="shows('down')" class="net-rate is-down" :class="{ 'is-testing': isTesting && testPhase === 'download' }">
 					<span class="net-rate-label"><i class="mdi mdi-arrow-down" aria-hidden="true"></i>{{ downCardLabel }}</span>
 					<span class="net-rate-value">{{ displayDownSpeed }}<span class="unit">{{ displayDownUnit }}</span></span>
 				</div>
-				<div class="net-rate is-up" :class="{ 'is-testing': isTesting && testPhase === 'upload' }">
+				<div v-if="shows('up')" class="net-rate is-up" :class="{ 'is-testing': isTesting && testPhase === 'upload' }">
 					<span class="net-rate-label"><i class="mdi mdi-arrow-up" aria-hidden="true"></i>{{ upCardLabel }}</span>
 					<span class="net-rate-value">{{ displayUpSpeed }}<span class="unit">{{ displayUpUnit }}</span></span>
 				</div>
@@ -129,6 +130,7 @@
 				     ones (~90 DOM nodes every 90s). Paths whose `d` changes keep
 				     the node count constant. -->
 				<svg
+					v-if="shows('chart')"
 					class="net-sparkline"
 					:viewBox="`0 0 ${SPARK_W} ${SPARK_H}`"
 					preserveAspectRatio="none"
@@ -141,21 +143,21 @@
 				</svg>
 
 				<dl class="net-facts">
-					<template v-if="lanIp">
+					<template v-if="lanIp && shows('ips')">
 						<dt>{{ $t('LAN') }}</dt>
 						<dd><button type="button" class="net-copy" :title="$t('Copy {ip}', { ip: lanIp })" :aria-label="$t('Copy LAN IP {ip}', { ip: lanIp })" @click="copyIp(lanIp)">{{ lanIp }}<i class="mdi mdi-content-copy" aria-hidden="true"></i></button></dd>
 					</template>
-					<template v-if="tailscaleIp">
+					<template v-if="tailscaleIp && shows('ips')">
 						<dt>{{ $t('Tailscale') }}</dt>
 						<dd><button type="button" class="net-copy" :title="$t('Copy {ip}', { ip: tailscaleIp })" :aria-label="$t('Copy Tailscale IP {ip}', { ip: tailscaleIp })" @click="copyIp(tailscaleIp)">{{ tailscaleIp }}<i class="mdi mdi-content-copy" aria-hidden="true"></i></button></dd>
 					</template>
-					<template v-if="activeInterface && activeInterface.todayRecv !== undefined">
+					<template v-if="activeInterface && activeInterface.todayRecv !== undefined && shows('today')">
 						<dt>{{ $t('Today') }}</dt>
 						<dd :title="$t('Received and sent on {name} since midnight ({boot} since the last boot)', { name: activeInterfaceName, boot: '↓ ' + renderSize(Number(activeInterface.bytesRecv) || 0) + ' · ↑ ' + renderSize(Number(activeInterface.bytesSent) || 0) })">
 							↓ {{ renderSize(Number(activeInterface.todayRecv) || 0) }} · ↑ {{ renderSize(Number(activeInterface.todaySent) || 0) }}
 						</dd>
 					</template>
-					<template v-else-if="activeInterface">
+					<template v-else-if="activeInterface && shows('total')">
 						<dt>{{ $t('Since boot') }}</dt>
 						<dd :title="$t('Received and sent on {name} since the last boot', { name: activeInterfaceName })">
 							↓ {{ renderSize(Number(activeInterface.bytesRecv) || 0) }} · ↑ {{ renderSize(Number(activeInterface.bytesSent) || 0) }}
@@ -197,6 +199,7 @@
 import copy from 'clipboard-copy';
 import { mixin } from '@/mixins/mixin';
 import { formatRate, stateClass, defaultInterface, ipOf, sparkPath, linkSpeedText } from '@/utils/netWidget';
+import { widgetFieldsMixin } from '@/utils/widgetFields.js';
 
 const LAN_STREAMS = 6;
 const LAN_DURATION = 10000;
@@ -288,7 +291,7 @@ function readStoredInterface() {
 }
 
 export default {
-	mixins: [mixin],
+	mixins: [mixin, widgetFieldsMixin],
 	// eslint-disable-next-line vue/multi-word-component-names
 	name: 'network',
 	icon: "network-outline",
@@ -296,6 +299,16 @@ export default {
 	gridCols: 3,
 	gridRows: 2,
 	initShow: true,
+	// Each key here is one shows('key') in the template.
+	fields: [
+		{ key: 'down', label: 'Download' },
+		{ key: 'up', label: 'Upload' },
+		{ key: 'chart', label: 'Traffic chart' },
+		{ key: 'link', label: 'Link speed' },
+		{ key: 'ips', label: 'IP addresses' },
+		{ key: 'today', label: 'Today' },
+		{ key: 'total', label: 'Since boot' },
+	],
 	data() {
 		return {
 			SPARK_W,

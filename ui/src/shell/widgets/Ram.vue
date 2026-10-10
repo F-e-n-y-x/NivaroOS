@@ -16,6 +16,7 @@
 					</div>
 				</div>
 				<div class="widget-header-right">
+					<widget-fields-menu :fields="fieldItems" @toggle="toggleField"></widget-fields-menu>
 					<button
 						type="button"
 						class="widget-icon-btn"
@@ -40,26 +41,28 @@
 			</div>
 
 			<!-- Hero Grid: Left = Dial, Right = Structured Bento Stats -->
-			<div class="widget-hero-grid">
-				<div class="hero-gauge-box">
+			<div class="widget-hero-grid" :class="{ 'no-gauge': !shows('usage') }">
+				<div v-if="shows('usage')" class="hero-gauge-box">
 					<radial-bar
 						:percent="parseInt(ramSeries)"
 						label="RAM"
 					></radial-bar>
 				</div>
 				<div class="hero-info-bento">
-					<div class="bento-hero-title">
-						{{ renderSize(usedMemory) }} <span class="has-text-weight-normal is-size-7 text-muted">{{ $t("Used") }}</span>
-					</div>
-					<div class="bento-hero-sub">
-						{{ renderSize(freeMemory) }} {{ $t("Available") }}
-					</div>
-					<div class="ram-track-box">
-						<div class="ram-progress-track">
-							<div class="ram-progress-fill" :style="{ width: Math.min(100, Math.max(2, parseInt(ramSeries))) + '%' }"></div>
+					<template v-if="shows('details')">
+						<div class="bento-hero-title">
+							{{ renderSize(usedMemory) }} <span class="has-text-weight-normal is-size-7 text-muted">{{ $t("Used") }}</span>
 						</div>
-					</div>
-					<div class="bento-chips-row">
+						<div class="bento-hero-sub">
+							{{ renderSize(freeMemory) }} {{ $t("Available") }}
+						</div>
+						<div class="ram-track-box">
+							<div class="ram-progress-track">
+								<div class="ram-progress-fill" :style="{ width: Math.min(100, Math.max(2, parseInt(ramSeries))) + '%' }"></div>
+							</div>
+						</div>
+					</template>
+					<div v-if="shows('modules')" class="bento-chips-row">
 						<template v-if="dimmGroups.length">
 							<span v-for="(g, index) in dimmGroups" :key="'dimm-' + index" class="bento-chip is-purple">
 								<i class="mdi mdi-memory"></i> {{ g.count }}× {{ g.size }} {{ g.type }} {{ g.speed || '' }}
@@ -107,6 +110,7 @@ import slice from "lodash/slice";
 import { mixin } from "@/mixins/mixin";
 import RadialBar from "@/shared/widgets/RadialBar.vue";
 import { subscribeContainerUsage } from "@/utils/containerUsagePoller.js";
+import { widgetFieldsMixin } from "@/utils/widgetFields.js";
 
 export default {
 	// eslint-disable-next-line vue/multi-word-component-names
@@ -116,7 +120,12 @@ export default {
 	gridCols: 3,
 	gridRows: 2,
 	initShow: true,
-	mixins: [smoothReflow, mixin],
+	fields: [
+		{ key: "usage", label: "Usage" },
+		{ key: "details", label: "Used and available" },
+		{ key: "modules", label: "Memory modules" },
+	],
+	mixins: [smoothReflow, mixin, widgetFieldsMixin],
 	components: {
 		RadialBar,
 	},

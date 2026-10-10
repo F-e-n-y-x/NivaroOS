@@ -16,6 +16,7 @@
 					</div>
 				</div>
 				<div class="widget-header-right">
+					<widget-fields-menu v-if="!unavailable" :fields="fieldItems" @toggle="toggleField"></widget-fields-menu>
 					<button
 						v-if="!unavailable"
 						type="button"
@@ -32,8 +33,8 @@
 			<!-- Header End -->
 
 			<!-- Hero Grid: Left = Dial (outside box), Right = VRAM Meter Card + Temp & Power Cards -->
-			<div v-if="!unavailable" class="widget-hero-grid">
-				<div class="hero-gauge-box">
+			<div v-if="!unavailable" class="widget-hero-grid" :class="{ 'no-gauge': !shows('usage') }">
+				<div v-if="shows('usage')" class="hero-gauge-box">
 					<radial-bar
 						:percent="Math.round(utilizationPercent)"
 						label="GPU"
@@ -41,7 +42,7 @@
 				</div>
 				<div class="hero-info-bento">
 					<!-- VRAM Meter Card with Live Progress Track -->
-					<div class="vram-meter-card" :title="$t('VRAM Usage') + ` (${Math.round(memoryPercent)}%)`">
+					<div v-if="shows('vram')" class="vram-meter-card" :title="$t('VRAM Usage') + ` (${Math.round(memoryPercent)}%)`">
 						<div class="vram-card-top">
 							<span class="vram-label">{{ $t('VRAM') }}</span>
 							<div class="vram-metrics">
@@ -59,11 +60,11 @@
 
 					<!-- Bottom Specs Grid: Temp & Power (Driver detail removed) -->
 					<div class="bento-specs-grid">
-						<div class="spec-tile" :title="$t('Temperature')">
+						<div v-if="shows('temp')" class="spec-tile" :title="$t('Temperature')">
 							<span class="spec-label">{{ $t('Temp') }}</span>
 							<span class="spec-val">{{ temperatureDisplay }}</span>
 						</div>
-						<div class="spec-tile" :title="$t('Power Consumption')">
+						<div v-if="shows('power')" class="spec-tile" :title="$t('Power Consumption')">
 							<span class="spec-label">{{ $t('Power') }}</span>
 							<span class="spec-val">{{ powerDraw > 0 ? powerDraw.toFixed(0) + 'W' : '—' }}</span>
 						</div>
@@ -112,6 +113,7 @@ import orderBy from "lodash/orderBy";
 import slice from "lodash/slice";
 import { mixin } from "@/mixins/mixin";
 import RadialBar from "@/shared/widgets/RadialBar.vue";
+import { widgetFieldsMixin } from "@/utils/widgetFields.js";
 
 import { instance as http } from "@/service/service.js";
 
@@ -152,7 +154,13 @@ export default {
 	gridCols: 3,
 	gridRows: 2,
 	initShow: true,
-	mixins: [smoothReflow, mixin],
+	fields: [
+		{ key: "usage", label: "Usage" },
+		{ key: "vram", label: "VRAM" },
+		{ key: "temp", label: "Temperature" },
+		{ key: "power", label: "Power" },
+	],
+	mixins: [smoothReflow, mixin, widgetFieldsMixin],
 	components: {
 		RadialBar,
 	},
