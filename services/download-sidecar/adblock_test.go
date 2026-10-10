@@ -141,3 +141,23 @@ func TestEntityDomains(t *testing.T) {
 		t.Error("entity over-matched")
 	}
 }
+
+// The engine is built on first use, then kept current by Rebuild.
+func TestAdblockerBuildsOnFirstUse(t *testing.T) {
+	dir := t.TempDir()
+	st := NewSettingsStore(dir, dir)
+	_, _ = st.Update(func(s *Settings) { s.EnabledLists = nil; s.CustomFilters = "||ads.example^" })
+	ab := NewAdblocker(dir, st, newTransport(true))
+	ab.Rebuild()
+	if ab.engine.Load() != nil {
+		t.Fatal("built before first use")
+	}
+	if n := ab.Engine().NetworkCount; n != 1 {
+		t.Fatalf("network rules = %d, want 1", n)
+	}
+	_, _ = st.Update(func(s *Settings) { s.CustomFilters = "||ads.example^\n||track.example^" })
+	ab.Rebuild()
+	if n := ab.Engine().NetworkCount; n != 2 {
+		t.Fatalf("after change: network rules = %d, want 2", n)
+	}
+}

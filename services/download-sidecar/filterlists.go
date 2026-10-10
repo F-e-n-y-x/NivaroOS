@@ -87,7 +87,8 @@ type Adblocker struct {
 	settings *SettingsStore
 	client   *http.Client
 
-	engine   atomic.Pointer[FilterEngine]
+	engine   atomic.Pointer[FilterEngine] // nil until first use
+	buildMu  sync.Mutex
 	blocked  atomic.Int64
 	mu       sync.Mutex
 	updating bool
@@ -103,12 +104,24 @@ func NewAdblocker(dataDir string, settings *SettingsStore, transport http.RoundT
 		errors:   map[string]string{},
 	}
 	_ = os.MkdirAll(a.dir, 0o755)
-	a.engine.Store(newFilterEngine())
 	settings.OnChange(func(Settings) { go a.Rebuild() })
 	return a
 }
 
-func (a *Adblocker) Engine() *FilterEngine { return a.engine.Load() }
+// Engine builds the filter engine on first use (the lite browser or the
+// Ad Blocker panel): parsed, the lists hold tens of MB that a box whose
+// owner never opens the DS browser shouldn't carry.
+func (a *Adblocker) Engine() *FilterEngine {
+	if e := a.engine.Load(); e != nil {
+		return e
+	}
+	a.buildMu.Lock()
+	defer a.buildMu.Unlock()
+	if a.engine.Load() == nil {
+		a.build()
+	}
+	return a.engine.Load()
+}
 
 func (a *Adblocker) Enabled() bool { return a.settings.Get().AdblockEnabled }
 
@@ -126,11 +139,10 @@ func (a *Adblocker) SiteAllowed(host string) bool {
 
 func (a *Adblocker) listPath(id string) string { return filepath.Join(a.dir, id+".txt") }
 
-// Start builds from whatever is cached right away (so blocking works
-// immediately after a restart, even offline), then fetches any missing or
-// stale lists in the background and keeps them fresh.
+// Start fetches any missing or stale lists in the background and keeps
+// them fresh. The engine is built from the cached files on first use, so
+// blocking works right after a restart, even offline.
 func (a *Adblocker) Start(ctx context.Context) {
-	a.Rebuild()
 	go func() {
 		a.UpdateLists(ctx, false)
 		t := time.NewTicker(6 * time.Hour)
@@ -217,8 +229,17 @@ func (a *Adblocker) fetchList(ctx context.Context, l FilterList) error {
 	return os.Rename(tmp, a.listPath(l.ID))
 }
 
-// Rebuild re-parses every enabled cached list plus the user's own filters.
+// Rebuild re-parses every enabled cached list plus the user's own filters,
+// once the engine is in use (until then Engine builds it fresh anyway).
 func (a *Adblocker) Rebuild() {
+	a.buildMu.Lock()
+	defer a.buildMu.Unlock()
+	if a.engine.Load() != nil {
+		a.build()
+	}
+}
+
+func (a *Adblocker) build() {
 	s := a.settings.Get()
 	var texts []string
 	for _, id := range s.EnabledLists {
