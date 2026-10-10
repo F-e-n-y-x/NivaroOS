@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home-screen widgets and Quick Settings tiles (HomeWidgets.kt). -->
+<resources>
+    <string name="widget_server_label">Server status</string>
+    <string name="widget_server_description">Your server\'s processor, memory and storage, and whether it is online</string>
+    <string name="widget_transfers_label">Downloads and backup</string>
+    <string name="widget_transfers_description">Active downloads on your server and this phone\'s backup</string>
+    <string name="tile_server_label">Server status</string>
+    <string name="tile_backup_label">Back up this phone now</string>
+</resources>

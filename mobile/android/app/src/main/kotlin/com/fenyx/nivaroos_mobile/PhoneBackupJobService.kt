@@ -254,6 +254,7 @@ class PhoneBackupJobService : JobService() {
         }
         running = true
         params = p
+        HomeWidgets.redraw(this)
         val reason = p.extras.getString("reason") ?: "schedule"
         userInitiated = Build.VERSION.SDK_INT >= 34 && p.isUserInitiatedJob
         if (userInitiated && Build.VERSION.SDK_INT >= 34) {
@@ -268,6 +269,7 @@ class PhoneBackupJobService : JobService() {
             engine = HeadlessDart.start(this, "phoneBackupMain") { e ->
                 val messenger = e.dartExecutor.binaryMessenger
                 MethodChannel(messenger, PhoneBackupBridge.CHANNEL).setMethodCallHandler(PhoneBackupBridge(applicationContext, null))
+                HomeWidgets.register(e, applicationContext)
                 MethodChannel(messenger, "com.fenyx.nivaroos/phone_backup_job").setMethodCallHandler { call, result ->
                     when (call.method) {
                         "start" -> result.success(mapOf("reason" to reason, "budgetMs" to budget, "userInitiated" to userInitiated))
@@ -320,5 +322,6 @@ class PhoneBackupJobService : JobService() {
         engine = null
         params = null
         running = false
+        HomeWidgets.redraw(this)
     }
 }

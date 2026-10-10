@@ -8,6 +8,7 @@ import '../phone_backup/pb_service.dart' show runPhoneBackupJob;
 import 'api_client.dart';
 import 'companion_file_server.dart';
 import 'device_sync_service.dart';
+import 'home_widgets.dart';
 import 'notification_feed.dart';
 import 'share_upload.dart' show runShareUploadJob;
 import 'storage_service.dart';
@@ -78,6 +79,8 @@ Future<void> heartbeatMain() async {
       });
       // What's new in the server's notification feed, on the phone.
       await NotificationFeed.instance.checkAndNotify().timeout(const Duration(seconds: 20));
+      // The home-screen widgets and Quick Settings tiles.
+      await HomeWidgets.instance.refresh().timeout(const Duration(seconds: 30));
     }
   } catch (e) {
     debugPrint('[heartbeat] ${e.runtimeType}');

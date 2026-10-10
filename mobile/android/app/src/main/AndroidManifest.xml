@@ -165,6 +165,53 @@
             </intent-filter>
         </activity>
 
+        <!-- Home-screen widgets and Quick Settings tiles (HomeWidgets.kt):
+             they draw what the app and its heartbeat pushed. The system
+             sends widget updates to non-exported receivers; only the
+             system can bind a tile (BIND_QUICK_SETTINGS_TILE). -->
+        <receiver
+            android:name=".ServerStatusWidget"
+            android:label="@string/widget_server_label"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_server_info" />
+        </receiver>
+        <receiver
+            android:name=".TransfersWidget"
+            android:label="@string/widget_transfers_label"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_transfers_info" />
+        </receiver>
+        <service
+            android:name=".ServerStatusTile"
+            android:icon="@drawable/ic_stat_nivaroos"
+            android:label="@string/tile_server_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".BackupNowTile"
+            android:icon="@drawable/ic_stat_nivaroos"
+            android:label="@string/tile_backup_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <!-- Result of a self-update install session. -->
         <receiver
             android:name=".AppUpdateInstaller$InstallStatusReceiver"

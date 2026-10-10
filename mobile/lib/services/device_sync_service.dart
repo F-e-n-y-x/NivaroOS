@@ -15,6 +15,7 @@ import 'storage_service.dart';
 import 'companion_file_server.dart';
 import 'companion_route.dart';
 import 'background_service.dart';
+import 'home_widgets.dart';
 import '../models/file_entry.dart';
 
 export 'companion_route.dart';
@@ -439,6 +440,7 @@ class DeviceSyncService {
       return;
     }
     await BackgroundService.instance.scheduleHeartbeat();
+    HomeWidgets.instance.watchApp();
     await syncWithServer(repair: _pairOnSignIn);
   }
 

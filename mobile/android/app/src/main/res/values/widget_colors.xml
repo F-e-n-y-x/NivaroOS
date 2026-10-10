@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home-screen widgets (HomeWidgets.kt); dark versions in values-night. -->
+<resources>
+    <color name="widget_bg">#FFFFFFFF</color>
+    <color name="widget_text">#FF1B1C1F</color>
+    <color name="widget_text_dim">#FF5F6368</color>
+</resources>

@@ -66,6 +66,7 @@ class HeartbeatJobService : JobService() {
             engine = HeadlessDart.start(this, "heartbeatMain") { e ->
                 // The heartbeat also checks the notification feed.
                 FeedNotifier.register(e, this)
+                HomeWidgets.register(e, this)
                 MethodChannel(e.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/heartbeat").setMethodCallHandler { call, result ->
                     if (call.method == "done") {
                         result.success(true)

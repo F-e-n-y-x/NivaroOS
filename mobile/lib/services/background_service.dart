@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 // heartbeatMain) must be part of the app's code for release builds.
 // ignore: unused_import
 import 'background_sync_isolate.dart';
+import 'home_widgets.dart';
 import 'notification_feed.dart';
 
 /// Where a sharing session stands, as the native service reports it.
@@ -147,6 +148,7 @@ class BackgroundService {
     NotificationFeed.instance.stopLive();
     await stopSharing();
     await cancelHeartbeat();
+    await HomeWidgets.instance.clear();
   }
 
   /// Checks if the app is exempt from battery optimizations (Doze mode)

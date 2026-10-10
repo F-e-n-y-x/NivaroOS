@@ -196,6 +196,9 @@ class MainActivity : FlutterActivity() {
         // The server's notification feed on the phone (FeedNotifier).
         FeedNotifier.register(flutterEngine, this)
 
+        // Home-screen widgets and Quick Settings tiles (HomeWidgets).
+        HomeWidgets.register(flutterEngine, this)
+
         // Device Info channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/device_info").setMethodCallHandler { call, result ->
             if (call.method == "getBatteryLevel") {

@@ -14,6 +14,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../backup/backup_api.dart';
 import '../backup/backup_models.dart';
 import '../services/api_client.dart';
+import '../services/home_widgets.dart';
 import 'pb_client.dart';
 import 'pb_engine.dart';
 import 'pb_models.dart';
@@ -241,6 +242,7 @@ Future<void> runPhoneBackupJob() async {
   } catch (_) {
     // Never leave the job hanging.
   } finally {
+    await HomeWidgets.instance.refreshBackup();
     try {
       await job.invokeMethod('done', {'more': more});
     } catch (_) {}
