@@ -1389,7 +1389,7 @@ func (i *rbInstance) onEvent(ev cdpEvent) {
 			SuggestedFilename string `json:"suggestedFilename"`
 		}
 		if json.Unmarshal(ev.Params, &p) == nil {
-			go i.onDownload(p.FrameID, p.GUID, p.URL, p.SuggestedFilename)
+			i.onDownload(p.FrameID, p.GUID, p.URL, p.SuggestedFilename)
 		}
 		return
 	case "Browser.downloadProgress":
@@ -2146,18 +2146,23 @@ func (i *rbInstance) onDownload(frameID, guid, rawURL, filename string) {
 	}
 	if strings.HasPrefix(rawURL, "http://") || strings.HasPrefix(rawURL, "https://") {
 		// Re-fetchable: cancel it in Chromium and hand it to the
-		// multi-connection downloader with this tab's cookies.
+		// multi-connection downloader with this tab's cookies. Off the
+		// event loop: captureURL waits on a CDP reply.
 		conn.Send("", "Browser.cancelDownload", map[string]interface{}{"guid": guid})
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		c, err := i.captureURL(ctx, t, rawURL, filename)
-		if err != nil {
-			return
-		}
-		i.broadcastCtx(ctxID, map[string]interface{}{"t": "download", "url": c.URL, "filename": c.Filename, "captured": c.ID})
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			c, err := i.captureURL(ctx, t, rawURL, filename)
+			if err != nil {
+				return
+			}
+			i.broadcastCtx(ctxID, map[string]interface{}{"t": "download", "url": c.URL, "filename": c.Filename, "captured": c.ID})
+		}()
 		return
 	}
 	// blob:/data: - only Chromium has the bytes; let it finish into staging.
+	// Registered synchronously, on the event loop, so a downloadProgress
+	// "completed" right behind this event can't arrive before the entry.
 	i.mu.Lock()
 	i.stagedDL[guid] = &rbStaged{GUID: guid, Path: filepath.Join(i.staging, guid), Filename: sanitizeFilename(filename), context: ctxID}
 	i.mu.Unlock()

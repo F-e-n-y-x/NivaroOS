@@ -83,6 +83,14 @@ func (f *fakeEngine) AddTrackers(ctx context.Context, h string, urls []string) e
 	return nil
 }
 
+// with runs fn under the fake's lock: every settings Update also applies the
+// settings on a goroutine (applySettings), which reads and writes the fake.
+func (f *fakeEngine) with(fn func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fn()
+}
+
 func newTestTorrents(t *testing.T) (*Torrents, *fakeEngine, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -240,28 +248,34 @@ func TestTrackerListFetchAndPrivateRule(t *testing.T) {
 	}
 
 	yes, no := true, false
-	fe.running = true
-	fe.list = []TorrentInfo{
-		{Hash: strings.Repeat("a", 40), HasMetadata: true, Private: &no, State: tsDownloading},
-		{Hash: strings.Repeat("b", 40), HasMetadata: true, Private: &yes, State: tsDownloading},
-		{Hash: strings.Repeat("c", 40), HasMetadata: false, Private: nil, State: tsMetadata},
-		{Hash: strings.Repeat("d", 40), HasMetadata: true, Private: nil, State: tsDownloading},
+	fe.with(func() {
+		fe.running = true
+		fe.list = []TorrentInfo{
+			{Hash: strings.Repeat("a", 40), HasMetadata: true, Private: &no, State: tsDownloading},
+			{Hash: strings.Repeat("b", 40), HasMetadata: true, Private: &yes, State: tsDownloading},
+			{Hash: strings.Repeat("c", 40), HasMetadata: false, Private: nil, State: tsMetadata},
+			{Hash: strings.Repeat("d", 40), HasMetadata: true, Private: nil, State: tsDownloading},
+		}
+	})
+	trackers := func() (n int, a int) {
+		fe.with(func() { n, a = len(fe.trackers), len(fe.trackers[strings.Repeat("a", 40)]) })
+		return
 	}
 	tm.tick(context.Background())
-	if len(fe.trackers) != 1 || len(fe.trackers[strings.Repeat("a", 40)]) != 3 {
-		t.Fatalf("trackers must go to the public torrent only: %v", fe.trackers)
+	if n, a := trackers(); n != 1 || a != 3 {
+		t.Fatalf("trackers must go to the public torrent only: %d, %d for a", n, a)
 	}
 	// Once per list version.
-	delete(fe.trackers, strings.Repeat("a", 40))
+	fe.with(func() { delete(fe.trackers, strings.Repeat("a", 40)) })
 	tm.tick(context.Background())
-	if len(fe.trackers) != 0 {
+	if n, _ := trackers(); n != 0 {
 		t.Fatal("re-added the same list version")
 	}
 	// Auto-add off: nothing.
 	_, _ = tm.st.Update(func(s *Settings) { s.Torrent.TrackersAuto = false })
-	fe.list[0].Hash = strings.Repeat("e", 40)
+	fe.with(func() { fe.list[0].Hash = strings.Repeat("e", 40) })
 	tm.tick(context.Background())
-	if len(fe.trackers) != 0 {
+	if n, _ := trackers(); n != 0 {
 		t.Fatal("auto-add is off")
 	}
 
@@ -281,9 +295,11 @@ func TestTorrentManagerAddAndRoots(t *testing.T) {
 	if _, err := tm.Add(ctx, TorrentAddRequest{Source: testMagnet, Paused: true}); err != nil {
 		t.Fatal(err)
 	}
-	if fe.starts != 1 || len(fe.added) != 1 || fe.added[0].Dir != filepath.Join(dir, "dl") || !fe.added[0].Paused || fe.added[0].Hash == "" {
-		t.Fatalf("add: starts=%d %+v", fe.starts, fe.added)
-	}
+	fe.with(func() {
+		if fe.starts != 1 || len(fe.added) != 1 || fe.added[0].Dir != filepath.Join(dir, "dl") || !fe.added[0].Paused || fe.added[0].Hash == "" {
+			t.Fatalf("add: starts=%d %+v", fe.starts, fe.added)
+		}
+	})
 	if _, err := os.Stat(filepath.Join(dir, "dl")); err != nil {
 		t.Fatal("save folder not created")
 	}
@@ -298,7 +314,9 @@ func TestTorrentManagerAddAndRoots(t *testing.T) {
 	if _, err := tm.Add(ctx, TorrentAddRequest{Torrent: makeTorrent(t, false), Category: "Linux"}); err != nil {
 		t.Fatal(err)
 	}
-	if a := fe.added[len(fe.added)-1]; a.Dir != filepath.Join(dir, "iso") || a.Category != "Linux" || a.File == nil {
+	var a TorrentAdd
+	fe.with(func() { a = fe.added[len(fe.added)-1] })
+	if a.Dir != filepath.Join(dir, "iso") || a.Category != "Linux" || a.File == nil {
 		t.Fatalf("category add: %+v", a)
 	}
 	if _, err := tm.Add(ctx, TorrentAddRequest{Source: testMagnet, Category: "Nope"}); err == nil {
@@ -322,27 +340,33 @@ func TestTorrentManagerIdleAndCache(t *testing.T) {
 	tm, fe, dir := newTestTorrents(t)
 	ctx := context.Background()
 	tm.idleWait = 0
-	fe.list = []TorrentInfo{{Hash: strings.Repeat("a", 40), Name: "x", State: tsDownloading, DlSpeed: 5, Size: 10, Done: 5}}
+	fe.with(func() {
+		fe.list = []TorrentInfo{{Hash: strings.Repeat("a", 40), Name: "x", State: tsDownloading, DlSpeed: 5, Size: 10, Done: 5}}
+	})
 	if _, err := tm.engine(ctx, true); err != nil {
 		t.Fatal(err)
 	}
 	tm.tick(ctx)
-	if !fe.running {
+	if !fe.Running() {
 		t.Fatal("stopped while a torrent is active")
 	}
 	// It finishes: one notification, then the engine stops once idle.
-	fe.list[0].State, fe.list[0].Done = tsCompleted, 10
+	fe.with(func() { fe.list[0].State, fe.list[0].Done = tsCompleted, 10 })
 	tm.tick(ctx)
 	if ev, _ := tm.events.Since(0); len(ev) != 1 || ev[0].Kind != "completed" || ev[0].Filename != "x" {
 		t.Fatalf("events: %+v", ev)
 	}
-	if fe.running || fe.stops != 1 {
-		t.Fatal("not stopped when idle")
-	}
+	fe.with(func() {
+		if fe.running || fe.stops != 1 {
+			t.Fatal("not stopped when idle")
+		}
+	})
 	// Stopped: List serves the cache (speeds zeroed) and doesn't start it.
 	list, running, err := tm.List(ctx)
-	if err != nil || running || len(list) != 1 || list[0].DlSpeed != 0 || fe.starts != 1 {
-		t.Fatalf("cached list: %+v running=%v starts=%d", list, running, fe.starts)
+	var starts int
+	fe.with(func() { starts = fe.starts })
+	if err != nil || running || len(list) != 1 || list[0].DlSpeed != 0 || starts != 1 {
+		t.Fatalf("cached list: %+v running=%v starts=%d", list, running, starts)
 	}
 	// The cache survives a restart; an active torrent in it wakes the engine.
 	raw, _ := os.ReadFile(filepath.Join(dir, "torrents-cache.json"))
@@ -358,17 +382,18 @@ func TestTorrentManagerIdleAndCache(t *testing.T) {
 	cctx, cancel := context.WithCancel(ctx)
 	tm2.Start(cctx)
 	cancel()
-	if fe2.starts != 1 {
+	if fe2.with(func() { starts = fe2.starts }); starts != 1 {
 		t.Fatal("an active torrent at startup must wake the engine")
 	}
 	// Speed limits follow the alternative switch on the next tick.
 	_, _ = tm.st.Update(func(s *Settings) { s.Torrent.AltSpeed = true; s.Torrent.AltDlLimit = 7 })
-	fe.running = true
-	fe.list[0].State = tsDownloading
+	fe.with(func() { fe.running, fe.list[0].State = true, tsDownloading })
 	tm.tick(ctx)
-	if fe.limits[0] != 7 {
-		t.Fatalf("alt limit not applied: %v", fe.limits)
-	}
+	fe.with(func() {
+		if fe.limits[0] != 7 {
+			t.Fatalf("alt limit not applied: %v", fe.limits)
+		}
+	})
 }
 
 func TestWatchFolder(t *testing.T) {
@@ -380,8 +405,10 @@ func TestWatchFolder(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(watch, "bad.torrent"), []byte("junk"), 0o644)
 	_ = os.WriteFile(filepath.Join(watch, "notes.txt"), []byte("x"), 0o644)
 	tm.scanWatchDir(context.Background())
-	if len(fe.added) != 1 {
-		t.Fatalf("added %d", len(fe.added))
+	var n int
+	fe.with(func() { n = len(fe.added) })
+	if n != 1 {
+		t.Fatalf("added %d", n)
 	}
 	for _, f := range []string{"good.torrent.added", "bad.torrent.invalid", "notes.txt"} {
 		if _, err := os.Stat(filepath.Join(watch, f)); err != nil {
