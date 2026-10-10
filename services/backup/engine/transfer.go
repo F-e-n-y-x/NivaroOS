@@ -175,10 +175,20 @@ func checkLevel(s CheckStatus) string {
 // to a context's rclone config.
 func transferConfig(ctx context.Context, p *prepared, o Options) (context.Context, *fs.ConfigInfo) {
 	ctx, ci := rcloneContext(ctx)
-	if o.LowPriority {
+	q := p.dest.q
+	switch {
+	case q.Drive && o.LowPriority:
+		ci.Transfers = 4
+	case q.Drive:
+		// Google Drive caps each upload stream well below a fast line and
+		// throttles new files per second, so only many in flight fill it.
+		// Each one buffers a chunk_size (64 MiB) piece: 16 = 1 GiB, under
+		// the engine's 2 GiB memory limit.
+		ci.Transfers = 16
+		ci.Checkers = 16
+	case o.LowPriority:
 		ci.Transfers = 2
 	}
-	q := p.dest.q
 	if q.ModifyWindow > 0 {
 		ci.ModifyWindow = fs.Duration(q.ModifyWindow)
 	}

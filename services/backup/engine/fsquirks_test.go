@@ -79,6 +79,17 @@ func TestRemoteQuirks(t *testing.T) {
 	if !ci.SizeOnly || ci.Transfers != 2 {
 		t.Errorf("config: size-only %v, transfers %d", ci.SizeOnly, ci.Transfers)
 	}
+	// Google Drive: many uploads in flight (one stream is capped well
+	// below a fast line); low priority still gets 4, not 2.
+	for _, c := range []struct {
+		low  bool
+		want int
+	}{{false, 16}, {true, 4}} {
+		_, ci := transferConfig(context.Background(), &prepared{dest: &target{q: gd}}, Options{LowPriority: c.low})
+		if ci.Transfers != c.want {
+			t.Errorf("drive low=%v: transfers %d, want %d", c.low, ci.Transfers, c.want)
+		}
+	}
 }
 
 func TestFAT32RefusesFilesOf4GiB(t *testing.T) {
