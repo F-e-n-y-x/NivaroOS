@@ -31,4 +31,11 @@ describe('tailscale service', () => {
 		tailscale.setPrefs({ shields_up: true })
 		expect(api.put).toHaveBeenCalledWith('/tailscale/prefs', { shields_up: true })
 	})
+
+	test('serve: GET /tailscale/serve, PUT /tailscale/serve/:state', () => {
+		tailscale.getServe()
+		tailscale.setServe('on')
+		expect(api.get).toHaveBeenCalledWith('/tailscale/serve')
+		expect(api.put).toHaveBeenCalledWith('/tailscale/serve/on')
+	})
 })

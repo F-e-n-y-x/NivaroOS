@@ -62,6 +62,42 @@
 			</div>
 
 			<template v-if="isRunning">
+				<h3 class="setting-card-title">{{ $t('Secure web address') }}</h3>
+				<div class="setting-card">
+					<div class="setting-row">
+						<b-icon class="row-icon" icon="lock-outline" pack="mdi" size="is-20"></b-icon>
+						<div class="row-label">
+							<div class="setting-title">{{ $t('Serve the dashboard over HTTPS on your tailnet') }}</div>
+							<div class="setting-desc">{{ $t('Gives this dashboard an https:// address with a real certificate, reachable only by your tailnet devices (never the public internet). Browser features such as clipboard sync need it.') }}</div>
+						</div>
+						<div class="row-control">
+							<b-switch :key="serveKey" :model-value="!!(serve && serve.enabled)" class="is-flex-direction-row-reverse mr-0" type="is-primary"
+								:loading="serveToggling" :disabled="!serve" :aria-label="$t('Serve the dashboard over HTTPS on your tailnet')" @update:modelValue="toggleServe"></b-switch>
+						</div>
+					</div>
+					<div v-if="serve && serve.enabled" class="setting-row">
+						<b-icon class="row-icon" icon="link-variant" pack="mdi" size="is-20"></b-icon>
+						<div class="row-label setting-desc">
+							<a :href="serve.url" target="_blank" rel="noopener noreferrer">{{ serve.url }}</a>
+						</div>
+						<div class="row-control">
+							<button class="icon-button" type="button" :title="$t('Copy address')" :aria-label="$t('Copy address')" @click="copyServeUrl">
+								<b-icon icon="content-copy" pack="mdi" size="is-16"></b-icon>
+							</button>
+						</div>
+					</div>
+					<div v-else-if="serve && !serve.certs_ready" class="setting-row">
+						<div class="row-label setting-desc">
+							{{ $t('Needs MagicDNS and HTTPS Certificates turned on for your tailnet:') }}
+							<a :href="serve.admin_url" target="_blank" rel="noopener noreferrer">{{ serve.admin_url }}</a>
+						</div>
+					</div>
+					<div v-if="serve && serve.conflict" class="setting-row">
+						<div class="row-label setting-desc">{{ serve.conflict }}</div>
+					</div>
+					<p v-if="serveError" class="error-note">{{ serveError }}</p>
+				</div>
+
 				<h3 class="setting-card-title">{{ $t('Tailnet devices') }}</h3>
 				<div class="setting-card">
 					<div v-for="p in peers" :key="p.hostName" class="setting-row">
@@ -162,6 +198,8 @@
 </template>
 
 <script>
+import { copyText } from '@/apps/terminal/termClipboard'
+
 // Builds the small set of human-readable capability chips ("Exit Node",
 // "Using as Exit Node", "Subnet Router") from a Tailscale status node
 // (Self or one Peer entry) - same shape for both, so this is shared.
@@ -194,7 +232,11 @@ export default {
 			installError: '',
 			loginUrl: '',
 			connectLoginUrl: '',
-			switchKey: 0
+			switchKey: 0,
+			serve: null,
+			serveToggling: false,
+			serveError: '',
+			serveKey: 0
 		}
 	},
 	computed: {
@@ -257,6 +299,7 @@ export default {
 						online: !!p.Online,
 						capabilities: capabilitiesOf(p)
 					}))
+					if (this.isRunning) this.loadServe()
 				}
 			}).catch(() => {
 				this.error = this.$t('Failed to reach Tailscale')
@@ -279,6 +322,31 @@ export default {
 				this.switchKey++ // put the switch back to the real state
 			}).finally(() => {
 				this.toggling = false
+			})
+		},
+		loadServe() {
+			this.$api.tailscale.getServe().then(res => {
+				if (res.data.success === 200) this.serve = res.data.data
+			}).catch(() => {
+				this.serveError = this.$t('Failed to read the HTTPS address')
+			})
+		},
+		toggleServe(value) {
+			this.serveToggling = true
+			this.serveError = ''
+			this.$api.tailscale.setServe(value ? 'on' : 'off').then(res => {
+				if (res.data.success === 200) this.serve = res.data.data
+			}).catch(e => {
+				const d = e.response && e.response.data
+				this.serveError = (d && typeof d.data === 'string' && d.data) || (d && d.message) || this.$t('Failed to change the HTTPS address')
+				this.serveKey++
+			}).finally(() => {
+				this.serveToggling = false
+			})
+		},
+		copyServeUrl() {
+			copyText(this.serve.url).then(done => {
+				this.$buefy.toast.open({ message: done ? this.$t('Address copied') : this.$t('Copy failed - select the address instead'), type: done ? 'is-info' : 'is-warning', duration: 1500 })
 			})
 		},
 		toggleAdvanced() {

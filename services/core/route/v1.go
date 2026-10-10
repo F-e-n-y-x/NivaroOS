@@ -262,6 +262,8 @@ func InitV1Router() http.Handler {
 			v1TailscaleGroup.PUT("/prefs", v1.PutTailscalePrefs)
 			v1TailscaleGroup.GET("/installed", v1.GetTailscaleInstalled)
 			v1TailscaleGroup.POST("/install", v1.PostTailscaleInstall)
+			v1TailscaleGroup.GET("/serve", v1.GetTailscaleServe)
+			v1TailscaleGroup.PUT("/serve/:state", v1.PutTailscaleServe)
 		}
 
 		v1CompanionGroup := v1Group.Group("/companion")

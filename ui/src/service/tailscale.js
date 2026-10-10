@@ -20,6 +20,12 @@ const tailscale = {
 	},
 	install() {
 		return api.post(`${PREFIX}/install`)
+	},
+	getServe() {
+		return api.get(`${PREFIX}/serve`)
+	},
+	setServe(state) {
+		return api.put(`${PREFIX}/serve/${state}`)
 	}
 }
 export default tailscale

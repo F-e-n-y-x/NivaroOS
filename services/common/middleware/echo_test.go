@@ -78,8 +78,10 @@ func TestQuietRequest(t *testing.T) {
 		"internal 404":   {req("127.0.0.1:5000"), bad, false},
 		"internal error": {req("127.0.0.1:5000"), failed, false},
 		"via gateway":    {req("127.0.0.1:5000", "X-Forwarded-For", "100.82.15.11"), ok, false},
-		"local browser":  {req("127.0.0.1:5000", "Origin", "http://localhost"), ok, false},
-		"remote ok":      {req("192.168.1.9:5000"), ok, false},
+		// tailscaled relays from loopback; its headers must keep it logged.
+		"via tailscale serve": {req("127.0.0.1:5000", "X-Forwarded-Host", "box.tail1.ts.net", "X-Forwarded-Proto", "https", "Tailscale-User-Login", "owner@example.com"), ok, false},
+		"local browser":       {req("127.0.0.1:5000", "Origin", "http://localhost"), ok, false},
+		"remote ok":           {req("192.168.1.9:5000"), ok, false},
 	} {
 		if got := quietRequest(c.r, c.v); got != c.want {
 			t.Errorf("%s: quiet=%v, want %v", name, got, c.want)
