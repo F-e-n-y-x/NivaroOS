@@ -72,7 +72,9 @@ object FeedNotifier {
         val open = Intent(context, MainActivity::class.java).setAction(ACTION_OPEN)
             .putExtra("server", server).putExtra("id", id)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        val pi = PendingIntent.getActivity(context, nid, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        // Intent equality ignores extras: the request code keeps two servers'
+        // entries with the same id from sharing (and rewriting) one intent.
+        val pi = PendingIntent.getActivity(context, "$server/$id".hashCode(), open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(context, ch) else {
             @Suppress("DEPRECATION")
             Notification.Builder(context)

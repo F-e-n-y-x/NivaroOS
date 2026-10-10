@@ -202,9 +202,10 @@ List<({DateTime day, List<FeedItem> items})> groupByDay(List<FeedItem> items) {
   return out;
 }
 
-/// Which channels notify, and the newest entry id seen per server. A small
-/// file read fresh each time, because the app and the background engines
-/// are separate isolates that each change it.
+/// Which channels notify, and the newest entry id seen per server. Two
+/// small files read fresh each time, because the app and the background
+/// engines are separate isolates: only the settings sheet writes [enabled]
+/// ([saveEnabled]), and [markSeen] only ever moves an id forward.
 class NotifyPrefs {
   NotifyPrefs({Set<FeedChannel>? enabled, Map<String, int>? seen})
       : enabled = enabled ?? FeedChannel.values.toSet(),
@@ -214,30 +215,57 @@ class NotifyPrefs {
   final Map<String, int> seen;
 
   @visibleForTesting
-  static Future<File> Function() file = () async => File('${(await getApplicationSupportDirectory()).path}/feed_notify.json');
+  static Future<Directory> Function() dir = getApplicationSupportDirectory;
 
-  static Future<NotifyPrefs> load() async {
+  static Future<File> _enabledFile() async => File('${(await dir()).path}/feed_notify.json');
+  static Future<File> _seenFile() async => File('${(await dir()).path}/feed_seen.json');
+
+  static Object? _read(File f) {
     try {
-      final j = jsonDecode(await (await file()).readAsString());
-      if (j is Map) {
-        return NotifyPrefs(
-          enabled: j['enabled'] is List ? {for (final c in FeedChannel.values) if ((j['enabled'] as List).contains(c.name)) c} : null,
-          seen: j['seen'] is Map ? {for (final e in (j['seen'] as Map).entries) if (e.value is num) '${e.key}': (e.value as num).toInt()} : null,
-        );
-      }
-    } catch (_) {}
-    return NotifyPrefs();
+      return jsonDecode(f.readAsStringSync());
+    } catch (_) {
+      return null;
+    }
   }
 
-  Future<void> save() async {
+  static Map<String, int> _readSeen(File f) {
+    final j = _read(f);
+    return j is Map ? {for (final e in j.entries) if (e.value is num) '${e.key}': (e.value as num).toInt()} : {};
+  }
+
+  /// Temp file + rename, the temp name unique per writer, so a reader never
+  /// sees half a file.
+  static void _write(File f, Object json) {
     try {
-      final f = await file();
-      final tmp = File('${f.path}.tmp');
-      await tmp.writeAsString(jsonEncode({'enabled': [for (final c in enabled) c.name], 'seen': seen}), flush: true);
-      await tmp.rename(f.path);
+      final tmp = File('${f.path}.${math.Random().nextInt(1 << 31)}.tmp');
+      tmp.writeAsStringSync(jsonEncode(json), flush: true);
+      tmp.renameSync(f.path);
     } catch (e) {
       debugPrint('[feed] could not save: ${e.runtimeType}');
     }
+  }
+
+  static Future<NotifyPrefs> load() async {
+    final j = _read(await _enabledFile());
+    final on = j is Map && j['enabled'] is List ? j['enabled'] as List : null;
+    return NotifyPrefs(
+      enabled: on == null ? null : {for (final c in FeedChannel.values) if (on.contains(c.name)) c},
+      seen: _readSeen(await _seenFile()),
+    );
+  }
+
+  Future<void> saveEnabled() async => _write(await _enabledFile(), {'enabled': [for (final c in enabled) c.name]});
+
+  /// seen[server] = max(what's on disk, [id]). Read and write are one
+  /// synchronous step, so writers in this isolate can't interleave.
+  // ponytail: another isolate can still slip in between the read and the
+  // rename (microseconds; worst case one entry notifies twice). Add a lock
+  // file shared across isolates if that ever shows up.
+  static Future<void> markSeen(String server, int id) async {
+    final f = await _seenFile();
+    final seen = _readSeen(f);
+    if ((seen[server] ?? -1) >= id) return;
+    _write(f, seen..[server] = id);
   }
 }
 
@@ -328,10 +356,7 @@ class NotificationFeed {
         }
       }
     }
-    if (seen == null || latestId > seen) {
-      prefs.seen[server] = math.max(latestId, seen ?? 0);
-      await prefs.save();
-    }
+    await NotifyPrefs.markSeen(server, latestId);
   }
 
   // --- live, while the app runs ---

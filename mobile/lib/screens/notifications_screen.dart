@@ -317,13 +317,7 @@ Future<void> showFeedSettings(BuildContext context, {PermissionState? permission
                 value: prefs.enabled.contains(c),
                 onChanged: (on) async {
                   setState(() => on ? prefs.enabled.add(c) : prefs.enabled.remove(c));
-                  // Saved over the latest file: a background check may have
-                  // moved "seen" on meanwhile.
-                  final latest = await NotifyPrefs.load();
-                  latest.enabled
-                    ..clear()
-                    ..addAll(prefs.enabled);
-                  await latest.save();
+                  await prefs.saveEnabled();
                 },
               ),
             if (permission != null && permission != PermissionState.granted)

@@ -101,12 +101,14 @@ void main() {
     late List<Map> shown;
     late List<Map<String, dynamic>> feed;
     late List<Uri> requests;
+    Future<void> Function()? duringRequest;
 
     setUp(() {
       dir = Directory.systemTemp.createTempSync('feed');
-      NotifyPrefs.file = () async => File('${dir.path}/feed_notify.json');
+      NotifyPrefs.dir = () async => dir;
       shown = [];
       requests = [];
+      duringRequest = null;
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
           const MethodChannel('com.fenyx.nivaroos/feed_notify'), (call) async {
         if (call.method == 'show') shown.add(call.arguments as Map);
@@ -119,6 +121,7 @@ void main() {
 
     Future<void> check(NotificationFeed f) => http.runWithClient(f.checkAndNotify, () => MockClient((req) async {
           requests.add(req.url);
+          await duringRequest?.call();
           final after = int.tryParse(req.url.queryParameters['after'] ?? '') ?? 0;
           final unread = req.url.queryParameters['unread'] == 'true';
           final data = [for (final e in feed) if ((e['id'] as int) > after && (!unread || e['read'] != true)) e];
@@ -146,7 +149,8 @@ void main() {
     });
 
     test('a channel turned off is not shown, but still counts as seen', () async {
-      await NotifyPrefs(enabled: {FeedChannel.backups}, seen: {_server: 1}).save();
+      await NotifyPrefs(enabled: {FeedChannel.backups}).saveEnabled();
+      await NotifyPrefs.markSeen(_server, 1);
       feed = [_entry(2)];
       await check(NotificationFeed());
       expect(shown, isEmpty);
@@ -156,11 +160,27 @@ void main() {
     });
 
     test('seen is per server', () async {
-      await NotifyPrefs(seen: {'http://other.test': 99}).save();
+      await NotifyPrefs.markSeen('http://other.test', 99);
       feed = [_entry(3)];
       await check(NotificationFeed());
       expect(shown, isEmpty, reason: 'first check on this server');
       expect((await NotifyPrefs.load()).seen, {'http://other.test': 99, _server: 3});
+    });
+    test('a channel turned off while a check waits on the server stays off', () async {
+      await NotifyPrefs.markSeen(_server, 1);
+      feed = [_entry(2)];
+      duringRequest = () => NotifyPrefs(enabled: {FeedChannel.system}).saveEnabled();
+      await check(NotificationFeed());
+      final prefs = await NotifyPrefs.load();
+      expect(prefs.enabled, {FeedChannel.system});
+      expect(prefs.seen[_server], 2);
+    });
+
+    test('seen only moves forward, also when saves land out of order', () async {
+      await Future.wait([NotifyPrefs.markSeen(_server, 11), NotifyPrefs.markSeen(_server, 10)]);
+      await NotifyPrefs.markSeen(_server, 9);
+      expect((await NotifyPrefs.load()).seen[_server], 11);
+      expect(dir.listSync().where((e) => e.path.endsWith('.tmp')), isEmpty);
     });
   });
 }
