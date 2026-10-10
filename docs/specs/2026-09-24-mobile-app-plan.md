@@ -2,6 +2,27 @@
 
 Status: plan, nothing built yet (2026-09-24). Research merged into §4-§6
 the same day.
+
+**Built so far (as of 2026-10-11, app 1.4.11+21 plus `master`).** This
+list is added on top; the plan below is left as written.
+
+| WP | Shipped | Notes / deviations |
+|---|---|---|
+| Phase 0 | 1.3.0 (3ca8bf42) | VM calls go through the gateway (`/v1/vm-sidecar/*`) |
+| WP1-16 UI foundation | 1.3.0-1.4.0 | design system v3: Rack, Tonal, Console; Soft, Terminal, Bold added 2026-10-08 |
+| WP1-1 Backup & Sync | 2026-09-30 (51130b18) | includes create/edit, which §4.5 left to the web wizard |
+| WP1-2 Download Station | 2026-10-07 (9152c219) | plus torrents (e70cef2a), not in the plan |
+| WP1-4 Notifications | 2026-10-11 (d5eefc19), `master` | inbox + phone notifications from the message-bus feed, live over the bus WebSocket and from the 15-minute heartbeat; no FCM (as decided) |
+| WP1-6 VM console / Host Desktop | 2026-10-07 (47f1023c) | native RFB client and viewport modelled on Microsoft's Windows App instead of the embedded web console |
+| WP1-8 Security | 2026-09-29 (c10c1bcb) | app lock, secure window, connection-security levels |
+| WP1-17 Share target | 2026-10-07/08 (9152c219, 15d8446b) | "Download on server" for links, "Upload to NivaroOS" for files (resumable, user-initiated data transfer job) |
+| WP1-18 Trash | 1.4.0 (38c61efa) | phone deletes go to a trash on the phone since 2026-10-08 (411fc416) |
+| WP1-19 Share links | 2026-10-07 (9152c219) | |
+| WP1-3 Storage | 2026-10-08/09 (b671d027, 88031c61) | drive health (SMART verdict, history, self-tests) and Repair drive in Server health |
+| Phase 2 phone backup | 2026-09-30 (de82fcac, b8ddd164) | server API in `services/backup` (`docs/specs/2026-09-30-phone-backup-device-api.md`) |
+
+Not built yet, among others: WP1-21 pairing by code, WP1-25 Activity,
+WP2-8 client-side encryption.
 Owner ask: mobile work was paused while the server changed a lot. Plan the
 next mobile build: (A) everything that must be fixed or added first so the
 app works with today's server, then (B) new features, with (C) Android phone

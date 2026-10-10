@@ -1,6 +1,8 @@
 # Backup & Sync app (v1)
 
-Status: spec, not yet built (2026-09-24). Packaging: optional module, see §0.
+Status: built (spec 2026-09-24; built from 2026-09-30). Packaging: optional
+module, see §0. Where the code differs: "Built: differences from this spec"
+before §19. restic (v1.1) is not built.
 Owner ask: "make an app so users can add scheduled backups, sync and other types
 of backup periodically to any type of storage in Nivaro, and condition based
 also ... better UI and UX ... not only work on this PC but all ... quality work."
@@ -1636,6 +1638,31 @@ Order of merge:
   check and an optional recovery-key slot (scrypt + AES-GCM); a new job on a
   folder that has one reuses it after the password or recovery key opens it.
   The password can't be changed (a new encrypted copy is the way).
+
+**Built: differences from this spec (as of 2026-10-11).**
+- One service, `services/backup` (`nivaroos-backup`, `127.0.0.1:28643`,
+  gateway route `/v1/backup/*`), with the rclone engine in-process - not
+  core's `service/backup/` plus a local-storage engine socket (§3, §11.1).
+- Sources (2026-10-08): any folder except `/proc`, `/sys`, `/dev`, `/run`
+  and Backup's staging/spool, so homes, `/opt`, `/srv`, `/etc` can be backed
+  up. Allowed roots (§6.2) now apply to writes only: destinations and
+  restore targets, with `/home`, `/root`, `/srv`, `/opt` added
+  (`engine/paths.go`).
+- Memory (2026-10-10): fixed `MemoryHigh=3G` / `MemoryMax=6G` in the unit
+  instead of 40 % / 60 % of RAM (§3.5, §15): on a 32 GB box the page cache
+  of one run reached 12.8 GB and pushed apps into swap. Also
+  `CPUWeight=50`, `IOWeight=50`.
+- Google Drive (2026-10-08/10): 64 MiB upload chunks and
+  `pacer_min_sleep` 10 ms; the per-provider quirks of §6.3 otherwise as
+  written.
+- Backends (2026-10-11): only the rclone backends NivaroOS offers are
+  linked (`local-storage/backend/supported`); a remote of another type is
+  skipped and logged.
+- `GET /jobs` / `GET /jobs/:id` (2026-10-11): destination online state and
+  versions come from a stale-while-revalidate cache (`jobs/swr.go`) rather
+  than a probe per call (3 s to ~2 ms).
+- The recovery key shipped with encrypted backups (above), not as the
+  restic passphrase of §18.
 
 **Separate fix (Schedules):** the container "update" task should wait for
 app-management's update to finish before it reports success.

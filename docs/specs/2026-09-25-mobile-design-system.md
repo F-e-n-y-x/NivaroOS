@@ -1,6 +1,9 @@
 # NivaroOS mobile app: design system (v2, "calm native")
 
-Status: agreed with the owner 2026-09-25. Replaces the old theme
+Status: agreed with the owner 2026-09-25; built. Since 2026-10-08 there
+are six styles (Soft, Terminal and Bold added to Rack, Tonal and Console;
+`3f86eaa3`) and fresh installs start in Rack on true black. The sections
+below still describe the first three. Replaces the old theme
 (`lib/theme.dart`, a "Dribbble dark theme with neon badges and glowing
 accents") in every screen. Companion to `2026-09-24-mobile-app-plan.md`.
 

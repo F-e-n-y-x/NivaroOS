@@ -667,6 +667,17 @@ Google search from this box's IP still answers with a reCAPTCHA page
 tests - unlike the proxy's dead end, that page is a normal captcha the user
 can solve in the real browser.
 
+Changed since (2026-10-08..11):
+- The Chrome for Testing and uBO Lite pins are now only an offline
+  fallback: `install-ds-browser.sh` installs the current Stable and the
+  latest uBO Lite (MD5 / SHA-256 checked, never downgrading), keeps each
+  Chrome in `/opt/nivaroos/chromium.d/<ver>` behind the
+  `/opt/nivaroos/chromium` symlink, and `--rollback` goes back one. The
+  weekly `nivaroos-ds-browser-update.timer` runs `--update`. On x86_64 the
+  browser always uses this Chrome for Testing.
+- The Go ad-block engine is built on first use (browser or Ad Blocker
+  panel), not at sidecar start (~37 MB less heap when unused).
+
 Not built yet:
 - WP8, the Android WebView sign-in for TeraBox (the web flow covers phones
   through the web UI too).
