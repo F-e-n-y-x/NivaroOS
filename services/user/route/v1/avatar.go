@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"image"
 	_ "image/jpeg"
@@ -60,11 +61,101 @@ func processAvatar(raw []byte) ([]byte, string) {
 	x0, y0 := b.Min.X+(b.Dx()-side)/2, b.Min.Y+(b.Dy()-side)/2
 	dst := image.NewRGBA(image.Rect(0, 0, avatarSize, avatarSize))
 	draw.CatmullRom.Scale(dst, dst.Bounds(), img, image.Rect(x0, y0, x0+side, y0+side), draw.Src, nil)
+	// A centre crop commutes with rotating/flipping, so the square is
+	// turned upright after the crop.
+	dst = orient(dst, exifOrientation(raw))
 	var out bytes.Buffer
 	if err := png.Encode(&out, dst); err != nil {
 		return nil, "could not encode the image"
 	}
 	return out.Bytes(), ""
+}
+
+// exifOrientation is the EXIF Orientation tag (1..8) of a JPEG or WebP,
+// 1 when there is none. Phones store photos sideways plus this tag; the
+// app rotates before uploading, direct API uploads don't.
+func exifOrientation(raw []byte) int {
+	var tiff []byte
+	switch {
+	case len(raw) > 4 && raw[0] == 0xFF && raw[1] == 0xD8: // JPEG segments up to the scan
+		for i := 2; i+4 <= len(raw) && raw[i] == 0xFF && raw[i+1] != 0xDA; {
+			n := int(binary.BigEndian.Uint16(raw[i+2:]))
+			if n < 2 || i+2+n > len(raw) {
+				break
+			}
+			if seg := raw[i+4 : i+2+n]; raw[i+1] == 0xE1 && bytes.HasPrefix(seg, []byte("Exif\x00\x00")) {
+				tiff = seg[6:]
+				break
+			}
+			i += 2 + n
+		}
+	case len(raw) > 12 && string(raw[:4]) == "RIFF" && string(raw[8:12]) == "WEBP":
+		for i := 12; i+8 <= len(raw); {
+			n := int(binary.LittleEndian.Uint32(raw[i+4:]))
+			if n < 0 || n > len(raw)-i-8 {
+				break
+			}
+			if string(raw[i:i+4]) == "EXIF" {
+				tiff = bytes.TrimPrefix(raw[i+8:i+8+n], []byte("Exif\x00\x00"))
+				break
+			}
+			i += 8 + n + n%2
+		}
+	}
+	if len(tiff) < 8 {
+		return 1
+	}
+	var bo binary.ByteOrder = binary.LittleEndian
+	if string(tiff[:2]) == "MM" {
+		bo = binary.BigEndian
+	} else if string(tiff[:2]) != "II" {
+		return 1
+	}
+	ifd := int(bo.Uint32(tiff[4:]))
+	if ifd < 8 || ifd+2 > len(tiff) {
+		return 1
+	}
+	for k, e := 0, ifd+2; k < int(bo.Uint16(tiff[ifd:])) && e+12 <= len(tiff); k, e = k+1, e+12 {
+		if bo.Uint16(tiff[e:]) == 0x0112 {
+			if o := int(bo.Uint16(tiff[e+8:])); o >= 1 && o <= 8 {
+				return o
+			}
+			return 1
+		}
+	}
+	return 1
+}
+
+// orient turns a square image stored with EXIF orientation o upright.
+func orient(src *image.RGBA, o int) *image.RGBA {
+	if o <= 1 || o > 8 {
+		return src
+	}
+	n := src.Bounds().Dx() - 1
+	dst := image.NewRGBA(src.Bounds())
+	for y := 0; y <= n; y++ {
+		for x := 0; x <= n; x++ {
+			sx, sy := x, y
+			switch o {
+			case 2:
+				sx = n - x
+			case 3:
+				sx, sy = n-x, n-y
+			case 4:
+				sy = n - y
+			case 5:
+				sx, sy = y, x
+			case 6:
+				sx, sy = y, n-x
+			case 7:
+				sx, sy = n-y, n-x
+			case 8:
+				sx, sy = n-y, x
+			}
+			dst.SetRGBA(x, y, src.RGBAAt(sx, sy))
+		}
+	}
+	return dst
 }
 
 func avatarPathOf(userID int) string {
