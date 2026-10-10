@@ -78,16 +78,25 @@ type dockerService struct{}
 // every second; requests within statsMaxAge share one round of reads.
 var statsCache struct {
 	sync.Mutex
-	at   time.Time
-	list []model.DockerStatsModel
-	prev map[string]any // container ID -> its previous sample, for the UI's deltas
+	at        time.Time
+	list      []model.DockerStatsModel
+	prev      map[string]any // container ID -> its previous sample, for the UI's deltas
+	running   []container.Summary
+	runningAt time.Time
 }
 
-const statsMaxAge = 900 * time.Millisecond
+const (
+	statsMaxAge = 900 * time.Millisecond
+	// dockerd answers a container list by asking containerd about every
+	// container: at 1/s that cost ~6% of a core in each (measured, 15
+	// containers), four times the stats calls themselves.
+	runningMaxAge = 10 * time.Second
+)
 
 // GetContainerStats returns one Docker stats sample per running container
 // (one-shot: no 1 s pre-sample, no stream) plus the previous sample, which
-// is what the widgets compute CPU % from.
+// is what the widgets compute CPU % from. The container list itself is
+// refreshed every runningMaxAge.
 func (ds *dockerService) GetContainerStats() []model.DockerStatsModel {
 	statsCache.Lock()
 	defer statsCache.Unlock()
@@ -103,14 +112,18 @@ func (ds *dockerService) GetContainerStats() []model.DockerStatsModel {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	list, err := cli.ContainerList(ctx, client2.ContainerListOptions{})
-	if err != nil {
-		logger.Error("Failed to get container_list", zap.Any("err", err))
-		return []model.DockerStatsModel{}
+	if time.Since(statsCache.runningAt) >= runningMaxAge {
+		list, err := cli.ContainerList(ctx, client2.ContainerListOptions{})
+		if err != nil {
+			logger.Error("Failed to get container_list", zap.Any("err", err))
+			return []model.DockerStatsModel{}
+		}
+		statsCache.running, statsCache.runningAt = list.Items, time.Now()
 	}
-	samples := make([]any, len(list.Items))
+	running := statsCache.running
+	samples := make([]any, len(running))
 	var wg sync.WaitGroup
-	for i, v := range list.Items {
+	for i, v := range running {
 		wg.Go(func() {
 			stats, err := cli.ContainerStats(ctx, v.ID, client2.ContainerStatsOptions{})
 			if err != nil {
@@ -126,8 +139,8 @@ func (ds *dockerService) GetContainerStats() []model.DockerStatsModel {
 	wg.Wait()
 
 	out := []model.DockerStatsModel{}
-	prev := make(map[string]any, len(list.Items))
-	for i, v := range list.Items {
+	prev := make(map[string]any, len(running))
+	for i, v := range running {
 		if samples[i] == nil || len(v.Names) == 0 {
 			continue
 		}

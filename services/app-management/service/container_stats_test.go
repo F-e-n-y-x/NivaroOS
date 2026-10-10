@@ -57,8 +57,8 @@ func TestGetContainerStats(t *testing.T) {
 
 	time.Sleep(statsMaxAge + 50*time.Millisecond)
 	second := ds.GetContainerStats()
-	if statsCalls.Load() != 4 || len(second) != 2 {
-		t.Fatalf("second round: stats=%d %+v", statsCalls.Load(), second)
+	if statsCalls.Load() != 4 || lists.Load() != 1 || len(second) != 2 {
+		t.Fatalf("second round (list still cached): stats=%d lists=%d %+v", statsCalls.Load(), lists.Load(), second)
 	}
 	for i := range second {
 		if fmt.Sprint(second[i].Previous) != fmt.Sprint(first[i].Data) {
