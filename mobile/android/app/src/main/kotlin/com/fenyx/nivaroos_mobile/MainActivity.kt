@@ -190,6 +190,8 @@ class MainActivity : FlutterActivity() {
         phoneBackup = PhoneBackupBridge(applicationContext, this).also {
             MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PhoneBackupBridge.CHANNEL).setMethodCallHandler(it)
         }
+        // The new-photos job isn't kept across a reboot: set it again.
+        PhoneBackupJobService.armPhotos(applicationContext, replace = false)
 
         // The server's notification feed on the phone (FeedNotifier).
         FeedNotifier.register(flutterEngine, this)

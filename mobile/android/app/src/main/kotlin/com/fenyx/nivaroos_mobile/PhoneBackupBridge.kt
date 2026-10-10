@@ -96,6 +96,11 @@ class PhoneBackupBridge(private val context: Context, private val activity: Acti
                 PhoneBackupJobService.schedule(context, l("delayMs"), call.argument<Boolean>("wifiOnly") ?: true, call.argument<Boolean>("charging") ?: false)
                 result.success(true)
             }
+            "watchPhotos" -> {
+                PhoneBackupJobService.watchPhotos(context, call.argument<Boolean>("on") ?: false, l("settleMs"), l("maxMs"),
+                    call.argument<Boolean>("wifiOnly") ?: true, call.argument<Boolean>("charging") ?: false)
+                result.success(true)
+            }
             "cancelSchedule" -> {
                 PhoneBackupJobService.cancelSchedule(context)
                 result.success(true)

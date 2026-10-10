@@ -267,6 +267,14 @@ class _PhoneBackupSetupScreenState extends State<PhoneBackupSetupScreen> {
                   subtitle: Text(MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay(hour: sched.hour, minute: sched.minute))),
                   onTap: _pickTime,
                 ),
+              if (s.categories.contains(PhoneCategory.media))
+                SwitchListTile(
+                  secondary: const Icon(Icons.add_photo_alternate_outlined),
+                  title: const Text('Also when there are new photos'),
+                  subtitle: const Text('A few minutes after you take photos or videos'),
+                  value: s.onNewPhotos,
+                  onChanged: (v) => setState(() => _s = _s.copyWith(onNewPhotos: v)),
+                ),
               SwitchListTile(
                 secondary: const Icon(Icons.wifi),
                 title: const Text('Wi-Fi only'),

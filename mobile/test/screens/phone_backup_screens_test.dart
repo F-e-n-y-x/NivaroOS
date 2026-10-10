@@ -16,6 +16,7 @@ import 'package:nivaroos_mobile/phone_backup/pb_platform.dart';
 import 'package:nivaroos_mobile/phone_backup/pb_service.dart';
 import 'package:nivaroos_mobile/phone_backup/pb_store.dart';
 import 'package:nivaroos_mobile/screens/phone_backup/phone_backup_common.dart';
+import 'package:nivaroos_mobile/screens/phone_backup/phone_backup_history_screen.dart';
 import 'package:nivaroos_mobile/screens/phone_backup/phone_backup_location.dart';
 import 'package:nivaroos_mobile/screens/phone_backup/phone_backup_screen.dart';
 import 'package:nivaroos_mobile/screens/phone_backup/phone_backup_setup_screen.dart';
@@ -247,5 +248,51 @@ void main() {
       'GET /v1/backup/devices/$phoneId/config': const FakeResponse({'success': 401, 'message': 'unauthorized', 'data': {'error_code': 'unauthorized'}}, status: 401),
     });
     expect(DeviceCredential.looksLikeToken('nvd_q3Zp9m1W0yXcVb7aL2kR5tNe8fHs4dJu6gOi1PwQxYc'), isTrue);
+  });
+
+  testWidgets('on new photos: offered with photos on, and saved', (tester) async {
+    final service = phoneService(state: phoneStateOk, settings: phoneSettings.copyWith(onNewPhotos: false));
+    await _run(tester, PhoneBackupSetupScreen(service: service), () async {
+      final sw = find.widgetWithText(SwitchListTile, 'Also when there are new photos');
+      await tester.scrollUntilVisible(sw, 300, scrollable: find.byType(Scrollable).first);
+      expect(tester.widget<SwitchListTile>(sw).value, isFalse);
+      await tester.tap(sw);
+      await tester.pump();
+      expect(tester.widget<SwitchListTile>(sw).value, isTrue);
+      await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: find.byType(Scrollable).first);
+      await tester.tap(find.text('Save'));
+      await _settle(tester);
+    });
+    final saved = (await service.store).loadSettings()!;
+    expect(saved.onNewPhotos, isTrue);
+    expect(saved.watchesNewPhotos, isTrue);
+  });
+
+  testWidgets('another phone: pick it from the owner list, then its backups (not this phone’s)', (tester) async {
+    final sent = await _run(tester, PhoneBackupHistoryScreen(service: phoneService(state: phoneStateOk)), () async {
+      await tester.scrollUntilVisible(find.text('Another phone’s backups'), 300, scrollable: find.byType(Scrollable).first);
+      await tester.tap(find.text('Another phone’s backups'));
+      await _settle(tester);
+      expect(find.text('Galaxy S21'), findsOneWidget);
+      expect(find.text('Old Moto'), findsOneWidget);
+      expect(find.text('Pixel 8'), findsNothing, reason: 'this phone is not in the list');
+      expect(find.textContaining('Not linked any more'), findsOneWidget);
+      await tester.tap(find.text('Galaxy S21'));
+      await _settle(tester);
+      expect(find.text('Galaxy S21'), findsOneWidget); // the title
+      expect(find.text('Another phone’s backups'), findsNothing, reason: 'no list of other phones inside another phone');
+      expect(find.textContaining('311 new'), findsOneWidget);
+    }, overrides: otherPhoneServer);
+    expect(sent.map((s) => s.$1), containsAllInOrder(['GET /v1/backup/devices', 'GET /v1/backup/devices/$otherPhoneId/snapshots']));
+    expect(sent.where((s) => s.$1.contains(otherPhoneId) && !s.$1.startsWith('GET')), isEmpty);
+  });
+
+  testWidgets('not set up: a new phone can restore another phone right away', (tester) async {
+    await _run(tester, PhoneBackupScreen(service: phoneService(credential: null, settings: null)), () async {
+      await tester.tap(find.text('Restore another phone'));
+      await _settle(tester);
+      expect(find.text('Another phone’s backups'), findsOneWidget);
+      expect(find.text('Galaxy S21'), findsOneWidget);
+    }, overrides: otherPhoneServer);
   });
 }

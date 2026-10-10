@@ -101,6 +101,8 @@ class EmptyState extends StatelessWidget {
     required this.message,
     this.actionLabel,
     this.onAction,
+    this.secondaryLabel,
+    this.onSecondary,
     this.sliver = false,
     this.bottomInset = 0,
   });
@@ -110,6 +112,10 @@ class EmptyState extends StatelessWidget {
   final String message;
   final String? actionLabel;
   final VoidCallback? onAction;
+
+  /// A second, quieter way out (a text button next to the action).
+  final String? secondaryLabel;
+  final VoidCallback? onSecondary;
 
   /// True to place it directly in a sliver list (`AppScaffold.slivers`).
   final bool sliver;
@@ -128,6 +134,7 @@ class EmptyState extends StatelessWidget {
       message: message,
       actions: [
         if (actionLabel != null && onAction != null) FilledButton.tonal(style: tonalButtonStyle(context), onPressed: onAction, child: Text(actionLabel!)),
+        if (secondaryLabel != null && onSecondary != null) TextButton(onPressed: onSecondary, child: Text(secondaryLabel!)),
       ],
       sliver: sliver,
       bottomInset: bottomInset,

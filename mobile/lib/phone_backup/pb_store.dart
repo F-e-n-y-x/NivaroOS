@@ -41,6 +41,7 @@ class PhoneBackupSettings {
     this.conditions = const RunConditions(),
     this.schedule = const BackupSchedule(),
     this.paused = false,
+    this.onNewPhotos = false,
   });
 
   final Set<PhoneCategory> categories;
@@ -49,19 +50,27 @@ class PhoneBackupSettings {
   final BackupSchedule schedule;
   final bool paused;
 
+  /// Also back up a few minutes after new photos or videos appear
+  /// ([PhotoTrigger]), not only on the schedule.
+  final bool onNewPhotos;
+
+  /// Whether the new-photos trigger should be armed now.
+  bool get watchesNewPhotos => onNewPhotos && !paused && categories.contains(PhoneCategory.media);
+
   /// What a run backs up: folders only when some are picked.
   List<PhoneCategory> get runCategories => [
         for (final c in PhoneCategory.values)
           if (categories.contains(c) && (c != PhoneCategory.files || folders.isNotEmpty)) c,
       ];
 
-  PhoneBackupSettings copyWith({Set<PhoneCategory>? categories, List<SafFolder>? folders, RunConditions? conditions, BackupSchedule? schedule, bool? paused}) =>
+  PhoneBackupSettings copyWith({Set<PhoneCategory>? categories, List<SafFolder>? folders, RunConditions? conditions, BackupSchedule? schedule, bool? paused, bool? onNewPhotos}) =>
       PhoneBackupSettings(
         categories: categories ?? this.categories,
         folders: folders ?? this.folders,
         conditions: conditions ?? this.conditions,
         schedule: schedule ?? this.schedule,
         paused: paused ?? this.paused,
+        onNewPhotos: onNewPhotos ?? this.onNewPhotos,
       );
 
   Map<String, Object?> toJson() => {
@@ -71,6 +80,7 @@ class PhoneBackupSettings {
         'charging_only': conditions.chargingOnly,
         'schedule': schedule.wire,
         'paused': paused,
+        'on_new_photos': onNewPhotos,
       };
 
   factory PhoneBackupSettings.fromJson(Object? j) {
@@ -84,6 +94,7 @@ class PhoneBackupSettings {
       conditions: RunConditions(wifiOnly: j['wifi_only'] != false, chargingOnly: j['charging_only'] == true),
       schedule: BackupSchedule.parse(j['schedule']?.toString() ?? 'daily 02:00'),
       paused: j['paused'] == true,
+      onNewPhotos: j['on_new_photos'] == true,
     );
   }
 

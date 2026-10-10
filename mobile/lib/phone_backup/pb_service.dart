@@ -104,6 +104,11 @@ class PhoneBackupService {
     return c == null ? null : DeviceClient(c, client: httpClient, onRotated: _credentials.save);
   }
 
+  /// The same restore screens over another phone's backup on this server,
+  /// read with the owner's session (GET only, see [DeviceClient.owner]);
+  /// what is restored lands on this phone.
+  PhoneBackupService readingPhone(String deviceId) => _OtherPhoneService(this, deviceId);
+
   /// Links this phone to the signed-in server: the owner's session makes
   /// a device and its token, kept in secure storage.
   Future<DeviceCredential> enroll(String name) async {
@@ -138,6 +143,7 @@ class PhoneBackupService {
         final d = next.difference(now);
         await const ChannelPhoneSources().schedule(delay: d.isNegative ? Duration.zero : d, wifiOnly: settings.conditions.wifiOnly, charging: settings.conditions.chargingOnly);
       }
+      await ChannelPhoneSources.watchPhotos(PhotoTrigger.args(on: settings.watchesNewPhotos, conditions: settings.conditions));
     } on MissingPluginException {
       // Not on Android.
     }
@@ -182,11 +188,22 @@ class PhoneBackupService {
     if (platform) {
       try {
         await const ChannelPhoneSources().cancelSchedule();
+        await ChannelPhoneSources.watchPhotos(PhotoTrigger.args(on: false, conditions: const RunConditions()));
       } on MissingPluginException {
         // Not on Android.
       }
     }
   }
+}
+
+class _OtherPhoneService extends PhoneBackupService {
+  _OtherPhoneService(PhoneBackupService base, this.deviceId)
+      : super(credentials: base._credentials, store: base._store, owner: base.owner, platform: base.platform, httpClient: base.httpClient);
+
+  final String deviceId;
+
+  @override
+  Future<DeviceClient?> deviceClient() async => DeviceClient.owner(server: ApiClient.instance.baseUrl, deviceId: deviceId, client: httpClient);
 }
 
 /// The backup job's Dart side (background_sync_isolate.dart
@@ -202,7 +219,7 @@ Future<void> runPhoneBackupJob() async {
     final store = await PhoneBackupStore.open();
     final settings = store.loadSettings();
     final cred = await creds.load();
-    if (settings == null || cred == null || (settings.paused && start.reason == 'schedule')) return;
+    if (settings == null || cred == null || (settings.paused && (start.reason == 'schedule' || start.reason == 'new_media'))) return;
     final info = await ChannelPhoneSources.deviceInfo();
     var version = '';
     try {
@@ -247,6 +264,9 @@ String outcomeTitle(String outcome) => switch (outcome) {
 /// The schedule's words with its conditions: "Every day at 2:00 · Wi-Fi only".
 String scheduleSummary(PhoneBackupSettings s) => [
       s.schedule.label,
-      if (s.schedule.kind != ScheduleKind.manual && s.conditions.wifiOnly) 'Wi-Fi only',
-      if (s.schedule.kind != ScheduleKind.manual && s.conditions.chargingOnly) 'while charging',
+      if (s.watchesNewPhotos) 'also on new photos',
+      if (s.schedule.kind != ScheduleKind.manual || s.watchesNewPhotos) ...[
+        if (s.conditions.wifiOnly) 'Wi-Fi only',
+        if (s.conditions.chargingOnly) 'while charging',
+      ],
     ].join(' · ');

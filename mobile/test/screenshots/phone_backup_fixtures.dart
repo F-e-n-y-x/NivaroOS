@@ -114,6 +114,35 @@ final Map<String, Object> phoneServer = {
   }),
 };
 
+/// Another phone backed up to the same server (restore it onto this one).
+const otherPhoneId = 'dev_9b7e2c41d0a3f586';
+
+final Map<String, Object> otherPhoneServer = {
+  'GET /v1/backup/devices': _env([
+    phoneDevice(),
+    {
+      'id': otherPhoneId,
+      'name': 'Galaxy S21',
+      'platform': 'android',
+      'folder': 'Galaxy S21',
+      'last_backup_at': '2026-08-30T19:12:00Z',
+      'last_status': 'success',
+      'size_bytes': 61203394560,
+      'revoked_at': '2026-09-02T10:00:00Z',
+    },
+    {'id': 'dev_0c55aa17e9b24d13', 'name': 'Old Moto', 'platform': 'android', 'folder': 'Old Moto'},
+  ]),
+  'GET /v1/backup/devices/$otherPhoneId/snapshots': _env([
+    {
+      'id': 'snap_s21_9',
+      'taken_at': '2026-08-30T19:12:00Z',
+      'categories': ['contacts', 'media', 'sms'],
+      'status': 'success',
+      'counts': {'uploaded': 311, 'bytes': 1840000000},
+    },
+  ]),
+};
+
 /// The drive holding the backups is gone.
 final Map<String, Object> phoneDriveMissing = {
   'GET /v1/backup/devices/$phoneId/config': phoneConfig(missing: true),
@@ -125,6 +154,7 @@ const phoneCredential = DeviceCredential(server: fakeServer, deviceId: phoneId, 
 const phoneSettings = PhoneBackupSettings(
   categories: {PhoneCategory.media, PhoneCategory.contacts, PhoneCategory.calendar, PhoneCategory.sms},
   schedule: BackupSchedule(hour: 3),
+  onNewPhotos: true,
 );
 
 /// A phone backup service over a fresh folder; [state] and [settings]

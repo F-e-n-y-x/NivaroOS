@@ -126,3 +126,26 @@ class RunConditions {
   /// Whether a backup may start now.
   bool allows({required bool onUnmetered, required bool charging}) => (!wifiOnly || onUnmetered) && (!chargingOnly || charging);
 }
+
+/// "On new photos": Android starts the backup job once the phone's photos
+/// or videos (MediaStore) changed and then stayed quiet for [settle] -
+/// every new change starts the wait again, so a burst of shots is one
+/// backup - and at most [maxWait] after the first change, so a long shoot
+/// is backed up too. The run keeps the schedule's conditions (Wi-Fi only,
+/// charging) and waits while the battery is low. Armed again after every
+/// run (android PhoneBackupJobService.armPhotos).
+class PhotoTrigger {
+  const PhotoTrigger._();
+
+  static const settle = Duration(minutes: 3);
+  static const maxWait = Duration(minutes: 30);
+
+  /// The native side's arguments: [on] false disarms it.
+  static Map<String, Object> args({required bool on, required RunConditions conditions}) => {
+        'on': on,
+        'settleMs': settle.inMilliseconds,
+        'maxMs': maxWait.inMilliseconds,
+        'wifiOnly': conditions.wifiOnly,
+        'charging': conditions.chargingOnly,
+      };
+}

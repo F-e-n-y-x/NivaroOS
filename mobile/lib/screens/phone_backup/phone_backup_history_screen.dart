@@ -14,6 +14,7 @@ import '../../utils/format.dart';
 import '../backup/backup_widgets.dart';
 import 'phone_backup_common.dart';
 import 'phone_backup_messages_restore.dart';
+import 'phone_backup_other_phones.dart';
 
 String _phoneErrorText(Object e) {
   if (e is PhoneBackupError) {
@@ -26,10 +27,14 @@ String _phoneErrorText(Object e) {
 }
 
 /// Every backup of this phone (snapshots, newest first) and the backup as
-/// it is now; pick one to browse it and get things back.
+/// it is now; pick one to browse it and get things back. With [title],
+/// another phone's ([PhoneBackupService.readingPhone]).
 class PhoneBackupHistoryScreen extends StatefulWidget {
-  const PhoneBackupHistoryScreen({super.key, this.service});
+  const PhoneBackupHistoryScreen({super.key, this.service, this.title});
   final PhoneBackupService? service;
+
+  /// The other phone's name; null for this phone.
+  final String? title;
 
   @override
   State<PhoneBackupHistoryScreen> createState() => _PhoneBackupHistoryScreenState();
@@ -101,11 +106,21 @@ class _PhoneBackupHistoryScreenState extends State<PhoneBackupHistoryScreen> {
                   onTap: () => _open(s.id, s.takenAt == null ? s.id : formatDateTime(s.takenAt!), s.categories),
                 ),
             ]),
+          if (widget.title == null)
+            TileGroup(children: [
+              ListTile(
+                leading: const Icon(Icons.devices_other_outlined),
+                title: const Text('Another phone’s backups'),
+                subtitle: const Text('Get things from another phone backed up to this server'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PhoneOtherBackupsScreen(service: widget.service))),
+              ),
+            ]),
           const SizedBox(height: Space.xl),
         ]),
       );
     }
-    return AppScaffold(title: 'Backups and restore', body: body);
+    return AppScaffold(title: widget.title ?? 'Backups and restore', body: body);
   }
 }
 

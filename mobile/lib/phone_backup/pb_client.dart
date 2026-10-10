@@ -1,6 +1,8 @@
 // The phone's own backup client: every /v1/backup/devices/<id>/* call made
 // with the device token (docs/specs/2026-09-30-phone-backup-device-api.md
-// §1), never the owner's session. Token rotation (§1): any answer may
+// §1), never the owner's session - except [DeviceClient.owner], which
+// reads another phone's backup with the owner's session (GET only, the
+// "device or owner" routes of §8). Token rotation (§1): any answer may
 // carry X-NivaroOS-Device-Token; it is stored at once through
 // [DeviceClient.onRotated]. A 401 means revoked or replaced: callers stop
 // and ask to link the phone again, they never retry in a loop.
@@ -11,6 +13,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import '../services/api_client.dart';
 import 'pb_models.dart';
 
 /// The phone's credential for one server: shown once at enrolment, kept in
@@ -130,11 +133,27 @@ String? _h(http.BaseResponse res, String name) {
 }
 
 class DeviceClient {
-  // ignore: prefer_initializing_formals
-  DeviceClient(this._cred, {http.Client? client, this.onRotated, this.timeout = const Duration(seconds: 60)}) : _client = client;
+  DeviceClient(this._cred, {http.Client? client, this.onRotated, this.timeout = const Duration(seconds: 60)})
+      // ignore: prefer_initializing_formals
+      : _client = client,
+        _owner = null;
+
+  /// Another phone's backup, read with the owner's signed-in session
+  /// (refreshed by [ApiClient]). Only GET and HEAD leave this client, so
+  /// this phone can never change that phone's backup.
+  DeviceClient.owner({required String server, required String deviceId, ApiClient? api, http.Client? client, this.timeout = const Duration(seconds: 60)})
+      : _cred = DeviceCredential(server: server, deviceId: deviceId, token: ''),
+        // ignore: prefer_initializing_formals
+        _client = client,
+        _owner = api ?? ApiClient.instance,
+        onRotated = null;
 
   DeviceCredential _cred;
   final http.Client? _client;
+  final ApiClient? _owner;
+
+  /// True when this reads another phone's backup ([DeviceClient.owner]).
+  bool get readsOtherPhone => _owner != null;
 
   /// Called with the new credential when the server rotates the token.
   final FutureOr<void> Function(DeviceCredential next)? onRotated;
@@ -181,11 +200,33 @@ class DeviceClient {
     await onRotated?.call(_cred);
   }
 
-  Future<http.Response> _send(http.BaseRequest req) async {
-    req.headers.addAll(_auth);
+  /// Sends [req] with the device token, or (owner mode) through the
+  /// owner's session, GET and HEAD only.
+  Future<http.StreamedResponse> _open(http.Request req) async {
+    final api = _owner;
+    if (api == null) return _c.send(req..headers.addAll(_auth));
+    if (req.method != 'GET' && req.method != 'HEAD') {
+      throw PhoneBackupError('read_only', message: 'Another phone’s backup can only be read from this phone');
+    }
+    try {
+      final res = await api.send(() => http.Request(req.method, req.url)..headers.addAll(req.headers), client: _c);
+      if (res.statusCode == 401) {
+        await res.stream.drain<void>();
+        throw _signedOut();
+      }
+      return res;
+    } on ApiException catch (e) {
+      if (e.kind == ApiErrorKind.auth || e.statusCode == 401) throw _signedOut();
+      throw PhoneBackupError('network', message: e.message);
+    }
+  }
+
+  static PhoneBackupError _signedOut() => PhoneBackupError('signed_out', message: 'Sign in to the server again to read another phone’s backup.');
+
+  Future<http.Response> _send(http.Request req) async {
     http.StreamedResponse streamed;
     try {
-      streamed = await _c.send(req).timeout(timeout);
+      streamed = await _open(req).timeout(timeout);
     } on TimeoutException {
       throw PhoneBackupError('timeout', message: 'The server did not answer in time');
     } on SocketException catch (e) {
@@ -356,10 +397,9 @@ class DeviceClient {
     var have = dest.existsSync() ? dest.lengthSync() : 0;
     final req = http.Request('GET', uri);
     if (have > 0) req.headers['Range'] = 'bytes=$have-';
-    req.headers.addAll(_auth);
     http.StreamedResponse res;
     try {
-      res = await _c.send(req).timeout(timeout);
+      res = await _open(req).timeout(timeout);
     } on SocketException catch (e) {
       throw PhoneBackupError('network', message: e.message);
     } on http.ClientException catch (e) {

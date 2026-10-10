@@ -16,6 +16,7 @@ import '../dashboard_screen.dart' show StatusDisc;
 import 'phone_backup_common.dart';
 import 'phone_backup_history_screen.dart';
 import 'phone_backup_location.dart';
+import 'phone_backup_other_phones.dart';
 import 'phone_backup_setup_screen.dart';
 
 /// "Back up this phone", the status page (plan WP2-4): how the last backup
@@ -160,6 +161,8 @@ class _PhoneBackupScreenState extends State<PhoneBackupScreen> {
           message: 'Photos and videos, chosen folders, contacts, calendars, messages and more go to your NivaroOS server, on a schedule, in the background. Only what’s new or changed is sent.',
           actionLabel: 'Set up',
           onAction: _setup,
+          secondaryLabel: 'Restore another phone',
+          onSecondary: () => _open(PhoneOtherBackupsScreen(service: widget.service)),
           sliver: true,
         ),
       ];

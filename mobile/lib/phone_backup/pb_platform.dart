@@ -67,7 +67,7 @@ class InstalledApp {
 class JobStart {
   const JobStart({this.reason = 'schedule', this.budget, this.userInitiated = false});
 
-  /// schedule | manual | continue
+  /// schedule | manual | continue | new_media (the new-photos trigger)
   final String reason;
 
   /// How long this slice may run (null: no limit, a user-initiated job).
@@ -192,6 +192,9 @@ class ChannelPhoneSources implements PhoneSources {
   /// Starts a backup now: a user-initiated job on Android 14+, else an
   /// expedited one. [anyNetwork] lets it run on mobile data.
   static Future<bool> runNow({required bool anyNetwork}) async => await _call<bool>('runNow', {'anyNetwork': anyNetwork}) ?? false;
+
+  /// Arms (or disarms) the "on new photos" trigger (PhotoTrigger.args).
+  static Future<void> watchPhotos(Map<String, Object> args) => _call('watchPhotos', args);
 
   /// Asks for Android permissions (the screen has explained why first).
   static Future<Map<String, bool>> request(List<String> names) async {

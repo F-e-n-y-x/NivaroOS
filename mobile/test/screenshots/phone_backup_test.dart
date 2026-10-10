@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nivaroos_mobile/screens/phone_backup/phone_backup_history_screen.dart';
 import 'package:nivaroos_mobile/screens/phone_backup/phone_backup_location.dart';
 import 'package:nivaroos_mobile/screens/phone_backup/phone_backup_messages_restore.dart';
+import 'package:nivaroos_mobile/screens/phone_backup/phone_backup_other_phones.dart';
 import 'package:nivaroos_mobile/screens/phone_backup/phone_backup_screen.dart';
 import 'package:nivaroos_mobile/screens/phone_backup/phone_backup_setup_screen.dart';
 import 'package:nivaroos_mobile/ui/ui.dart';
@@ -55,6 +56,9 @@ final Map<String, _Shot> _shots = {
   'phone_history': _Shot(() => PhoneBackupHistoryScreen(service: phoneService(state: phoneStateOk))),
   'phone_snapshot': _Shot(() => PhoneSnapshotScreen(service: phoneService(state: phoneStateOk), snapshot: 'snap_3', title: 'Thu, Sep 25 3:04 AM', categories: const ['calendar', 'contacts', 'media', 'sms'])),
   'phone_browse': _Shot(() => PhoneBrowseScreen(service: phoneService(state: phoneStateOk), snapshot: 'snap_3', category: 'media', path: '', title: 'Photos & videos')),
+  'phone_other_phones': _Shot(() => PhoneOtherBackupsScreen(service: phoneService(state: phoneStateOk)), overrides: otherPhoneServer),
+  'phone_other_history': _Shot(() => PhoneBackupHistoryScreen(service: phoneService(state: phoneStateOk).readingPhone(otherPhoneId), title: 'Galaxy S21'),
+      overrides: otherPhoneServer),
   'phone_sms_restore': _Shot(() => PhoneMessagesRestoreScreen(service: phoneService(state: phoneStateOk), snapshot: 'snap_3', category: 'sms')),
 };
 

@@ -15,6 +15,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PersistableBundle
+import android.provider.MediaStore
 import android.util.Log
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -34,6 +35,11 @@ import io.flutter.plugin.common.MethodChannel
  *  - "Back up now" is a user-initiated data transfer job on Android 14+
  *    (no time limit, its own notification), an expedited job on 12-13,
  *    and an ordinary one before.
+ *  - "On new photos" is a content-URI job ([PHOTOS_JOB_ID]) on MediaStore
+ *    images and videos: JobScheduler waits until the changes settle, then
+ *    runs it with the same conditions (plus battery not low). Such jobs
+ *    can't be persisted and fire once, so [armPhotos] sets it again after
+ *    every run and when the app opens.
  * One notification (id [NOTIFICATION_ID]) shows the progress throughout.
  */
 class PhoneBackupJobService : JobService() {
@@ -42,6 +48,7 @@ class PhoneBackupJobService : JobService() {
         const val NEXT_JOB_ID = 42850
         const val RUN_JOB_ID = 42851
         const val NOTIFICATION_ID = 42852
+        const val PHOTOS_JOB_ID = 42853
         const val CHANNEL_ID = "phone_backup"
         private const val PREFS = "nivaroos_phone_backup"
         private const val SLICE_MS = 8 * 60 * 1000L
@@ -49,6 +56,10 @@ class PhoneBackupJobService : JobService() {
         @Volatile
         var running = false
             private set
+
+        // New photos while another run was going: back up again after it.
+        @Volatile
+        private var photosPending = false
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -127,6 +138,49 @@ class PhoneBackupJobService : JobService() {
             context.getSystemService(JobScheduler::class.java)?.cancel(NEXT_JOB_ID)
         }
 
+        /** Turns "on new photos" on or off (lib/phone_backup PhotoTrigger.args). */
+        fun watchPhotos(context: Context, on: Boolean, settleMs: Long, maxMs: Long, wifiOnly: Boolean, charging: Boolean) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putBoolean("photos", on).putLong("photos_settle_ms", settleMs).putLong("photos_max_ms", maxMs)
+                .putBoolean("wifi_only", wifiOnly).putBoolean("charging", charging).apply()
+            if (on) armPhotos(context) else context.getSystemService(JobScheduler::class.java)?.cancel(PHOTOS_JOB_ID)
+        }
+
+        /**
+         * Sets the new-photos job again when it is on. Never while a run is
+         * going: scheduling a running job's id would stop it ([done] arms it).
+         * [now] (a change seen during a run) runs it soon instead of on the
+         * next change. [replace] false keeps one already waiting (the app
+         * opening).
+         */
+        fun armPhotos(context: Context, now: Boolean = false, replace: Boolean = true) {
+            if (running || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            if (!prefs.getBoolean("photos", false)) return
+            val js = context.getSystemService(JobScheduler::class.java) ?: return
+            if (!replace && js.getPendingJob(PHOTOS_JOB_ID) != null) return
+            val settle = prefs.getLong("photos_settle_ms", 3 * 60_000L)
+            val b = builder(context, PHOTOS_JOB_ID)
+                .setRequiredNetworkType(if (prefs.getBoolean("wifi_only", true)) JobInfo.NETWORK_TYPE_UNMETERED else JobInfo.NETWORK_TYPE_ANY)
+                .setRequiresCharging(prefs.getBoolean("charging", false))
+                .setExtras(extras("new_media"))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) b.setRequiresBatteryNotLow(true)
+            if (now) {
+                b.setMinimumLatency(settle)
+            } else {
+                val flags = JobInfo.TriggerContentUri.FLAG_NOTIFY_FOR_DESCENDANTS
+                b.addTriggerContentUri(JobInfo.TriggerContentUri(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, flags))
+                    .addTriggerContentUri(JobInfo.TriggerContentUri(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, flags))
+                    .setTriggerContentUpdateDelay(settle)
+                    .setTriggerContentMaxDelay(prefs.getLong("photos_max_ms", 30 * 60_000L))
+            }
+            try {
+                js.schedule(b.build())
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not watch for new photos: ${e.message}")
+            }
+        }
+
         /**
          * Back up now, from the app (it is visible, as a user-initiated job
          * requires). [anyNetwork] false keeps it to unmetered networks.
@@ -190,10 +244,14 @@ class PhoneBackupJobService : JobService() {
         cleanUp()
         scheduleContinuation(this, userInitiated)
         if (p != null) jobFinished(p, false)
+        afterRun()
     }
 
     override fun onStartJob(p: JobParameters): Boolean {
-        if (running) return false
+        if (running) {
+            if (p.jobId == PHOTOS_JOB_ID) photosPending = true
+            return false
+        }
         running = true
         params = p
         val reason = p.extras.getString("reason") ?: "schedule"
@@ -237,6 +295,15 @@ class PhoneBackupJobService : JobService() {
         cleanUp()
         if (more) scheduleContinuation(this, ui)
         if (p != null) jobFinished(p, false)
+        afterRun()
+    }
+
+    // The new-photos job fires once: set it again (after jobFinished, so
+    // this run's own id is free).
+    private fun afterRun() {
+        val pending = photosPending
+        photosPending = false
+        armPhotos(this, now = pending)
     }
 
     override fun onStopJob(p: JobParameters): Boolean {
