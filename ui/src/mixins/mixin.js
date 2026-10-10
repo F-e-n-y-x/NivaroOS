@@ -8,6 +8,7 @@ import union from 'lodash/union'
 import copy from 'clipboard-copy'
 import dayjs from 'dayjs'
 import { renderSize } from './file_utils'
+import { setLocale } from '@/plugins/i18n'
 
 const typeMap = {
 	"image-x-generic": ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp', 'svg', 'tiff'],
@@ -151,7 +152,7 @@ export const mixin = {
 		setLang(lang) {
 			this.$store.commit('SET_LANGUAGE', lang);
 			localStorage.setItem('lang', lang)
-			this.$i18n.locale = lang;
+			setLocale(lang)
 		},
 
 

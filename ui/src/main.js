@@ -4,7 +4,7 @@ import { watchForUpdates } from '@/utils/updateWatcher'
 import App from '@/App.vue'
 import router from '@/router'
 import store from '@/store'
-import i18n from '@/plugins/i18n'
+import i18n, { setLocale } from '@/plugins/i18n'
 import api from '@/service/api.js'
 import openAPI from '@/service/index.js'
 import { instance } from '@/service/service.js'
@@ -110,6 +110,8 @@ Object.assign(app.config.globalProperties, {
 	// URL of an image under src/assets (see utils/assetUrl.js).
 	$assetUrl: assetUrl,
 })
+// The saved locale's chunk first, so the first paint is already translated.
+await setLocale(localStorage.getItem('lang') || 'en_us')
 const vm = app.mount('#nivaroos')
 
 // After an update the open tab still runs the old build (see

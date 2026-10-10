@@ -20,7 +20,7 @@
 
 <script>
 import CasaWallpaper from '@/shell/wallpaper/CasaWallpaper.vue'
-import WindowManager from '@/shell/desktop/WindowManager.vue'
+import { defineAsyncComponent } from 'vue'
 import {mixin}       from './mixins/mixin';
 import { initTheme, applyTheme, THEME_MODES } from './utils/theme';
 
@@ -76,7 +76,8 @@ const customIconConfig = {
 export default {
 	components: {
 		CasaWallpaper,
-		WindowManager
+		// Home only: the desktop shell loads with it, not on the login screen.
+		WindowManager: defineAsyncComponent(() => import('@/shell/desktop/WindowManager.vue'))
 	},
 	mixins: [mixin],
 	data() {

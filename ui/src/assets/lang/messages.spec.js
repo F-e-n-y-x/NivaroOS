@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { createI18n } from 'vue-i18n'
-import messages from './index'
+const messages = Object.fromEntries(Object.entries(import.meta.glob('./*.json', { eager: true, import: 'default' })).map(([p, m]) => [p.slice(2, -5).toLowerCase(), m]))
 
 // vue-i18n 9+ compiles every message: a bare "@", "|" or a broken {placeholder}
 // throws (or picks a plural form) where vue-i18n 8 printed it as is.

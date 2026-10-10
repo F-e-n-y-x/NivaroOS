@@ -12,7 +12,7 @@
 				</div>
 				<div class="row-control">
 					<b-select v-model="barData.lang" class="set-select" size="is-small" @update:modelValue="saveBarData">
-						<option v-for="(lang, key) in languages" :key="key" :value="key">{{ lang.lang_name }}</option>
+						<option v-for="(name, key) in languages" :key="key" :value="key">{{ name }}</option>
 					</b-select>
 				</div>
 			</div>
@@ -196,7 +196,8 @@ import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
 import { mixin } from '@/mixins/mixin'
 import systemPower from '@/mixins/systemPower'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
-import messages from '@/assets/lang'
+// Each locale's own name for the picker (key: en_us, de_de...).
+const LANG_NAMES = Object.fromEntries(Object.entries(import.meta.glob('@/assets/lang/*.json', { eager: true, import: 'lang_name' })).map(([p, name]) => [p.split('/').pop().replace('.json', '').toLowerCase(), name]))
 import { formatTime, formatDate, formatStrftime, STRFTIME_TOKEN_LIST, STRFTIME_SHORTCUTS } from '@/utils/dateTimeFormat'
 
 // Search index: labels are the titles this section renders (the search
@@ -243,7 +244,7 @@ export default {
 			editingPort: false,
 			savingPort: false,
 			portError: '',
-			languages: messages,
+			languages: LANG_NAMES,
 			timeFormatOptions: TIME_FORMAT_OPTIONS,
 			dateFormatOptions: DATE_FORMAT_OPTIONS,
 			customFormatInput: this.$store.state.customDateTimeFormat,
