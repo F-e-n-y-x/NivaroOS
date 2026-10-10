@@ -25,6 +25,7 @@ Your client ID and secret are stored only on your server, in the same protected 
    3. Still on **Audience**, click **Publish app** so it shows **In production**. **This matters:** while an app is in *Testing*, Google ends its sign-ins after **7 days**. A personal app doesn't need Google's review. You'll only see an "unverified app" warning when you sign in.
 5. Go to **Clients → Create client**:
    - **Application type:** **Desktop app**. Don't pick "Web application": rclone's sign-in returns to `http://127.0.0.1:53682/`, which only Desktop apps accept without extra setup.
+   - There is no URL field for a Desktop app. That's expected: Google accepts the `127.0.0.1` address rclone uses on its own.
    - Name: anything. Click **Create**.
 6. Copy the **Client ID** (ends in `.apps.googleusercontent.com`) and the **Client secret** (starts with `GOCSPX-`).
 
