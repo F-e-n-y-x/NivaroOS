@@ -332,37 +332,3 @@ func TestSessionStateIsPublished(t *testing.T) {
 		t.Fatal("revoking a missing account succeeded")
 	}
 }
-
-// A paired phone's session is a normal session: accepted by every
-// service, and ended by "sign out everywhere" like any other.
-func TestAPairedPhoneGetsANormalSession(t *testing.T) {
-	w := newWorld(t)
-	w.addUser(t, "alice", "pw")
-	web := w.login(t, "alice", "pw")
-	rec := w.call(t, w.users, http.MethodPost, "/v1/users/current/pair", web.access, nil)
-	var res struct {
-		Data struct {
-			Code string `json:"code"`
-		} `json:"data"`
-	}
-	json.Unmarshal(rec.Body.Bytes(), &res)
-	if rec.Code != http.StatusOK || res.Data.Code == "" {
-		t.Fatalf("issue: %d %s", rec.Code, rec.Body)
-	}
-	if rec := w.call(t, w.users, http.MethodPost, "/v1/users/current/pair", "", nil); rec.Code != http.StatusUnauthorized {
-		t.Fatalf("a code without signing in: %d", rec.Code)
-	}
-	rec = w.call(t, w.users, http.MethodPost, "/v1/users/pair", "", map[string]string{"code": res.Data.Code})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("redeem: %d %s", rec.Code, rec.Body)
-	}
-	phone := tokensIn(t, rec)
-	w.works(t, "paired phone", phone.access)
-	if sid(t, phone.access) == sid(t, web.access) {
-		t.Fatal("the phone shares the browser's session")
-	}
-	if rec := w.call(t, w.users, http.MethodDelete, "/v1/users/current/sessions", web.access, nil); rec.Code != http.StatusOK {
-		t.Fatalf("sign out everywhere: %d %s", rec.Code, rec.Body)
-	}
-	w.ended(t, "paired phone after sign out everywhere", phone.access, jwt.ReasonSignedOutEverywhere)
-}

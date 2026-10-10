@@ -45,9 +45,6 @@
 			</div>
 		</div>
 
-		<h3 class="setting-card-title">{{ $t('Pair a phone') }}</h3>
-		<pair-phone-card></pair-phone-card>
-
 		<!-- Connected Devices Card -->
 		<h3 class="setting-card-title">{{ $t('Connected Devices') }}</h3>
 		<div class="setting-card">
@@ -145,7 +142,6 @@ import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
-import PairPhoneCard from '@/apps/settings/PairPhoneCard.vue'
 import { mixin } from '@/mixins/mixin'
 import { companionRouteInfo } from '@/utils/companionRoute'
 import { applyRename, cleanDeviceName, removalMessage, withoutDevice } from '@/utils/companionDevices'
@@ -157,14 +153,13 @@ dayjs.extend(relativeTime)
 export const ROWS = [
 	{ label: 'Overview', keywords: 'phone companion' },
 	{ label: 'Companion Device Gateway', keywords: 'phone pairing' },
-	{ label: 'Pair a phone', keywords: 'qr code pairing sign in app add server' },
 	{ label: 'Connected Devices', keywords: 'phone tablet backup' }
 ]
 
 export default {
 	emits: ['reload-file-list'],
 	name: 'companion-section',
-	components: { SettingsOverlay, PairPhoneCard },
+	components: { SettingsOverlay },
 	mixins: [mixin, confirmWindowMixin],
 	data() {
 		return {

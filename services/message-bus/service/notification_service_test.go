@@ -56,16 +56,6 @@ func TestClassifyNotification(t *testing.T) {
 			},
 		},
 		{
-			name: "user service: a phone was paired",
-			event: model.Event{SourceID: "user-service", Name: "user-service:pairing:notify", Properties: map[string]string{
-				"title": "A phone was paired", "message": "Pixel 9 signed in to alice", "level": "info", "category": "system",
-			}},
-			want: &model.Notification{
-				SourceID: "user-service", EventName: "user-service:pairing:notify", Category: "system", Level: "info",
-				Title: "A phone was paired", Message: "Pixel 9 signed in to alice",
-			},
-		},
-		{
 			name:  ":notify without a title is not one",
 			event: model.Event{SourceID: "x", Name: "x:notify", Properties: map[string]string{"message": "m"}},
 		},

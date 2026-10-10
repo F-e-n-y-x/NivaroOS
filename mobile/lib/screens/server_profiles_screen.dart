@@ -10,7 +10,6 @@ import '../services/storage_service.dart';
 import '../ui/ui.dart';
 import 'home_shell.dart';
 import 'login_screen.dart';
-import 'pair_screen.dart';
 
 /// Saved servers: the one in use, and the others to switch to. Switching
 /// stops everything the phone does in the background for the old server
@@ -241,12 +240,6 @@ class _ServerProfileFormState extends State<ServerProfileForm> {
     super.dispose();
   }
 
-  /// A one-time code instead of a password: the profile comes back signed in.
-  Future<void> _pairInstead() async {
-    final profile = await Navigator.of(context).push<ServerProfile>(MaterialPageRoute(builder: (_) => const PairScreen(returnProfile: true)));
-    if (profile != null && mounted) Navigator.of(context).pop(profile);
-  }
-
   Future<void> _save() async {
     setState(() {
       _urlError = _url.text.trim().isEmpty ? 'Enter the server address' : null;
@@ -319,15 +312,6 @@ class _ServerProfileFormState extends State<ServerProfileForm> {
           padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, Space.xl),
           children: [
             if (_saving) const Padding(padding: EdgeInsets.only(bottom: Space.lg), child: LinearProgressIndicator()),
-            if (!editing) ...[
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                onPressed: _saving ? null : _pairInstead,
-                icon: const Icon(Icons.qr_code_scanner_outlined),
-                label: const Text('Pair with a code from the web'),
-              ),
-              const SizedBox(height: Space.xl),
-            ],
             TextField(
               controller: _url,
               enabled: !_saving,

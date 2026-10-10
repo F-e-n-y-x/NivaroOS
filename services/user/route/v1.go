@@ -27,8 +27,6 @@ func InitRouter() *gin.Engine {
 	r.POST("/v1/users/login", v1.PostUserLogin)
 	r.GET("/v1/users/name", v1.GetUserAllUsername) // all/name
 	r.POST("/v1/users/refresh", v1.PostUserRefreshToken)
-	// A phone trades a one-time pairing code for a session (pairing.go).
-	r.POST("/v1/users/pair", v1.PostPairRedeem)
 	r.GET("/v1/users/image", v1.GetUserImage)
 	r.GET("/v1/users/wallpaper", v1.GetPublicWallpaper)
 	r.HEAD("/v1/users/wallpaper", v1.GetPublicWallpaper)
@@ -53,7 +51,6 @@ func InitRouter() *gin.Engine {
 			v1UsersGroup.PUT("/current/password", v1.PutUserPassword)
 			// Sign out everywhere else (every other session, every service).
 			v1UsersGroup.DELETE("/current/sessions", v1.DeleteUserSessions)
-			v1UsersGroup.POST("/current/pair", v1.PostPairCode)
 
 			v1UsersGroup.GET("/current/custom/:key", v1.GetUserCustomConf)
 			v1UsersGroup.POST("/current/custom/:key", v1.PostUserCustomConf)
