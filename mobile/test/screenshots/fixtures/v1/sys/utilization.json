@@ -70,7 +70,10 @@
     "fifoin": 0,
     "fifoout": 0,
     "state": "up",
-    "time": 1790278748
+    "time": 1790278748,
+    "speed": 1000,
+    "todayRecv": 4509715660,
+    "todaySent": 966367641
    }
   ],
   "sys_disk": {

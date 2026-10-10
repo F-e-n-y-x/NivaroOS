@@ -819,11 +819,20 @@ class _NetworkDetailScreenState extends State<NetworkDetailScreen> {
             children: [
               rateRow(icon: Icons.arrow_downward, label: 'Download', bytesPerSec: l.rate?.downBytesPerSec),
               rateRow(icon: Icons.arrow_upward, label: 'Upload', bytesPerSec: l.rate?.upBytesPerSec),
+              if (net?.todayRecv != null) ...[
+                bytesRow(icon: Icons.south_outlined, label: 'Received today', bytes: net!.todayRecv!, supporting: 'Since midnight'),
+                bytesRow(icon: Icons.north_outlined, label: 'Sent today', bytes: net.todaySent ?? 0, supporting: 'Since midnight'),
+              ],
               if (net != null) ...[
                 bytesRow(icon: Icons.south_outlined, label: 'Received', bytes: net.bytesRecv, supporting: 'Since the server started'),
                 bytesRow(icon: Icons.north_outlined, label: 'Sent', bytes: net.bytesSent, supporting: 'Since the server started'),
               ],
-              if (state.isNotEmpty) FactTile(icon: Icons.settings_ethernet_outlined, label: 'Link', value: state == 'up' ? 'Connected' : 'Disconnected ($state)'),
+              if (state.isNotEmpty)
+                FactTile(
+                  icon: net!.wireless ? Icons.wifi : Icons.settings_ethernet_outlined,
+                  label: 'Link',
+                  value: state == 'up' ? ['Connected', if (net.linkSpeed.isNotEmpty) net.linkSpeed].join(' · ') : 'Disconnected ($state)',
+                ),
             ],
           ),
           _speedGroup(SpeedtestKind.server, title: "Server's internet", about: 'The server tests its own internet connection against the nearest speedtest.net server.'),

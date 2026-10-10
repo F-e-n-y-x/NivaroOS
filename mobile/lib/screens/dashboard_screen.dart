@@ -1130,12 +1130,16 @@ class MetricCards extends StatelessWidget {
       icon: Icons.swap_vert,
       label: 'Network',
       value: down,
-      meta: net == null || net.name.isEmpty ? null : '${net.name}${net.state.isEmpty ? '' : ' · ${net.state}'}',
+      meta: net == null || net.name.isEmpty
+          ? null
+          : '${net.name}${net.state == 'up' && net.linkSpeed.isNotEmpty ? ' · ${net.linkSpeed}' : net.state.isEmpty ? '' : ' · ${net.state}'}',
       values: _NetValues(
         down: down,
         downUnit: downUnit,
+        downToday: net?.todayRecv,
         up: up,
         upUnit: upUnit,
+        upToday: net?.todaySent,
         downSeries: history.netDown,
         upSeries: history.netUp,
         capacity: history.capacity,
@@ -1144,7 +1148,8 @@ class MetricCards extends StatelessWidget {
       onTap: onOpenNetwork,
       semanticLabel: rate == null
           ? 'Network, measuring'
-          : 'Network, download ${formatBytes(rate.downBytesPerSec)} per second, upload ${formatBytes(rate.upBytesPerSec)} per second',
+          : 'Network, download ${formatBytes(rate.downBytesPerSec)} per second, upload ${formatBytes(rate.upBytesPerSec)} per second'
+              '${net?.todayRecv == null ? '' : '. Today ${formatBytes(net!.todayRecv!)} received, ${formatBytes(net.todaySent ?? 0)} sent'}',
       body: const SizedBox.shrink(),
     );
 
@@ -1218,8 +1223,10 @@ class _NetValues extends StatelessWidget {
   const _NetValues({
     required this.down,
     required this.downUnit,
+    this.downToday,
     required this.up,
     required this.upUnit,
+    this.upToday,
     required this.downSeries,
     required this.upSeries,
     required this.capacity,
@@ -1230,18 +1237,24 @@ class _NetValues extends StatelessWidget {
   final String? downUnit;
   final String up;
   final String? upUnit;
+
+  /// Bytes since midnight, when the server reports them.
+  final int? downToday;
+  final int? upToday;
   final List<double> downSeries;
   final List<double> upSeries;
   final int capacity;
   final String window;
 
   static String _peak(List<double> v) => v.length < 2 ? '' : ' · peak\u00A0${formatBytes(v.reduce((a, b) => a > b ? a : b)).replaceAll(' ', '\u00A0')}/s';
+  // Its own line: wrapped after the peak it would start with a dot.
+  static String _today(int? b) => b == null ? '' : '\n${formatBytes(b)} today';
 
   @override
   Widget build(BuildContext context) {
     final t = DesignTokens.of(context);
     final pad = t.cardPadding;
-    Widget half(String name, String value, String? unit, List<double> series, {required bool first}) => Column(
+    Widget half(String name, String value, String? unit, List<double> series, int? today, {required bool first}) => Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
@@ -1254,9 +1267,9 @@ class _NetValues extends StatelessWidget {
                   Text.rich(
                     TextSpan(children: [
                       TextSpan(text: name, style: t.data.copyWith(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600)),
-                      TextSpan(text: _peak(series), style: t.data),
+                      TextSpan(text: _peak(series) + _today(today), style: t.data),
                     ]),
-                    maxLines: 2,
+                    maxLines: today == null ? 2 : 3,
                   ),
                 ],
               ),
@@ -1276,10 +1289,10 @@ class _NetValues extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(child: half('Download', down, downUnit, downSeries, first: true)),
+        Expanded(child: half('Download', down, downUnit, downSeries, downToday, first: true)),
         // A plain gap keeps the two charts apart; a rule between them read as clutter.
         const SizedBox(width: Space.md),
-        Expanded(child: half('Upload', up, upUnit, upSeries, first: false)),
+        Expanded(child: half('Upload', up, upUnit, upSeries, upToday, first: false)),
       ],
     );
   }

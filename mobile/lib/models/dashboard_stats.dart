@@ -196,12 +196,26 @@ class NetSample {
   final String state;
   final int time;
 
+  /// Negotiated link speed in Mbit/s; 0 while unknown (link down, Wi-Fi,
+  /// or a server from before it was reported).
+  final int speedMbps;
+  final bool wireless;
+
+  /// Received and sent since the server's local midnight; null from
+  /// servers that don't report it.
+  final int? todayRecv;
+  final int? todaySent;
+
   NetSample({
     required this.name,
     required this.bytesSent,
     required this.bytesRecv,
     this.state = '',
     this.time = 0,
+    this.speedMbps = 0,
+    this.wireless = false,
+    this.todayRecv,
+    this.todaySent,
   });
 
   factory NetSample.fromJson(Map<String, dynamic> j) => NetSample(
@@ -210,7 +224,19 @@ class NetSample {
         bytesRecv: _safeInt(j['bytesRecv'] ?? j['bytes_recv']),
         state: j['state']?.toString() ?? '',
         time: _safeInt(j['time'] ?? j['timestamp']),
+        speedMbps: _safeInt(j['speed']),
+        wireless: j['wireless'] == true,
+        todayRecv: j['todayRecv'] == null ? null : _safeInt(j['todayRecv']),
+        todaySent: j['todaySent'] == null ? null : _safeInt(j['todaySent']),
       );
+
+  /// "1 Gbit/s", "2.5 Gbit/s", "100 Mbit/s", "Wi-Fi", or '' when unknown.
+  String get linkSpeed {
+    if (speedMbps <= 0) return wireless ? 'Wi-Fi' : '';
+    if (speedMbps < 1000) return '$speedMbps Mbit/s';
+    final g = (speedMbps / 1000).toStringAsFixed(1);
+    return '${g.endsWith('.0') ? g.substring(0, g.length - 2) : g} Gbit/s';
+  }
 }
 
 /// Network throughput between two utilization samples, in bytes per second.

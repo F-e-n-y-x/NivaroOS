@@ -65,6 +65,19 @@ void main() {
     });
   });
 
+  group('NetSample', () {
+    test('link speed and today totals, absent from older servers', () {
+      final n = NetSample.fromJson({'name': 'enp7s0', 'bytesSent': 1, 'bytesRecv': 2, 'speed': 1000, 'todayRecv': 30, 'todaySent': 40});
+      expect((n.linkSpeed, n.todayRecv, n.todaySent), ('1 Gbit/s', 30, 40));
+      expect(NetSample.fromJson({'speed': 2500}).linkSpeed, '2.5 Gbit/s');
+      expect(NetSample.fromJson({'speed': 100}).linkSpeed, '100 Mbit/s');
+      expect(NetSample.fromJson({'speed': -1}).linkSpeed, '');
+      expect(NetSample.fromJson({'speed': 0, 'wireless': true}).linkSpeed, 'Wi-Fi');
+      final old = NetSample.fromJson({'name': 'eth0', 'bytesSent': 1, 'bytesRecv': 2});
+      expect((old.linkSpeed, old.todayRecv, old.todaySent), ('', null, null));
+    });
+  });
+
   group('NetRate.between', () {
     final t0 = DateTime(2026, 9, 25, 14);
     NetSample n(int sent, int recv, [String name = 'eth0']) => NetSample(name: name, bytesSent: sent, bytesRecv: recv);

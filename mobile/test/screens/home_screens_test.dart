@@ -146,6 +146,8 @@ void main() {
         expect(find.text('This phone to the server'), findsOneWidget);
         // The server's last result is shown, so its row offers to run again.
         await tester.scrollUntilVisible(find.text('Run again'), -300);
+        await tester.ensureVisible(find.text('Run again'));
+        await _settle(tester);
         await tester.tap(find.text('Run again'));
         await _settle(tester);
       }, overrides: {
