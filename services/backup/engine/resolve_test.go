@@ -8,6 +8,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	// The tests' stand-in cloud remotes are alias remotes over a temp dir;
+	// production doesn't link alias (backend/supported).
+	_ "github.com/rclone/rclone/backend/alias"
 )
 
 func resolveOK(t *testing.T, e *Engine, ep Endpoint) Resolved {

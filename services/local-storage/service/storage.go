@@ -14,11 +14,10 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	_ "github.com/F-e-n-y-x/NivaroOS/services/local-storage/backend/terabox"
+	_ "github.com/F-e-n-y-x/NivaroOS/services/local-storage/backend/supported"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/mount"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/utils/httper"
-	_ "github.com/rclone/rclone/backend/all"
 	"github.com/rclone/rclone/cmd/mountlib"
 	"github.com/rclone/rclone/fs"
 	rconfig "github.com/rclone/rclone/fs/config"
@@ -57,6 +56,11 @@ func (s *storageStruct) MountStorage(mountPoint, deviceName string) error {
 	delete(heldMounts, mountPoint)
 	currentFS, err := fs.NewFs(context.TODO(), deviceName+":")
 	if err != nil {
+		if t, _ := rconfig.LoadedData().GetValue(deviceName, "type"); t != "" {
+			if _, ferr := fs.Find(t); ferr != nil {
+				err = fmt.Errorf("cloud account %q is of type %q, which NivaroOS doesn't include; it can't be mounted", deviceName, t)
+			}
+		}
 		logger.Error("when CheckAndMountAll then", zap.Error(err))
 		return err
 	}

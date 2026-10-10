@@ -83,7 +83,7 @@ func remoteForMountPath(p string) (remote, string, bool) {
 func newBackendFs(ctx context.Context, backend, configName, root string, opts configmap.Simple) (fs.Fs, error) {
 	info, err := fs.Find(backend)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("remote %s is of type %q, which NivaroOS doesn't include: %w", configName, backend, err)
 	}
 	lookup := configName
 	if strings.HasPrefix(lookup, ":") {
