@@ -12,6 +12,7 @@ import '../services/api_client.dart';
 import '../services/background_service.dart';
 import '../services/download_station_api.dart';
 import '../services/notification_feed.dart';
+import '../services/offline_cache.dart';
 import '../services/tailscale_service.dart';
 import '../services/utilization_feed.dart';
 import '../services/vm_client.dart';
@@ -234,6 +235,9 @@ class HomeController extends ChangeNotifier {
   }
 
   void _apply(Map<String, dynamic> data, DateTime now) {
+    // Back from offline: the slow checks are as old as the outage (or the
+    // phone's offline copy), so read them again too.
+    final cameBack = live.value?.stale == true && !OfflineCache.replaying;
     final stats = DashboardStats.fromUtilization(data).withDisks(_disks);
     final net = stats.primaryNet;
     final rate = NetRate.between(_lastNet, _lastNetAt, net, now) ?? (net?.name == _lastNet?.name ? live.value?.rate : null);
@@ -243,6 +247,7 @@ class HomeController extends ChangeNotifier {
     live.value = reading;
     history.add(reading);
     liveError = null;
+    if (cameBack) unawaited(refreshAll());
   }
 
   // The GPU sidecar, through the gateway like the web UI's GPU widget. It
@@ -320,7 +325,32 @@ class HomeController extends ChangeNotifier {
       _loadDownloads(),
     ]);
     if (live.value != null && !live.value!.stale) checkedAt = clock.now();
+    final e = liveError;
+    if (live.value == null && e is ApiException && e.isUnreachable) await _restoreOffline();
     _notify();
+  }
+
+  /// The server can't be reached and nothing was loaded yet (a cold start
+  /// away from home): the last answers kept on the phone, marked stale.
+  /// The next reading that gets through brings the rest back ([_apply]).
+  Future<void> _restoreOffline() async {
+    final at = await OfflineCache.instance.savedAt(_api.baseUrl, '/v1/sys/utilization');
+    if (at == null || _disposed) return;
+    await OfflineCache.replay(() => Future.wait([
+          refreshLive(forceDisks: true),
+          _loadHost(),
+          loadUpdates(),
+          _loadBackups(),
+          _loadApps(),
+          _loadVms(),
+          _loadDrives(),
+          loadMountProblems(),
+          _loadTailscale(),
+        ]));
+    final l = live.value;
+    if (l == null || _disposed) return;
+    live.value = l.copyWith(stale: true, updatedAt: at);
+    checkedAt = at;
   }
 
   Future<void> _loadHost() async {

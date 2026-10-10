@@ -442,7 +442,7 @@ class LiveStats {
   /// True while the server can't be reached and this is the last reading.
   final bool stale;
 
-  LiveStats copyWith({bool? stale}) => LiveStats(stats: stats, rate: rate, updatedAt: updatedAt, stale: stale ?? this.stale);
+  LiveStats copyWith({bool? stale, DateTime? updatedAt}) => LiveStats(stats: stats, rate: rate, updatedAt: updatedAt ?? this.updatedAt, stale: stale ?? this.stale);
 }
 
 /// `GET /v1/sys/hardware`: facts about the machine. Empty strings when

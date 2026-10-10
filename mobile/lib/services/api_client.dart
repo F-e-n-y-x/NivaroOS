@@ -5,7 +5,9 @@ import 'dart:io';
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 
+import 'offline_cache.dart';
 import 'storage_service.dart';
 
 /// What kind of failure an [ApiException] is, so screens can pick the
@@ -148,6 +150,11 @@ class ApiClient {
     _baseUrl = await StorageService.instance.getServerUrl();
     _accessToken = await StorageService.instance.getAccessToken();
     _refreshToken = await StorageService.instance.getRefreshToken();
+    try {
+      OfflineCache.instance.open(Directory('${(await getApplicationSupportDirectory()).path}/offline_cache'));
+    } catch (_) {
+      // No app storage (unit tests): no offline copies.
+    }
   }
 
   void setBaseUrl(String url) {
@@ -494,11 +501,21 @@ class ApiClient {
   }
 
   Future<http.Response> _attempt(String method, Uri uri, Future<http.Response> Function() request, {Duration? timeout}) async {
+    final get = method == 'GET' && OfflineCache.keeps(uri);
+    if (OfflineCache.replaying) {
+      // Answered from what this server last said (OfflineCache.replay).
+      final kept = get ? await OfflineCache.instance.lookup(baseUrl, uri) : null;
+      if (kept == null) throw ApiException("Can't reach the server.", kind: ApiErrorKind.network, details: '$method ${uri.path} → not cached');
+      return http.Response.bytes(utf8.encode(kept.body), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+    }
+    final http.Response res;
     try {
-      return await request().timeout(timeout ?? requestTimeout);
+      res = await request().timeout(timeout ?? requestTimeout);
     } catch (e) {
       throw describeError(e, uri, method: method);
     }
+    if (get && res.statusCode == 200) unawaited(OfflineCache.instance.record(baseUrl, uri, utf8.decode(res.bodyBytes, allowMalformed: true)));
+    return res;
   }
 
   Future<Map<String, dynamic>> _send(String method, Uri uri, Future<http.Response> Function() request, {Duration? timeout}) async {
@@ -713,6 +730,23 @@ class ApiClient {
           statusCode: res.statusCode, kind: ApiErrorKind.network);
     }
     throw ApiException(body['message']?.toString() ?? 'Sign-in failed (HTTP ${res.statusCode}).', statusCode: res.statusCode);
+  }
+
+  /// Changes the signed-in user's password (`PUT /v1/users/current/password`,
+  /// as the web's Settings › Users does). The server ends every other
+  /// session of the account and hands this one new tokens, which are kept,
+  /// so this phone stays signed in. Throws an [ApiException] with the
+  /// server's reason ("Invalid old password", "Password is too simple").
+  Future<void> changePassword(String current, String next) async {
+    final res = await put('/users/current/password', body: {'old_password': current, 'password': next});
+    final data = res['data'];
+    final token = data is Map ? data['token'] : null;
+    final access = token is Map ? token['access_token']?.toString() : null;
+    final refresh = token is Map ? token['refresh_token']?.toString() : null;
+    // An older server sends none: it didn't end any session either.
+    if (access == null || access.isEmpty || refresh == null || refresh.isEmpty) return;
+    setSession(access, refresh);
+    await StorageService.instance.setSession(accessToken: access, refreshToken: refresh, username: await StorageService.instance.getUsername() ?? '');
   }
 
   // ---------------------------------------------------------------------

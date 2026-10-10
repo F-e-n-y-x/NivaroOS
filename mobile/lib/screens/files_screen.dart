@@ -12,6 +12,7 @@ import '../models/favorite_folder.dart';
 import '../models/file_entry.dart';
 import '../services/api_client.dart';
 import '../services/device_sync_service.dart';
+import '../services/offline_cache.dart';
 import '../services/permission_service.dart';
 import '../services/shortcuts_service.dart';
 import '../services/storage_service.dart';
@@ -203,8 +204,18 @@ class FilesScreenState extends State<FilesScreen> {
     await Future.wait([_loadStorage(), _loadPhones(), _loadCloud(), _loadFavorites(), _loadTrash()]);
     if (!mounted) return;
     final offline = _storageError is ApiException && (_storageError as ApiException).isUnreachable;
+    // Nothing loaded yet and the server can't be reached: the drives as
+    // the phone last saw them.
+    final kept = offline && _storage.isEmpty ? await OfflineCache.instance.savedAt(ApiClient.instance.baseUrl, '/v1/sys/disks-usage') : null;
+    if (kept != null) {
+      await OfflineCache.replay(_loadStorage);
+      if (!mounted) return;
+    }
     setState(() {
-      if (offline && _storage.isNotEmpty) {
+      if (kept != null && _storage.isNotEmpty) {
+        _homeStale = true;
+        _homeUpdated = kept;
+      } else if (offline && _storage.isNotEmpty) {
         _homeStale = true;
       } else if (_storageError == null) {
         _homeStale = false;

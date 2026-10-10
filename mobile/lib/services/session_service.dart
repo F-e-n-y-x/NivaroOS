@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/server_profile.dart';
 import 'api_client.dart';
 import 'device_sync_service.dart';
+import 'offline_cache.dart';
 import 'storage_service.dart';
 import 'tailscale_service.dart';
 
@@ -38,6 +39,7 @@ abstract final class SessionService {
     await DeviceSyncService.instance.onSigningOut();
     await StorageService.instance.clearSession();
     ApiClient.instance.clearSession();
+    await OfflineCache.instance.clear(ApiClient.instance.baseUrl);
   }
 
   /// Makes [profile] the active server. Returns true when it has a session
