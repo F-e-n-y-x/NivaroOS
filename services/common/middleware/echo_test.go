@@ -1,12 +1,15 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v5"
+	echo_middleware "github.com/labstack/echo/v5/middleware"
 )
 
 // Pins what echo v4 sent so the v5 migration stays invisible to clients:
@@ -46,6 +49,40 @@ func TestCorsAndErrorShape(t *testing.T) {
 		w := do(http.MethodGet, path, map[string]string{"Origin": "http://x.example"})
 		if w.Code != want.code || strings.TrimSpace(w.Body.String()) != want.body || w.Header().Get("Access-Control-Allow-Origin") != "*" {
 			t.Errorf("%s: %d %q %v", path, w.Code, w.Body.String(), w.Header())
+		}
+	}
+}
+
+func TestQuietRequest(t *testing.T) {
+	ok := echo_middleware.RequestLoggerValues{Status: 200, Latency: time.Millisecond}
+	req := func(remote string, hdr ...string) *http.Request {
+		r := httptest.NewRequest(http.MethodPost, "/v1/x", nil)
+		r.RemoteAddr = remote
+		for i := 0; i+1 < len(hdr); i += 2 {
+			r.Header.Set(hdr[i], hdr[i+1])
+		}
+		return r
+	}
+	slow, bad, failed := ok, ok, ok
+	slow.Latency = 2 * time.Second
+	bad.Status = 404
+	failed.Error = errors.New("x")
+	for name, c := range map[string]struct {
+		r    *http.Request
+		v    echo_middleware.RequestLoggerValues
+		want bool
+	}{
+		"internal ok":    {req("127.0.0.1:5000"), ok, true},
+		"internal v6 ok": {req("[::1]:5000"), ok, true},
+		"internal slow":  {req("127.0.0.1:5000"), slow, false},
+		"internal 404":   {req("127.0.0.1:5000"), bad, false},
+		"internal error": {req("127.0.0.1:5000"), failed, false},
+		"via gateway":    {req("127.0.0.1:5000", "X-Forwarded-For", "100.82.15.11"), ok, false},
+		"local browser":  {req("127.0.0.1:5000", "Origin", "http://localhost"), ok, false},
+		"remote ok":      {req("192.168.1.9:5000"), ok, false},
+	} {
+		if got := quietRequest(c.r, c.v); got != c.want {
+			t.Errorf("%s: quiet=%v, want %v", name, got, c.want)
 		}
 	}
 }

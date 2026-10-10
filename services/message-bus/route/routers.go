@@ -74,19 +74,9 @@ func newAPIRouter(swagger *openapi3.T, services *service.Services, publicKeyFunc
 
 	e.Use(echo_middleware.Gzip())
 
-	// Logs the path only: tokens can ride in query strings. The half-second
-	// live readings (nivaroos:system:utilization:live, only while a phone
-	// is in Real time) aren't logged - they'd be two lines a second.
-	requestLog := nivaroos_middleware.RequestLogger()
-	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		logged := requestLog(next)
-		return func(c *echo.Context) error {
-			if quietRequest(c.Request()) {
-				return next(c)
-			}
-			return logged(c)
-		}
-	})
+	// Logs the path only (tokens can ride in query strings); fast
+	// successful same-host publishes (backup progress, utilization) aren't logged.
+	e.Use(nivaroos_middleware.RequestLogger())
 
 	// Every request - including every event/action subscription -
 	// needs a valid access token, except same-host automation (other
@@ -160,9 +150,4 @@ func getAPIPath(swaggerURL string) (string, error) {
 	}
 
 	return strings.TrimRight(u.Path, "/"), nil
-}
-
-// quietRequest: requests too frequent to be worth a log line.
-func quietRequest(r *http.Request) bool {
-	return r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/nivaroos:system:utilization:live")
 }

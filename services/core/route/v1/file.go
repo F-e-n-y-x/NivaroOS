@@ -1981,7 +1981,6 @@ func (ch *CenterHandler) monitoring() {
 			ch.clientsMu.Unlock()
 			// 消息，监听到有新消息到来
 		case message := <-ch.broadcast:
-			println("消息来了，message：" + string(message))
 			// 推送给每个用户的通道，每个用户都有跑协程起了writePump的监听
 			ch.clientsMu.RLock()
 			for _, client := range ch.clients {

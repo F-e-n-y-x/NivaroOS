@@ -48,9 +48,22 @@ type requestLogLine struct {
 	BytesOut     int64  `json:"bytes_out"`
 }
 
+// slowRequest: internal requests at least this slow are still logged.
+const slowRequest = time.Second
+
+// quietRequest: a fast, successful request straight from another process on
+// this host (service-to-service calls, nivaroos-cli) - no proxy or browser
+// headers, so nothing the gateway relayed. Those were ~95% of all journal
+// lines (backup progress events, local-storage status pushes).
+func quietRequest(r *http.Request, v echo_middleware.RequestLoggerValues) bool {
+	return v.Error == nil && v.Status < 400 && v.Latency < slowRequest &&
+		IsLoopbackAddr(r.RemoteAddr) && !hasProxyMarks(r) && !hasBrowserMarks(r)
+}
+
 // RequestLogger writes one JSON line per request to stdout (the journal),
 // like echo v4's Logger() did, and never logs the query string. Errors are
 // handed to the error handler first so the logged status is the one sent.
+// Fast successful internal requests are skipped (see quietRequest).
 func RequestLogger() echo.MiddlewareFunc {
 	return echo_middleware.RequestLoggerWithConfig(echo_middleware.RequestLoggerConfig{
 		HandleError:      true,
@@ -64,7 +77,10 @@ func RequestLogger() echo.MiddlewareFunc {
 		LogStatus:        true,
 		LogContentLength: true,
 		LogResponseSize:  true,
-		LogValuesFunc: func(_ *echo.Context, v echo_middleware.RequestLoggerValues) error {
+		LogValuesFunc: func(c *echo.Context, v echo_middleware.RequestLoggerValues) error {
+			if quietRequest(c.Request(), v) {
+				return nil
+			}
 			line := requestLogLine{
 				Time: time.Now().Format(time.RFC3339Nano), ID: v.RequestID, RemoteIP: v.RemoteIP,
 				Host: v.Host, Method: v.Method, Path: v.URIPath, UserAgent: v.UserAgent,

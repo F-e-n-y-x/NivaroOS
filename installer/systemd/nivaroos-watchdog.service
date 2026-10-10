@@ -9,3 +9,6 @@ ExecStart=/usr/local/lib/nivaroos/nivaroos-watchdog
 # Never let the watchdog itself hang the next run.
 TimeoutStartSec=5min
 Nice=5
+# Only the watchdog's own notices (restarts, rollbacks) - not systemd's
+# Starting/Finished lines every 2 minutes.
+LogLevelMax=notice
