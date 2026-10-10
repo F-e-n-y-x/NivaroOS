@@ -123,6 +123,11 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> with Wi
       // The notification is how sharing is seen and stopped; ask for it
       // now, when it is needed, once.
       await PermissionService.requestNotifications();
+      // "Never" only stays on if Android lets the service restart after
+      // the battery saver kills it: ask for the exemption now, once.
+      if (length == BackgroundService.shareNever && !await BackgroundService.instance.isIgnoringBatteryOptimizations()) {
+        await BackgroundService.instance.requestIgnoreBatteryOptimizations();
+      }
       await StorageService.instance.setShareMinutes(length.inMinutes);
       final started = await BackgroundService.instance.startSharing(length, server: ApiClient.displayHost(ApiClient.instance.baseUrl));
       if (!started) _snack("Couldn't start sharing. Try again.");
@@ -307,6 +312,7 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> with Wi
       'ended' => null,
       'timeout' => "Sharing stopped: Android allows this kind of background work for 6 hours a day. You can share again later today or tomorrow.",
       'not_allowed' => "Android didn't let sharing start. Open the app and try again.",
+      'killed' => 'Android closed sharing in the background and wouldn\'t let it restart. Set NivaroOS to "Unrestricted" battery use to keep it on.',
       'signed_out' => 'Sharing stopped because the sign-in on this server ended.',
       'removed' => 'Sharing stopped because this phone was removed from the server.',
       'error' => "Sharing stopped because of a problem on this phone. Try again.",

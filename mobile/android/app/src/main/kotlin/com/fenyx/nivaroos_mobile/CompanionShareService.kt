@@ -35,7 +35,10 @@ import java.util.Date
  *   on until they turn it off. (The app is sideloaded, so Play's review of
  *   specialUse doesn't apply.) Older Androids have no dataSync limit.
  * - It is never started from BOOT_COMPLETED or from the background; only
- *   from the app on screen.
+ *   from the app on screen. A "Never" session is START_STICKY: if Android or
+ *   the vendor's battery saver kills the process, the system restarts the
+ *   service and it resumes the same session (it was the user's choice).
+ *   If the system refuses the restart, it ends as "killed" and the app says so.
  * - Not exported: nothing outside the app can start or bind it.
  *
  * Its state (running, end time, why the last session ended) is kept in
@@ -55,6 +58,9 @@ class CompanionShareService : Service() {
         /** Why the last session ended: stopped, ended, timeout, not_allowed, signed_out. */
         const val KEY_REASON = "last_stop_reason"
         const val KEY_ENDS_AT = "ends_at"
+        /** A "Never" session is on: a system restart resumes it. */
+        const val KEY_NEVER = "never_session"
+        const val KEY_SERVER = "server"
 
         @Volatile
         var running = false
@@ -106,22 +112,34 @@ class CompanionShareService : Service() {
                 if (!goForeground(endAt, server)) return START_NOT_STICKY
                 running = true
                 endsAt = endAt
-                prefs().edit().putLong(KEY_ENDS_AT, endAt).remove(KEY_REASON).apply()
+                prefs().edit().putLong(KEY_ENDS_AT, endAt).remove(KEY_REASON)
+                    .putBoolean(KEY_NEVER, endAt <= 0L).putString(KEY_SERVER, server).apply()
                 handler.removeCallbacks(endRunnable)
                 if (endAt > 0L) {
                     handler.postDelayed(endRunnable, (endAt - System.currentTimeMillis()).coerceAtLeast(0L))
                 }
                 if (engine == null) startEngine()
+                return if (endAt <= 0L) START_STICKY else START_NOT_STICKY
             }
             ACTION_STOP -> stopSharing("stopped")
-            // Restarted by the system with no intent: a session is only
-            // ever started by the user, so don't resume one on our own.
-            else -> stopSharing("ended")
+            // Restarted by the system with no intent (the process was killed).
+            // A "Never" session resumes; a timed one doesn't.
+            else -> {
+                val p = prefs()
+                if (p.getBoolean(KEY_NEVER, false)) {
+                    if (!goForeground(0L, p.getString(KEY_SERVER, "") ?: "", resumed = true)) return START_NOT_STICKY
+                    running = true
+                    endsAt = 0L
+                    if (engine == null) startEngine()
+                    return START_STICKY
+                }
+                stopSharing("ended")
+            }
         }
         return START_NOT_STICKY
     }
 
-    private fun goForeground(endAt: Long, server: String): Boolean {
+    private fun goForeground(endAt: Long, server: String, resumed: Boolean = false): Boolean {
         ensureChannel(this)
         val notification = buildNotification(endAt, server)
         return try {
@@ -137,7 +155,7 @@ class CompanionShareService : Service() {
             // ForegroundServiceStartNotAllowedException: started from the
             // background, or the day's dataSync time is used up.
             Log.w(TAG, "startForeground refused: ${e.javaClass.simpleName}")
-            finish("not_allowed")
+            finish(if (resumed) "killed" else "not_allowed")
             false
         }
     }
@@ -227,7 +245,7 @@ class CompanionShareService : Service() {
 
     private fun finish(reason: String) {
         handler.removeCallbacks(endRunnable)
-        prefs().edit().putString(KEY_REASON, reason).putLong(KEY_ENDS_AT, 0L).apply()
+        prefs().edit().putString(KEY_REASON, reason).putLong(KEY_ENDS_AT, 0L).putBoolean(KEY_NEVER, false).apply()
         running = false
         endsAt = 0L
         engine?.destroy()
