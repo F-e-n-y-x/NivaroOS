@@ -1,60 +1,64 @@
 <!-- src/apps/files/SidebarContextMenu.vue -->
 <template>
-	<div
-		v-show="visible"
-		ref="menu"
-		class="sidebar-context-menu"
-		:style="{ top: y + 'px', left: x + 'px' }"
-		@contextmenu.prevent.stop
-	>
-		<button class="ctx-item" @click="act('open')">
-			<i class="mdi mdi-folder-open-outline ctx-icon"></i>
-			<span class="ctx-label">{{ $t('Open') }}</span>
-		</button>
-		<button class="ctx-item" @click="act('open-new-tab')">
-			<i class="mdi mdi-tab-plus ctx-icon"></i>
-			<span class="ctx-label">{{ $t('Open in New Tab') }}</span>
-		</button>
-		<button class="ctx-item" @click="act('open-new-window')">
-			<i class="mdi mdi-open-in-new ctx-icon"></i>
-			<span class="ctx-label">{{ $t('Open in New Window') }}</span>
-		</button>
-
-		<div class="ctx-divider"></div>
-
-		<template v-if="hasClipboard">
-			<button class="ctx-item" @click="act('paste-into')">
-				<i class="mdi mdi-content-paste ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Paste into folder') }}</span>
+	<!-- On <body>: windows use backdrop-filter, which would make this
+	     fixed-position menu relative to (and clipped by) the window. -->
+	<Teleport to="body">
+		<div
+			v-show="visible"
+			ref="menu"
+			class="sidebar-context-menu"
+			:style="{ top: y + 'px', left: x + 'px' }"
+			@contextmenu.prevent.stop
+		>
+			<button class="ctx-item" @click="act('open')">
+				<i class="mdi mdi-folder-open-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Open') }}</span>
 			</button>
-		</template>
-
-		<button class="ctx-item" @click="act('toggle-favorite')">
-			<i :class="isFavorite ? 'mdi mdi-star text-amber-500' : 'mdi mdi-star-outline'" class="ctx-icon"></i>
-			<span class="ctx-label">{{ isFavorite ? $t('Remove from Favorite') : $t('Add to Favorite') }}</span>
-		</button>
-		<button class="ctx-item" @click="act('copy-path')">
-			<i class="mdi mdi-content-copy ctx-icon"></i>
-			<span class="ctx-label">{{ $t('Copy Path') }}</span>
-		</button>
-
-		<!-- Eject / Disconnect option for removable mounts -->
-		<template v-if="isRemovable">
+			<button class="ctx-item" @click="act('open-new-tab')">
+				<i class="mdi mdi-tab-plus ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Open in New Tab') }}</span>
+			</button>
+			<button class="ctx-item" @click="act('open-new-window')">
+				<i class="mdi mdi-open-in-new ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Open in New Window') }}</span>
+			</button>
+	
 			<div class="ctx-divider"></div>
-			<button class="ctx-item is-warning" @click="act('eject')">
-				<i :class="ejectIcon" class="ctx-icon"></i>
-				<span class="ctx-label">{{ ejectLabel }}</span>
+	
+			<template v-if="hasClipboard">
+				<button class="ctx-item" @click="act('paste-into')">
+					<i class="mdi mdi-content-paste ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Paste into folder') }}</span>
+				</button>
+			</template>
+	
+			<button class="ctx-item" @click="act('toggle-favorite')">
+				<i :class="isFavorite ? 'mdi mdi-star text-amber-500' : 'mdi mdi-star-outline'" class="ctx-icon"></i>
+				<span class="ctx-label">{{ isFavorite ? $t('Remove from Favorite') : $t('Add to Favorite') }}</span>
 			</button>
-		</template>
-
-		<template v-if="item && item.path">
-			<div class="ctx-divider"></div>
-			<button class="ctx-item" @click="act('detail')">
-				<i class="mdi mdi-information-outline ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Detail') }}</span>
+			<button class="ctx-item" @click="act('copy-path')">
+				<i class="mdi mdi-content-copy ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Copy Path') }}</span>
 			</button>
-		</template>
-	</div>
+	
+			<!-- Eject / Disconnect option for removable mounts -->
+			<template v-if="isRemovable">
+				<div class="ctx-divider"></div>
+				<button class="ctx-item is-warning" @click="act('eject')">
+					<i :class="ejectIcon" class="ctx-icon"></i>
+					<span class="ctx-label">{{ ejectLabel }}</span>
+				</button>
+			</template>
+	
+			<template v-if="item && item.path">
+				<div class="ctx-divider"></div>
+				<button class="ctx-item" @click="act('detail')">
+					<i class="mdi mdi-information-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Detail') }}</span>
+				</button>
+			</template>
+		</div>
+	</Teleport>
 </template>
 
 <script>

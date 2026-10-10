@@ -1,155 +1,159 @@
 <!-- src/apps/files/ContextMenu.vue -->
 <template>
-	<div
-		v-show="visible"
-		ref="menu"
-		class="files-context-menu"
-		:style="{ top: y + 'px', left: x + 'px' }"
-		@contextmenu.prevent.stop
-	>
-		<!-- 1. MULTIPLE SELECTION CONTEXT MENU -->
-		<template v-if="isMultiSelect">
-			<div class="ctx-header">
-				<div class="ctx-badge">
-					<i class="mdi mdi-checkbox-multiple-marked-outline mr-1"></i>
-					<span>{{ selectedItems.length }} {{ $t('items selected') }}</span>
+	<!-- On <body>: windows use backdrop-filter, which would make this
+	     fixed-position menu relative to (and clipped by) the window. -->
+	<Teleport to="body">
+		<div
+			v-show="visible"
+			ref="menu"
+			class="files-context-menu"
+			:style="{ top: y + 'px', left: x + 'px' }"
+			@contextmenu.prevent.stop
+		>
+			<!-- 1. MULTIPLE SELECTION CONTEXT MENU -->
+			<template v-if="isMultiSelect">
+				<div class="ctx-header">
+					<div class="ctx-badge">
+						<i class="mdi mdi-checkbox-multiple-marked-outline mr-1"></i>
+						<span>{{ selectedItems.length }} {{ $t('items selected') }}</span>
+					</div>
 				</div>
-			</div>
-			<div class="ctx-divider"></div>
-			<button class="ctx-item" @click="act('copy-selection')">
-				<i class="mdi mdi-content-copy ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Copy') }} ({{ selectedItems.length }})</span>
-			</button>
-			<button class="ctx-item" @click="act('cut-selection')">
-				<i class="mdi mdi-content-cut ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Cut') }} ({{ selectedItems.length }})</span>
-			</button>
-			<button class="ctx-item" @click="act('download-selection')">
-				<i class="mdi mdi-download-outline ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Download') }}</span>
-			</button>
-			<button class="ctx-item" @click="act('compress-selection')">
-				<i class="mdi mdi-folder-zip-outline ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Compress to Zip') }}</span>
-			</button>
-			<div class="ctx-divider"></div>
-			<button class="ctx-item is-danger" @click="act('delete-selection')">
-				<i class="mdi mdi-trash-can-outline ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Delete') }} ({{ selectedItems.length }})</span>
-			</button>
-		</template>
-
-		<!-- 2. SINGLE ITEM CONTEXT MENU (when right clicking a single file or folder) -->
-		<template v-else-if="item">
-			<button class="ctx-item" @click="act('open')">
-				<i class="mdi mdi-open-in-app ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Open') }}</span>
-			</button>
-			<button v-if="item.is_dir" class="ctx-item" @click="act('open-new-tab')">
-				<i class="mdi mdi-tab-plus ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Open in New Tab') }}</span>
-			</button>
-			<div class="ctx-divider"></div>
-			<button class="ctx-item" @click="act('rename')">
-				<i class="mdi mdi-pencil-outline ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Rename') }}</span>
-			</button>
-			<button class="ctx-item" @click="act('copy')">
-				<i class="mdi mdi-content-copy ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Copy') }}</span>
-			</button>
-			<button class="ctx-item" @click="act('cut')">
-				<i class="mdi mdi-content-cut ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Cut') }}</span>
-			</button>
-			<button class="ctx-item" @click="act('download')">
-				<i class="mdi mdi-download-outline ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Download') }}</span>
-			</button>
-			<button class="ctx-item" @click="act('compress')">
-				<i class="mdi mdi-folder-zip-outline ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Compress to Zip') }}</span>
-			</button>
-			<button v-if="isArchive" class="ctx-item" @click="act('extract')">
-				<i class="mdi mdi-archive-arrow-down-outline ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Extract') }}</span>
-			</button>
-			<template v-if="item.is_dir">
-				<button v-if="hasClipboard" class="ctx-item" @click="act('paste-into')">
-					<i class="mdi mdi-content-paste ctx-icon"></i>
-					<span class="ctx-label">{{ $t('Paste into folder') }}</span>
+				<div class="ctx-divider"></div>
+				<button class="ctx-item" @click="act('copy-selection')">
+					<i class="mdi mdi-content-copy ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Copy') }} ({{ selectedItems.length }})</span>
+				</button>
+				<button class="ctx-item" @click="act('cut-selection')">
+					<i class="mdi mdi-content-cut ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Cut') }} ({{ selectedItems.length }})</span>
+				</button>
+				<button class="ctx-item" @click="act('download-selection')">
+					<i class="mdi mdi-download-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Download') }}</span>
+				</button>
+				<button class="ctx-item" @click="act('compress-selection')">
+					<i class="mdi mdi-folder-zip-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Compress to Zip') }}</span>
 				</button>
 				<div class="ctx-divider"></div>
-				<button class="ctx-item" @click="act('favorite')">
-					<i :class="isFavorite ? 'mdi mdi-star text-amber-500' : 'mdi mdi-star-outline'" class="ctx-icon"></i>
-					<span class="ctx-label">{{ isFavorite ? $t('Remove from Favorite') : $t('Add to Favorite') }}</span>
-				</button>
-				<!-- Only with the Backup & Sync module installed (spec §0). -->
-				<button v-if="backupInstalled" class="ctx-item" @click="act('backup-folder')">
-					<i class="mdi mdi-backup-restore ctx-icon"></i>
-					<span class="ctx-label">{{ $t('backup.entry.back_up_folder') }}</span>
+				<button class="ctx-item is-danger" @click="act('delete-selection')">
+					<i class="mdi mdi-trash-can-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Delete') }} ({{ selectedItems.length }})</span>
 				</button>
 			</template>
-			<div class="ctx-divider"></div>
-			<button class="ctx-item" @click="act('share')">
-				<i class="mdi mdi-share-variant-outline ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Share') }}</span>
-			</button>
-			<div class="ctx-divider"></div>
-			<button class="ctx-item is-danger" @click="act('delete')">
-				<i class="mdi mdi-trash-can-outline ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Delete') }}</span>
-			</button>
-			<button class="ctx-item" @click="act('detail')">
-				<i class="mdi mdi-information-outline ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Detail') }}</span>
-			</button>
-		</template>
-
-		<!-- 3. BLANK SPACE CONTEXT MENU (when right clicking empty area) -->
-		<template v-else>
-			<button class="ctx-item" @click="act('new-folder')">
-				<i class="mdi mdi-folder-plus-outline ctx-icon"></i>
-				<span class="ctx-label">{{ $t('New Folder') }}</span>
-			</button>
-			<button class="ctx-item" @click="act('new-file')">
-				<i class="mdi mdi-file-plus-outline ctx-icon"></i>
-				<span class="ctx-label">{{ $t('New File') }}</span>
-			</button>
-			<button class="ctx-item" @click="act('upload')">
-				<i class="mdi mdi-upload-outline ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Upload') }}</span>
-			</button>
-			<div class="ctx-divider"></div>
-			<button v-if="hasClipboard" class="ctx-item" @click="act('paste')">
-				<i class="mdi mdi-content-paste ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Paste') }}</span>
-			</button>
-			<button class="ctx-item" @click="act('select-all')">
-				<i class="mdi mdi-select-all ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Select All') }}</span>
-			</button>
-			<button class="ctx-item" @click="act('reload')">
-				<i class="mdi mdi-refresh ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Refresh') }}</span>
-			</button>
-			<div class="ctx-divider"></div>
-			<button class="ctx-item" @click="act('toggle-hidden')">
-				<i :class="showHidden ? 'mdi mdi-eye-off-outline ctx-icon' : 'mdi mdi-eye-outline ctx-icon'"></i>
-				<span class="ctx-label">{{ showHidden ? $t('Hide Hidden Files') : $t('Show Hidden Files') }}</span>
-				<i v-if="showHidden" class="mdi mdi-check ctx-check"></i>
-			</button>
-			<div class="ctx-divider"></div>
-			<button class="ctx-item" @click="act('open-window')">
-				<i class="mdi mdi-open-in-new ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Open in New Window') }}</span>
-			</button>
-			<button class="ctx-item" @click="act('open-terminal')">
-				<i class="mdi mdi-console ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Open in Terminal') }}</span>
-			</button>
-		</template>
-	</div>
+	
+			<!-- 2. SINGLE ITEM CONTEXT MENU (when right clicking a single file or folder) -->
+			<template v-else-if="item">
+				<button class="ctx-item" @click="act('open')">
+					<i class="mdi mdi-open-in-app ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Open') }}</span>
+				</button>
+				<button v-if="item.is_dir" class="ctx-item" @click="act('open-new-tab')">
+					<i class="mdi mdi-tab-plus ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Open in New Tab') }}</span>
+				</button>
+				<div class="ctx-divider"></div>
+				<button class="ctx-item" @click="act('rename')">
+					<i class="mdi mdi-pencil-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Rename') }}</span>
+				</button>
+				<button class="ctx-item" @click="act('copy')">
+					<i class="mdi mdi-content-copy ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Copy') }}</span>
+				</button>
+				<button class="ctx-item" @click="act('cut')">
+					<i class="mdi mdi-content-cut ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Cut') }}</span>
+				</button>
+				<button class="ctx-item" @click="act('download')">
+					<i class="mdi mdi-download-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Download') }}</span>
+				</button>
+				<button class="ctx-item" @click="act('compress')">
+					<i class="mdi mdi-folder-zip-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Compress to Zip') }}</span>
+				</button>
+				<button v-if="isArchive" class="ctx-item" @click="act('extract')">
+					<i class="mdi mdi-archive-arrow-down-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Extract') }}</span>
+				</button>
+				<template v-if="item.is_dir">
+					<button v-if="hasClipboard" class="ctx-item" @click="act('paste-into')">
+						<i class="mdi mdi-content-paste ctx-icon"></i>
+						<span class="ctx-label">{{ $t('Paste into folder') }}</span>
+					</button>
+					<div class="ctx-divider"></div>
+					<button class="ctx-item" @click="act('favorite')">
+						<i :class="isFavorite ? 'mdi mdi-star text-amber-500' : 'mdi mdi-star-outline'" class="ctx-icon"></i>
+						<span class="ctx-label">{{ isFavorite ? $t('Remove from Favorite') : $t('Add to Favorite') }}</span>
+					</button>
+					<!-- Only with the Backup & Sync module installed (spec §0). -->
+					<button v-if="backupInstalled" class="ctx-item" @click="act('backup-folder')">
+						<i class="mdi mdi-backup-restore ctx-icon"></i>
+						<span class="ctx-label">{{ $t('backup.entry.back_up_folder') }}</span>
+					</button>
+				</template>
+				<div class="ctx-divider"></div>
+				<button class="ctx-item" @click="act('share')">
+					<i class="mdi mdi-share-variant-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Share') }}</span>
+				</button>
+				<div class="ctx-divider"></div>
+				<button class="ctx-item is-danger" @click="act('delete')">
+					<i class="mdi mdi-trash-can-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Delete') }}</span>
+				</button>
+				<button class="ctx-item" @click="act('detail')">
+					<i class="mdi mdi-information-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Detail') }}</span>
+				</button>
+			</template>
+	
+			<!-- 3. BLANK SPACE CONTEXT MENU (when right clicking empty area) -->
+			<template v-else>
+				<button class="ctx-item" @click="act('new-folder')">
+					<i class="mdi mdi-folder-plus-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('New Folder') }}</span>
+				</button>
+				<button class="ctx-item" @click="act('new-file')">
+					<i class="mdi mdi-file-plus-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('New File') }}</span>
+				</button>
+				<button class="ctx-item" @click="act('upload')">
+					<i class="mdi mdi-upload-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Upload') }}</span>
+				</button>
+				<div class="ctx-divider"></div>
+				<button v-if="hasClipboard" class="ctx-item" @click="act('paste')">
+					<i class="mdi mdi-content-paste ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Paste') }}</span>
+				</button>
+				<button class="ctx-item" @click="act('select-all')">
+					<i class="mdi mdi-select-all ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Select All') }}</span>
+				</button>
+				<button class="ctx-item" @click="act('reload')">
+					<i class="mdi mdi-refresh ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Refresh') }}</span>
+				</button>
+				<div class="ctx-divider"></div>
+				<button class="ctx-item" @click="act('toggle-hidden')">
+					<i :class="showHidden ? 'mdi mdi-eye-off-outline ctx-icon' : 'mdi mdi-eye-outline ctx-icon'"></i>
+					<span class="ctx-label">{{ showHidden ? $t('Hide Hidden Files') : $t('Show Hidden Files') }}</span>
+					<i v-if="showHidden" class="mdi mdi-check ctx-check"></i>
+				</button>
+				<div class="ctx-divider"></div>
+				<button class="ctx-item" @click="act('open-window')">
+					<i class="mdi mdi-open-in-new ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Open in New Window') }}</span>
+				</button>
+				<button class="ctx-item" @click="act('open-terminal')">
+					<i class="mdi mdi-console ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Open in Terminal') }}</span>
+				</button>
+			</template>
+		</div>
+	</Teleport>
 </template>
 
 <script>
