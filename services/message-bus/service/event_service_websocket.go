@@ -33,7 +33,8 @@ func (s *EventServiceWS) Publish(event model.Event) {
 		event.Timestamp = time.Now().Unix()
 	}
 
-	// TODO - ensure properties are valid for event type
+	// Properties aren't checked against the type's list: publishers send
+	// extra ones. The route caps their size (readProperties).
 
 	select {
 	case s.inboundChannel <- event:

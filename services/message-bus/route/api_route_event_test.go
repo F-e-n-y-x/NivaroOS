@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/model"
@@ -81,6 +82,54 @@ func TestEventRoute(t *testing.T) {
 	err = json2.UnmarshalFromString(rec.Body.String(), &actualEventType)
 	assert.NilError(t, err)
 	assert.DeepEqual(t, actualEventType, expectedEventTypes[0])
+}
 
-	// subscribe event type - TODO
+// Bad type names and oversized or malformed bodies are clear 400s, and a
+// batch with one bad entry registers none of it.
+func TestEventRouteValidation(t *testing.T) {
+	repository, err := repository.NewDatabaseRepositoryInMemory()
+	assert.NilError(t, err)
+	defer repository.Close()
+	services := service.NewServices(&repository)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	services.Start(&ctx)
+	apiRoute := NewAPIRoute(&services)
+	e := echo.New()
+	call := func(body string, h func(*echo.Context) error) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte(body)))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		assert.NilError(t, h(e.NewContext(req, rec)))
+		return rec
+	}
+	register := func(body string) int { return call(body, apiRoute.RegisterEventTypes).Code }
+
+	for _, bad := range []string{
+		`[{"sourceID":"ok","name":"good:one"},{"sourceID":"a/b","name":"x"}]`,
+		`[{"sourceID":"ok","name":"has space"}]`,
+		`[{"sourceID":"","name":"x"}]`,
+		`[{"sourceID":"ok","name":"x","propertyTypeList":[{"name":"p?q"}]}]`,
+		`[{"sourceID":"ok","name":"` + strings.Repeat("n", 129) + `"}]`,
+	} {
+		if c := register(bad); c != http.StatusBadRequest {
+			t.Errorf("%s: %d", bad, c)
+		}
+	}
+	if types, _ := services.EventTypeService.GetEventTypes(); len(types) != 0 {
+		t.Fatalf("half a bad batch registered: %+v", types)
+	}
+	assert.Equal(t, register(`[{"sourceID":"nivaroos-download","name":"nivaroos-download:download:notify","propertyTypeList":[{"name":"title"},{"name":"app:name"}]}]`), http.StatusOK)
+
+	publish := func(body string) *httptest.ResponseRecorder {
+		return call(body, func(c *echo.Context) error {
+			return apiRoute.PublishEvent(c, "nivaroos-download", "nivaroos-download:download:notify")
+		})
+	}
+	assert.Equal(t, publish(`{"title":"hi","extra":"not in the type is fine"}`).Code, http.StatusOK)
+	for _, bad := range []string{`{"title":` + `"` + strings.Repeat("x", maxPropertiesBytes) + `"}`, `{"title":1}`, `[]`, `{"":"x"}`} {
+		if rec := publish(bad); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "propert") {
+			t.Errorf("%.40s: %d %s", bad, rec.Code, rec.Body)
+		}
+	}
 }

@@ -31,7 +31,8 @@ func (s *ActionServiceWS) Trigger(action model.Action) {
 		action.Timestamp = time.Now().Unix()
 	}
 
-	// TODO - ensure properties are valid for action type
+	// As with events, properties aren't checked against the type's list;
+	// the route caps their size (readProperties).
 
 	select {
 	case s.inboundChannel <- action:

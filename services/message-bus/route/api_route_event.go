@@ -2,7 +2,8 @@ package route
 
 import (
 	"fmt"
-	"io/ioutil"
+	"errors"
+	"io"
 	"net"
 	"net/http"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/route/adapter/in"
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/route/adapter/out"
+	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/service"
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 	"github.com/google/uuid"
@@ -44,6 +46,12 @@ func (r *APIRoute) RegisterEventTypes(ctx *echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: &message})
 	}
 
+	// The whole batch first: a bad entry mustn't leave half of it registered.
+	for _, t := range eventTypes {
+		if err := service.ValidateType(t.SourceID, t.Name, in.EventTypeAdapter(t).PropertyTypeList); err != nil {
+			return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: utils.Ptr(err.Error())})
+		}
+	}
 	for _, eventType := range eventTypes {
 		_, err := r.services.EventTypeService.RegisterEventType(in.EventTypeAdapter(eventType))
 		if err != nil {
@@ -90,17 +98,9 @@ func (r *APIRoute) PublishEvent(ctx *echo.Context, sourceID codegen.SourceID, na
 		return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: utils.Ptr("not found")})
 	}
 
-	var properties map[string]string
-	body, err := ioutil.ReadAll(ctx.Request().Body)
+	properties, err := readProperties(ctx)
 	if err != nil {
-
-		message := err.Error()
-		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: &message})
-	}
-
-	if err = json.Unmarshal(body, &properties); err != nil {
-		message := err.Error()
-		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: &message})
+		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: utils.Ptr(err.Error())})
 	}
 
 	uuidStr := uuid.New().String()
@@ -121,6 +121,32 @@ func (r *APIRoute) PublishEvent(ctx *echo.Context, sourceID codegen.SourceID, na
 	}
 
 	return ctx.JSON(http.StatusOK, out.EventAdapter(event))
+}
+
+// maxPropertiesBytes caps a published event's or triggered action's body.
+// The biggest in use (system utilization) is a few KB; every subscriber
+// gets a copy of each event.
+const maxPropertiesBytes = 1 << 20
+
+// readProperties reads a publish/trigger body: a JSON object of strings.
+func readProperties(ctx *echo.Context) (map[string]string, error) {
+	body, err := io.ReadAll(io.LimitReader(ctx.Request().Body, maxPropertiesBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > maxPropertiesBytes {
+		return nil, fmt.Errorf("properties too large (max %d bytes)", maxPropertiesBytes)
+	}
+	var properties map[string]string
+	if err := json.Unmarshal(body, &properties); err != nil {
+		return nil, errors.New("properties must be a JSON object of string values: " + err.Error())
+	}
+	for k := range properties {
+		if k == "" {
+			return nil, errors.New("empty property name")
+		}
+	}
+	return properties, nil
 }
 
 func (r *APIRoute) SubscribeEventWS(c *echo.Context, sourceID codegen.SourceID, params codegen.SubscribeEventWSParams) error {

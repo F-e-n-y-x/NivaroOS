@@ -21,8 +21,9 @@ func (s *ActionTypeService) GetActionTypes() ([]model.ActionType, error) {
 }
 
 func (s *ActionTypeService) RegisterActionType(actionType model.ActionType) (*model.ActionType, error) {
-	// TODO - ensure sourceID and name are URL safe
-
+	if err := ValidateType(actionType.SourceID, actionType.Name, actionType.PropertyTypeList); err != nil {
+		return nil, err
+	}
 	return (*s.repository).RegisterActionType(actionType)
 }
 

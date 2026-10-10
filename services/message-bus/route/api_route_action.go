@@ -12,6 +12,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/route/adapter/in"
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/route/adapter/out"
+	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/service"
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 	"github.com/labstack/echo/v5"
@@ -41,6 +42,11 @@ func (r *APIRoute) RegisterActionTypes(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: &message})
 	}
 
+	for _, t := range actionTypes {
+		if err := service.ValidateType(t.SourceID, t.Name, in.ActionTypeAdapter(t).PropertyTypeList); err != nil {
+			return c.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: utils.Ptr(err.Error())})
+		}
+	}
 	for _, actionType := range actionTypes {
 		_, err := r.services.ActionTypeService.RegisterActionType(in.ActionTypeAdapter(actionType))
 		if err != nil {
@@ -87,10 +93,9 @@ func (r *APIRoute) TriggerAction(c *echo.Context, sourceID codegen.SourceID, nam
 		return c.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: utils.Ptr("not found")})
 	}
 
-	var properties map[string]string
-	if err := c.Bind(&properties); err != nil {
-		message := err.Error()
-		return c.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: &message})
+	properties, err := readProperties(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: utils.Ptr(err.Error())})
 	}
 
 	action := in.ActionAdapter(codegen.Action{
