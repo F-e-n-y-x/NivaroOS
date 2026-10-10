@@ -10,7 +10,6 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/model"
-	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/config"
 	v2 "github.com/F-e-n-y-x/NivaroOS/services/app-management/route/v2"
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/service"
 	v1 "github.com/F-e-n-y-x/NivaroOS/services/app-management/service/v1"
@@ -694,7 +693,6 @@ func pullAndInstall(ctx context.Context, imageName string, m *model.Customizatio
 		return err
 	}
 
-	config.NivaroOSGlobalVariables.AppChange = true
 	return nil
 }
 
@@ -770,7 +768,6 @@ func uninstall(ctx context.Context, container *dockercontainer.InspectResponse, 
 			}
 		}
 	}
-	config.NivaroOSGlobalVariables.AppChange = true
 
 	return nil
 }

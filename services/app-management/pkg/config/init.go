@@ -37,8 +37,6 @@ var (
 	// Global is a map to inject environment variables to the app.
 	Global = make(map[string]string)
 
-	NivaroOSGlobalVariables = &model.NivaroOSGlobalVariables{}
-
 	Cfg               *ini.File
 	ConfigFilePath    string
 	GlobalEnvFilePath string

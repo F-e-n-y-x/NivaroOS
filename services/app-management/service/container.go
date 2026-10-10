@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,7 +20,6 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/model"
-	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/config"
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/docker"
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/utils/envHelper"
 	v1 "github.com/F-e-n-y-x/NivaroOS/services/app-management/service/v1"
@@ -40,9 +38,6 @@ import (
 )
 
 var (
-	dataStats = &sync.Map{}
-	isFinish  bool
-
 	NewVersionApp map[string]string // TODO - make use of NewVersionApp map
 )
 
@@ -79,107 +74,73 @@ type DockerService interface {
 
 type dockerService struct{}
 
-// FIXME - should use WebSocket or SocketIO instead of HTTP polling (tiger)
-func getContainerStats() {
-	cli, err := client2.New(client2.FromEnv)
-	if err != nil {
-		return
-	}
-	defer cli.Close()
-
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-
-	list, err := cli.ContainerList(context.Background(), client2.ContainerListOptions{All: true})
-	if err != nil {
-		logger.Error("Failed to get container_list", zap.Any("err", err))
-	}
-	containers := list.Items
-	for i := 0; i < 100; i++ {
-		if i%10 == 0 {
-			list, err = cli.ContainerList(context.Background(), client2.ContainerListOptions{All: true})
-			containers = list.Items
-			if err != nil {
-				logger.Error("Failed to get container_list", zap.Any("err", err))
-				continue
-			}
-		}
-		if config.NivaroOSGlobalVariables.AppChange {
-			config.NivaroOSGlobalVariables.AppChange = false
-			dataStats.Range(func(key, value interface{}) bool {
-				dataStats.Delete(key)
-				return true
-			})
-		}
-
-		var temp sync.Map
-		var wg sync.WaitGroup
-		for _, v := range containers {
-			if v.State != "running" {
-				continue
-			}
-			wg.Add(1)
-			go func(v container.Summary, i int) {
-				defer wg.Done()
-				stats, err := cli.ContainerStats(ctx, v.ID, client2.ContainerStatsOptions{})
-				if err != nil {
-					return
-				}
-				decoder := json.NewDecoder(stats.Body)
-
-				// data
-				var data interface{}
-				if err := decoder.Decode(&data); err == io.EOF {
-					return
-				}
-				m, _ := dataStats.Load(v.ID)
-				dockerStats := model.DockerStatsModel{}
-				if m != nil {
-					dockerStats.Previous = m.(model.DockerStatsModel).Data
-				}
-
-				// icon
-				if icon, ok := v.Labels[v1.V1LabelIcon]; ok {
-					dockerStats.Icon = icon
-				}
-
-				dockerStats.Data = data
-				dockerStats.Title = strings.ReplaceAll(v.Names[0], "/", "")
-
-				// @tiger - 不建议直接把依赖的数据结构封装返回。
-				//          如果依赖的数据结构有变化，应该在这里适配或者保存，这样更加对客户端负责
-				temp.Store(v.ID, dockerStats)
-				if i == 99 {
-					stats.Body.Close()
-				}
-			}(v, i)
-		}
-		wg.Wait()
-		dataStats = &temp
-		isFinish = true
-
-		time.Sleep(time.Second * 1)
-	}
-	isFinish = false
-	cancel()
+// statsCache: the dashboard's Cpu/Ram widgets poll /v1/container/usage
+// every second; requests within statsMaxAge share one round of reads.
+var statsCache struct {
+	sync.Mutex
+	at   time.Time
+	list []model.DockerStatsModel
+	prev map[string]any // container ID -> its previous sample, for the UI's deltas
 }
 
-func (ds *dockerService) GetContainerStats() []model.DockerStatsModel {
-	stream := true
-	for !isFinish {
-		if stream {
-			stream = false
-			go getContainerStats()
-		}
-		runtime.Gosched()
-	}
-	list := []model.DockerStatsModel{}
+const statsMaxAge = 900 * time.Millisecond
 
-	dataStats.Range(func(key, value interface{}) bool {
-		list = append(list, value.(model.DockerStatsModel))
-		return true
-	})
-	return list
+// GetContainerStats returns one Docker stats sample per running container
+// (one-shot: no 1 s pre-sample, no stream) plus the previous sample, which
+// is what the widgets compute CPU % from.
+func (ds *dockerService) GetContainerStats() []model.DockerStatsModel {
+	statsCache.Lock()
+	defer statsCache.Unlock()
+	if statsCache.list != nil && time.Since(statsCache.at) < statsMaxAge {
+		return statsCache.list
+	}
+
+	cli, err := client2.New(client2.FromEnv)
+	if err != nil {
+		return []model.DockerStatsModel{}
+	}
+	defer cli.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	list, err := cli.ContainerList(ctx, client2.ContainerListOptions{})
+	if err != nil {
+		logger.Error("Failed to get container_list", zap.Any("err", err))
+		return []model.DockerStatsModel{}
+	}
+	samples := make([]any, len(list.Items))
+	var wg sync.WaitGroup
+	for i, v := range list.Items {
+		wg.Go(func() {
+			stats, err := cli.ContainerStats(ctx, v.ID, client2.ContainerStatsOptions{})
+			if err != nil {
+				return
+			}
+			defer stats.Body.Close()
+			var data any
+			if json.NewDecoder(stats.Body).Decode(&data) == nil {
+				samples[i] = data
+			}
+		})
+	}
+	wg.Wait()
+
+	out := []model.DockerStatsModel{}
+	prev := make(map[string]any, len(list.Items))
+	for i, v := range list.Items {
+		if samples[i] == nil || len(v.Names) == 0 {
+			continue
+		}
+		prev[v.ID] = samples[i]
+		out = append(out, model.DockerStatsModel{
+			Icon:     v.Labels[v1.V1LabelIcon],
+			Title:    strings.TrimPrefix(v.Names[0], "/"),
+			Data:     samples[i],
+			Previous: statsCache.prev[v.ID],
+		})
+	}
+	statsCache.at, statsCache.list, statsCache.prev = time.Now(), out, prev
+	return out
 }
 
 func (ds *dockerService) CheckContainerHealth(id string) (bool, error) {

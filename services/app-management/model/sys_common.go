@@ -19,7 +19,3 @@ type ServerModel struct {
 type GlobalModel struct {
 	OpenAIAPIKey string
 }
-
-type NivaroOSGlobalVariables struct {
-	AppChange bool
-}
