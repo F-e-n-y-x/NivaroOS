@@ -28,6 +28,10 @@ IOSchedulingClass=best-effort
 IOSchedulingPriority=7
 MemoryHigh=3G
 MemoryMax=6G
+# Half the default CPU/disk share when contended, so interactive services
+# win (IOWeight needs BFQ or io.cost to have an effect).
+CPUWeight=50
+IOWeight=50
 # The service runs as root and reads every source and writes every
 # destination, so the whole filesystem is read-only to it except the
 # storage roots backups may use (the same list the engine enforces:

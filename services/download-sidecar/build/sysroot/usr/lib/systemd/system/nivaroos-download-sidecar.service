@@ -39,6 +39,14 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 # Root only for writing into users' folders on the shares.
 CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_CHOWN
 UMask=0022
+# Downloads are background work: half the default CPU/disk share under
+# contention. MemoryHigh guards against a runaway (once 5 GB, mostly page
+# cache of what it wrote); the kernel reclaims its own cache first, and
+# GOMEMLIMIT makes the Go GC work before that point. Idle it is ~100 MB.
+CPUWeight=50
+IOWeight=50
+MemoryHigh=1G
+Environment=GOMEMLIMIT=800MiB
 
 [Install]
 WantedBy=multi-user.target

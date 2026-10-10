@@ -51,3 +51,7 @@ CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_CHOWN
 UMask=0022
 Nice=5
 IOSchedulingClass=idle
+# Half the default share when the CPU or disk is contended, so interactive
+# services win (IOWeight needs BFQ or io.cost to have an effect).
+CPUWeight=50
+IOWeight=50
