@@ -3,9 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
-	json2 "encoding/json"
 	"net/http"
-	"time"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/common"
@@ -14,7 +12,6 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/syncmap"
 
-	"github.com/gorilla/websocket"
 	"gorm.io/gorm"
 )
 
@@ -111,68 +108,6 @@ func (i *notifyServer) DelLog(id string) {
 	i.db.Where("custom_id = ?", id).Delete(&log)
 }
 
-func SendMeg() {
-	// for {
-	// 	mt, message, err := ws.ReadMessage()
-	// 	if err != nil {
-	// 		break
-	// 	}
-	// 	notify := model.NotifyMssage{}
-	// 	json2.Unmarshal(message, &notify)
-	// 	if notify.Type == "read" {
-	// 		service.MyService.Notify().MarkRead(notify.Data, types.NOTIFY_READ)
-	// 	}
-	// 	if notify.Type == "app" {
-	//		go func(ws *websocket.Conn) {
-
-	for {
-		list := MyService.Notify().GetList(types.NOTIFY_APP)
-		json, _ := json2.Marshal(list)
-
-		if len(list) > 0 {
-			var temp []*websocket.Conn
-			for _, v := range WebSocketConns {
-
-				err := v.WriteMessage(1, json)
-				if err == nil {
-					temp = append(temp, v)
-				}
-			}
-			WebSocketConns = temp
-			for _, v := range list {
-				MyService.Notify().MarkRead(v.Id, types.NOTIFY_READ)
-			}
-		}
-
-		if len(WebSocketConns) == 0 {
-			SocketRun = false
-		}
-		time.Sleep(time.Second * 2)
-	}
-	// 	}(ws)
-	// }
-	//	}
-}
-
-// func (i notifyServer) SendText(m model.AppNotify) {
-// 	list := []model.AppNotify{}
-// 	list = append(list, m)
-// 	json, _ := json2.Marshal(list)
-// 	var temp []*websocket.Conn
-// 	for _, v := range WebSocketConns {
-
-// 		err := v.WriteMessage(1, json)
-// 		if err == nil {
-// 			temp = append(temp, v)
-// 		}
-// 	}
-// 	WebSocketConns = temp
-
-// 	if len(WebSocketConns) == 0 {
-// 		SocketRun = false
-// 	}
-
-// }
 func (i *notifyServer) GetSystemTempMap() *syncmap.Map {
 	return i.SystemTempMap
 }

@@ -153,6 +153,7 @@ func monitorUEvent(ctx context.Context) {
 				switch uevent.Env["ID_BUS"] {
 				case "usb":
 					time.Sleep(1 * time.Second)
+					service.MyService.Disk().RemoveLSBLKCache()
 					sendUSBBySocket()
 					continue
 				}
