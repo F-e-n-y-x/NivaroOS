@@ -70,6 +70,7 @@ Settings → Cloud → the account → **Reconnect** → **rclone's app** → si
 
 ## Troubleshooting
 
+- **"has not completed the Google verification process" / `Error 403: access_denied` (Google):** the app is still in *Testing* and your account isn't a test user. Go to **Audience → Publish app** (or add your address under **Test users**), then sign in again.
 - **`redirect_uri_mismatch` (Google):** the client isn't a **Desktop app**. Create a Desktop client and use that one.
 - **Signed out again after a week (Google):** the app is still in *Testing*. Publish it (step 1.4.3), then reconnect.
 - **`invalid_client`:** the ID or secret was pasted with a missing character. Copy both again.
