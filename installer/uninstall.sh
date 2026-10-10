@@ -320,6 +320,10 @@ remove_units() {
 		/etc/modules-load.d/nivaroos-fans.conf /etc/avahi/services/nivaroos.service \
 		/etc/systemd/system/docker.service.d/override.conf
 	rm -rf /etc/systemd/system/nivaroos*
+	if [ -f /etc/systemd/journald.conf.d/50-nivaroos.conf ]; then
+		rm -f /etc/systemd/journald.conf.d/50-nivaroos.conf
+		systemctl restart systemd-journald >/dev/null 2>&1 || true
+	fi
 	systemctl daemon-reload
 	udevadm control --reload-rules >/dev/null 2>&1 || true
 	systemctl reload avahi-daemon >/dev/null 2>&1 || true

@@ -44,6 +44,8 @@ OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"
 # read). Bump GO_VERSION whenever a go.mod needs a newer release.
 GO_VERSION="1.27.2"
 GO_MIN_VERSION="1.26.0"
+# Every service build: no symbol table / DWARF, no build paths (~30% smaller binaries).
+export GOFLAGS='-trimpath "-ldflags=-s -w"'
 MIN_RECOMMENDED_MEMORY_MB="1024"
 MIN_REQUIRED_MEMORY_MB="384"
 # Building from source needs room for the Go toolchain and module cache,
@@ -288,9 +290,18 @@ net_ok() {
 casaos_installed() {
 	local d
 	for d in /etc/systemd/system /usr/lib/systemd/system /lib/systemd/system; do
-		[ -f "$d/casaos.service" ] && return 0
+		[ -f "$d/casaos.service" ] && ! casaos_leftover && return 0
 	done
 	return 1
+}
+
+# casaos_leftover - CasaOS units left behind by a CasaOS -> NivaroOS move:
+# NivaroOS is installed and casaos.service is neither enabled nor running.
+# remove_leftovers deletes them; they don't block an update.
+casaos_leftover() {
+	[ -x "${NV_ROOT:-}/usr/bin/nivaroos" ] &&
+		! systemctl is-enabled --quiet casaos.service 2>/dev/null &&
+		! systemctl is-active --quiet casaos.service 2>/dev/null
 }
 
 # preflight checks everything up front and lists the result, so a box that
@@ -1813,7 +1824,11 @@ install_ui() {
 				rm -rf /var/lib/nivaroos/www.prev.tmp
 				cp -a /var/lib/nivaroos/www /var/lib/nivaroos/www.prev.tmp && rm -rf /var/lib/nivaroos/www.prev && mv /var/lib/nivaroos/www.prev.tmp /var/lib/nivaroos/www.prev || true
 			fi
-			cp -rf \"\$ui_source_dir\"/* /var/lib/nivaroos/www/
+			# Replaced as a whole (as nivaroos-deploy --www does): copying over
+			# the old one kept every earlier build's hashed files.
+			rm -rf /var/lib/nivaroos/www.new
+			cp -a \"\$ui_source_dir\" /var/lib/nivaroos/www.new || exit 1
+			rm -rf /var/lib/nivaroos/www && mv /var/lib/nivaroos/www.new /var/lib/nivaroos/www || exit 1
 		elif [ -f /var/lib/nivaroos/www/index.html ]; then
 			echo 'Preserving existing installed web dashboard in /var/lib/nivaroos/www.'
 		else
@@ -1957,6 +1972,16 @@ install_safety_net() {
 		systemctl daemon-reload
 		systemctl enable --now nivaroos-watchdog.timer >/dev/null 2>&1 || true
 
+		# Journal size cap (journald's default is 10% of the disk, up to 4 GB).
+		if [ -d /run/systemd/system ]; then
+			mkdir -p /etc/systemd/journald.conf.d
+			if ! cmp -s \"${SRC_DIR}/installer/systemd/50-nivaroos-journald.conf\" /etc/systemd/journald.conf.d/50-nivaroos.conf; then
+				install -m 644 \"${SRC_DIR}/installer/systemd/50-nivaroos-journald.conf\" /etc/systemd/journald.conf.d/50-nivaroos.conf
+				systemctl restart systemd-journald >/dev/null 2>&1 || true
+			fi
+			journalctl --vacuum-size=1G >/dev/null 2>&1 || true
+		fi
+
 		# Tailscale is how this box is reached from outside the LAN: make
 		# sure it comes back after a reboot.
 		if systemctl list-unit-files tailscaled.service >/dev/null 2>&1 && [ -x \"\$(command -v tailscaled 2>/dev/null)\" ]; then
@@ -2080,6 +2105,34 @@ print_summary() {
 }
 
 # ------------------------------------------------------------------------------
+# Leftovers of older versions that nothing uses any more (NV_ROOT: tests).
+#   /var/lib/casaos/www   CasaOS-era dashboard builds; the gateway serves
+#                         /var/lib/nivaroos/www (the rest of /var/lib/casaos
+#                         - db, apps, appstore, vms - is still in use)
+#   /usr/bin/casaos-*     CasaOS binaries and units, only once NivaroOS is
+#                         installed and CasaOS is disabled and stopped
+#                         (casaos-cli is NivaroOS's own symlink and stays)
+#   /usr/bin/*.bak*       hand-made copies; rollback only uses <binary>.prev
+#   *.bad.<ts>            bad builds the watchdog rolled away, after 7 days
+#   nivaroos-user-service the user service binary's old name (now nivaroos-user)
+# ------------------------------------------------------------------------------
+remove_leftovers_now() {
+	local r="${NV_ROOT:-}"
+	[ -f "$r/var/lib/nivaroos/www/index.html" ] && rm -rf "$r/var/lib/casaos/www"
+	if casaos_leftover; then
+		rm -f "$r/usr/bin/casaos" "$r"/usr/bin/casaos-{app-management,gateway,gpu-sidecar,local-storage,message-bus,user-service,vm-sidecar,uninstall} \
+			"$r"/usr/lib/systemd/system/casaos.service "$r"/usr/lib/systemd/system/casaos-*.service "$r"/usr/lib/systemd/system/casaos-*.service.buildroot
+		[ -n "$r" ] || systemctl daemon-reload >/dev/null 2>&1 || true
+	fi
+	rm -f "$r"/usr/bin/nivaroos*.bak* "$r"/usr/bin/casaos*.bak* "$r/usr/bin/nivaroos-user-service"
+	find "$r/usr/bin" -maxdepth 1 -name 'nivaroos*.bad.*' -mtime +7 -delete 2>/dev/null || true
+}
+
+remove_leftovers() {
+	run_step "Removing leftovers of older versions" "remove_leftovers_now"
+}
+
+# ------------------------------------------------------------------------------
 # Main
 # ------------------------------------------------------------------------------
 # plan_steps prints the step functions this run will call, in order. The
@@ -2090,7 +2143,7 @@ plan_steps() {
 	[ "$WITH_HOST_DESKTOP" = "yes" ] && echo install_host_desktop
 	[ "$WITH_DOWNLOAD_STATION" = "yes" ] && echo install_download_station
 	[ "$WITH_BACKUP" = "yes" ] && echo install_backup
-	echo install_ui start_core_services verify_health install_uninstall_wrapper install_safety_net install_mdns_advertisement
+	echo install_ui start_core_services verify_health install_uninstall_wrapper install_safety_net install_mdns_advertisement remove_leftovers
 }
 
 main() {
