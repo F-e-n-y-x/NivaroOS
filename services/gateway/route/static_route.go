@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"mime"
 	"net/http"
 	"os"
+	"path"
+	"regexp"
 	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/gateway/service"
@@ -89,23 +92,87 @@ type CustomFileInfo struct {
 	fs.FileInfo
 }
 
-func (s *StaticRoute) GetRoute() http.Handler {
-	e := echo.New()
+// hashedName: a build output with a content hash in its name
+// (app.87b43194.js, js/x.ec5a2b53.js, img/logo.569eeabe.png) - its content
+// never changes under that name.
+var hashedName = regexp.MustCompile(`\.[0-9a-f]{8}\.[A-Za-z0-9]+$`)
 
-	e.Use(echo_middleware.Gzip())
+func cacheControl(urlPath string) string {
+	if hashedName.MatchString(urlPath) {
+		return "public, max-age=31536000, immutable"
+	}
+	if urlPath == "" || urlPath == "/" || strings.HasSuffix(urlPath, ".html") {
+		return "no-cache, no-store, must-revalidate"
+	}
+	return "no-cache"
+}
 
-	// Prevent browser from permanently caching index.html so changes are immediately visible
-	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+// precompressed serves <file>.br / <file>.gz written at build time (see
+// ui/vite.config.mjs) to clients that accept them, so the gzip middleware
+// doesn't recompress the same bytes on every request.
+func precompressed(root fs.FS) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
-			path := c.Request().URL.Path
-			if path == "" || path == "/" || path == "/index.html" || strings.HasSuffix(path, ".html") {
-				c.Response().Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-				c.Response().Header().Set("Pragma", "no-cache")
-				c.Response().Header().Set("Expires", "0")
+			r := c.Request()
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				return next(c)
+			}
+			name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+			if name == "" {
+				name = "index.html"
+			}
+			accept := r.Header.Get("Accept-Encoding")
+			for _, enc := range []struct{ token, ext string }{{"br", ".br"}, {"gzip", ".gz"}} {
+				if !strings.Contains(accept, enc.token) {
+					continue
+				}
+				f, err := root.Open(name + enc.ext)
+				if err != nil {
+					continue
+				}
+				defer f.Close()
+				info, err := f.Stat()
+				rs, ok := f.(io.ReadSeeker)
+				if err != nil || info.IsDir() || !ok {
+					continue
+				}
+				h := c.Response().Header()
+				h.Set("Content-Encoding", enc.token)
+				h.Add("Vary", "Accept-Encoding")
+				if ct := mime.TypeByExtension(path.Ext(name)); ct != "" {
+					h.Set("Content-Type", ct)
+				}
+				http.ServeContent(c.Response(), r, name, info.ModTime(), rs)
+				return nil
 			}
 			return next(c)
 		}
+	}
+}
+
+func (s *StaticRoute) GetRoute() http.Handler {
+	e := echo.New()
+
+	// Hashed build files are cached for good; index.html is never cached
+	// (utils/updateWatcher.js reads it to spot a new build); everything
+	// else revalidates. A failed request (404) gets no cache header.
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			h := c.Response().Header()
+			h.Set("Cache-Control", cacheControl(c.Request().URL.Path))
+			if strings.HasPrefix(h.Get("Cache-Control"), "no-cache, no-store") {
+				h.Set("Pragma", "no-cache")
+				h.Set("Expires", "0")
+			}
+			err := next(c)
+			if err != nil {
+				h.Del("Cache-Control")
+			}
+			return err
+		}
 	})
+	e.Use(precompressed(os.DirFS(s.state.GetWWWPath())))
+	e.Use(echo_middleware.Gzip())
 
 	e.StaticFS("/", NewCustomFS(s.state.GetWWWPath()))
 	return e

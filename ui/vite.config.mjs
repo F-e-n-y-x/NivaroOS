@@ -1,4 +1,7 @@
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { isBuiltin } from 'node:module'
+import { join, resolve } from 'node:path'
+import { brotliCompressSync, gzipSync } from 'node:zlib'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
@@ -31,6 +34,30 @@ const requireBrowserBuiltins = {
 	},
 }
 
+// Writes <file>.br and <file>.gz next to every text asset of the build; the
+// gateway (services/gateway/route/static_route.go) serves them as-is instead
+// of gzipping each response. Kept only where smaller.
+let precompressDir
+const precompress = {
+	name: 'precompress',
+	apply: 'build',
+	configResolved(c) {
+		precompressDir = resolve(c.root, c.build.outDir)
+	},
+	closeBundle() {
+		const dir = precompressDir
+		for (const e of readdirSync(dir, { recursive: true, withFileTypes: true })) {
+			if (!e.isFile() || !/\.(js|mjs|css|html|svg|json|webmanifest|xml|txt|ttf|eot|ico)$/.test(e.name)) continue
+			const file = join(e.parentPath, e.name)
+			const src = readFileSync(file)
+			if (src.length < 1024) continue
+			for (const [ext, out] of [['.br', brotliCompressSync(src)], ['.gz', gzipSync(src, { level: 9 })]]) {
+				if (out.length < src.length) writeFileSync(file + ext, out)
+			}
+		}
+	},
+}
+
 export default defineConfig(({ mode }) => {
 	// .env.dev: where `pnpm dev` proxies the API to.
 	const env = loadEnv(mode, process.cwd(), 'VUE_APP_')
@@ -40,7 +67,7 @@ export default defineConfig(({ mode }) => {
 		base: process.env.NVOS_PUBLIC_PATH || '/',
 		// Only VUE_APP_* values reach the bundle (import.meta.env).
 		envPrefix: 'VUE_APP_',
-		plugins: [requireBrowserBuiltins, vue(), stripCssBom],
+		plugins: [requireBrowserBuiltins, vue(), stripCssBom, precompress],
 		resolve: {
 			alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
 			extensions: ['.mjs', '.js', '.json', '.vue'],
