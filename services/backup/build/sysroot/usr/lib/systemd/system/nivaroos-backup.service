@@ -22,7 +22,8 @@ TimeoutStopSec=120
 # of RAM, 512 MiB to 2 GiB). Fixed sizes, not % of RAM: past the heap it
 # is page cache from the files it reads, and at 40 % one Gallery run held
 # 12 GB of it and pushed every other app into swap. MemoryHigh makes the
-# kernel drop the backup's own clean cache first.
+# kernel drop the backup's own clean cache first. On a box under ~8 GB the
+# installer lowers both to 40 %/60 % of RAM (drop-in 20-nivaroos-memory.conf).
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7

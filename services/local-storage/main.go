@@ -170,10 +170,10 @@ func main() {
 	go ntfsperm.Run(ctx, "/var/lib/nivaroos/ntfsperm-repaired.json", func(f string, a ...any) { logger.Info(fmt.Sprintf(f, a...)) })
 	service.StartVFSStatusWriter(ctx)
 
-	sendStorageStats()
+	service.SendStorageStats()
 
 	crontab := cron.New(cron.WithSeconds())
-	if _, err := crontab.AddFunc("@every 5s", sendStorageStats); err != nil {
+	if _, err := crontab.AddFunc("@every 5s", service.SendStorageStats); err != nil {
 		logger.Error("crontab add func error", zap.Error(err))
 	}
 

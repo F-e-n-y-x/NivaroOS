@@ -10,5 +10,7 @@ ExecStart=/usr/local/lib/nivaroos/nivaroos-watchdog
 TimeoutStartSec=5min
 Nice=5
 # Only the watchdog's own notices (restarts, rollbacks) - not systemd's
-# Starting/Finished lines every 2 minutes.
+# Starting/Finished lines every 2 minutes. The script's own stdout/stderr
+# (a bash error when it dies) is tagged warning, so it still gets through.
 LogLevelMax=notice
+SyslogLevel=warning

@@ -255,6 +255,36 @@ mem_mb() {
 	awk '/MemTotal:/ { print int($2/1024) }' /proc/meminfo 2>/dev/null || echo 0
 }
 
+# backup_memory_dropin - the Backup & Sync unit's memory ceiling for this
+# box: its fixed 3G/6G, or 40 %/60 % of RAM where that is lower (on a 2-4 GB
+# box the fixed sizes are above the RAM and never apply). Prints nothing
+# when RAM is unknown, which keeps the unit's own values.
+backup_memory_dropin() {
+	local mb high max
+	mb="$(mem_mb)"
+	[ "${mb:-0}" -gt 0 ] 2>/dev/null || return 0
+	high=$((mb * 40 / 100)) max=$((mb * 60 / 100))
+	[ "$high" -le 3072 ] || high=3072
+	[ "$max" -le 6144 ] || max=6144
+	printf '# Installed by NivaroOS: min(3G, 40%% of RAM), min(6G, 60%% of RAM).\n[Service]\nMemoryHigh=%dM\nMemoryMax=%dM\n' "$high" "$max"
+}
+
+# journald_cap_wanted - whether to install the 1 GB journal cap
+# (50-nivaroos.conf). Not when the admin set SystemMaxUse= anywhere else
+# (a drop-in would override it), and not on a journal filesystem under
+# 10 GB, where journald's own 10 % default is already lower.
+journald_cap_wanted() {
+	local r="${NV_ROOT:-}" f dir mb
+	for f in "$r"/etc/systemd/journald.conf "$r"/etc/systemd/journald.conf.d/*.conf \
+		"$r"/run/systemd/journald.conf.d/*.conf "$r"/usr/lib/systemd/journald.conf.d/*.conf; do
+		[ "${f##*/}" != 50-nivaroos.conf ] && grep -qsE '^[[:space:]]*SystemMaxUse[[:space:]]*=' "$f" && return 1
+	done
+	dir="$r/var/log/journal"
+	[ -d "$dir" ] || dir="$r/var/log"
+	mb="$(LC_ALL=C df -Pk "$dir" 2>/dev/null | awk 'NR==2 { print int($2/1024) }')"
+	[ "${mb:-0}" -ge 10240 ] 2>/dev/null
+}
+
 disk_free_gb() {
 	LC_ALL=C df -Pk / 2>/dev/null | awk 'NR==2 { print int($4/1024/1024) }'
 }
@@ -1513,6 +1543,16 @@ install_backup() {
 		cp -f \"${SRC_DIR}/services/backup/build/sysroot/usr/lib/systemd/system/nivaroos-backup.service\" /usr/lib/systemd/system/nivaroos-backup.service
 		echo '/usr/lib/systemd/system/nivaroos-backup.service' >> \"$MANIFEST_FILE\"
 
+		# Memory ceiling sized to this box (see backup_memory_dropin).
+		mem_dropin=/etc/systemd/system/nivaroos-backup.service.d/20-nivaroos-memory.conf
+		mem_conf=\"\$(backup_memory_dropin)\"
+		if [ -n \"\$mem_conf\" ]; then
+			mkdir -p \"\${mem_dropin%/*}\"
+			printf '%s\\n' \"\$mem_conf\" > \"\$mem_dropin\"
+		else
+			rm -f \"\$mem_dropin\"
+		fi
+
 		systemctl daemon-reload >/dev/null 2>&1 || true
 		systemctl enable --now nivaroos-backup >/dev/null 2>&1 || true
 	"
@@ -1647,7 +1687,8 @@ remove_backup_module() {
 		warn "Could not hand every Scheduled Task back from Backup & Sync (is core running?). They stay disabled in Scheduled Tasks; enable them there."
 	fi
 	systemctl disable nivaroos-backup.service >/dev/null 2>&1 || true
-	rm -f /usr/bin/nivaroos-backup /usr/lib/systemd/system/nivaroos-backup.service
+	rm -f /usr/bin/nivaroos-backup /usr/lib/systemd/system/nivaroos-backup.service \
+		/etc/systemd/system/nivaroos-backup.service.d/20-nivaroos-memory.conf
 	systemctl daemon-reload >/dev/null 2>&1 || true
 	success "Backup & Sync removed."
 }
@@ -1972,14 +2013,21 @@ install_safety_net() {
 		systemctl daemon-reload
 		systemctl enable --now nivaroos-watchdog.timer >/dev/null 2>&1 || true
 
-		# Journal size cap (journald's default is 10% of the disk, up to 4 GB).
+		# Journal size cap (journald's default is 10% of the disk, up to 4 GB),
+		# unless the admin set their own or the disk is small enough that the
+		# default is lower (journald_cap_wanted); then ours goes.
 		if [ -d /run/systemd/system ]; then
-			mkdir -p /etc/systemd/journald.conf.d
-			if ! cmp -s \"${SRC_DIR}/installer/systemd/50-nivaroos-journald.conf\" /etc/systemd/journald.conf.d/50-nivaroos.conf; then
-				install -m 644 \"${SRC_DIR}/installer/systemd/50-nivaroos-journald.conf\" /etc/systemd/journald.conf.d/50-nivaroos.conf
+			if journald_cap_wanted; then
+				mkdir -p /etc/systemd/journald.conf.d
+				if ! cmp -s \"${SRC_DIR}/installer/systemd/50-nivaroos-journald.conf\" /etc/systemd/journald.conf.d/50-nivaroos.conf; then
+					install -m 644 \"${SRC_DIR}/installer/systemd/50-nivaroos-journald.conf\" /etc/systemd/journald.conf.d/50-nivaroos.conf
+					systemctl restart systemd-journald >/dev/null 2>&1 || true
+				fi
+				journalctl --vacuum-size=1G >/dev/null 2>&1 || true
+			elif [ -f /etc/systemd/journald.conf.d/50-nivaroos.conf ]; then
+				rm -f /etc/systemd/journald.conf.d/50-nivaroos.conf
 				systemctl restart systemd-journald >/dev/null 2>&1 || true
 			fi
-			journalctl --vacuum-size=1G >/dev/null 2>&1 || true
 		fi
 
 		# Tailscale is how this box is reached from outside the LAN: make

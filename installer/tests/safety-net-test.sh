@@ -346,6 +346,11 @@ out="$(NIVAROOS_USER_BIN="$T/fake-user" NIVAROOS_USER_CONF="$T/user.conf" NIVARO
 rc=$?
 check '[ $rc -ne 0 ] && printf "%s" "$out" | grep -q "User:owner"' "unknown user fails and lists users"
 
+# The watchdog unit hides systemd's info lines, but not the script's own
+# stderr (a crash must leave its reason in the journal).
+wd="$HERE/systemd/nivaroos-watchdog.service"
+check 'grep -qx "LogLevelMax=notice" "$wd" && grep -qx "SyslogLevel=warning" "$wd"' "watchdog stderr is logged above LogLevelMax"
+
 echo
 echo "passed: $PASS  failed: $FAIL"
 [ "$FAIL" -eq 0 ]

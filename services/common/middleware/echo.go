@@ -54,10 +54,11 @@ const slowRequest = time.Second
 // quietRequest: a fast, successful request straight from another process on
 // this host (service-to-service calls, nivaroos-cli) - no proxy or browser
 // headers, so nothing the gateway relayed. Those were ~95% of all journal
-// lines (backup progress events, local-storage status pushes).
+// lines (backup progress events, local-storage status pushes). Under a
+// userspace tailscaled tailnet peers also arrive from loopback, so then
+// every request is logged (IsDirectLocalAutomation).
 func quietRequest(r *http.Request, v echo_middleware.RequestLoggerValues) bool {
-	return v.Error == nil && v.Status < 400 && v.Latency < slowRequest &&
-		IsLoopbackAddr(r.RemoteAddr) && !hasProxyMarks(r) && !hasBrowserMarks(r)
+	return v.Error == nil && v.Status < 400 && v.Latency < slowRequest && IsDirectLocalAutomation(r)
 }
 
 // RequestLogger writes one JSON line per request to stdout (the journal),

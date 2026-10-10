@@ -54,6 +54,7 @@ func TestCorsAndErrorShape(t *testing.T) {
 }
 
 func TestQuietRequest(t *testing.T) {
+	withProc(t, fakeProc(t))
 	ok := echo_middleware.RequestLoggerValues{Status: 200, Latency: time.Millisecond}
 	req := func(remote string, hdr ...string) *http.Request {
 		r := httptest.NewRequest(http.MethodPost, "/v1/x", nil)
@@ -86,5 +87,16 @@ func TestQuietRequest(t *testing.T) {
 		if got := quietRequest(c.r, c.v); got != c.want {
 			t.Errorf("%s: quiet=%v, want %v", name, got, c.want)
 		}
+	}
+}
+
+// A userspace tailscaled re-dials tailnet peers from 127.0.0.1: their
+// requests must reach the access log.
+func TestQuietRequestUserspaceTailscale(t *testing.T) {
+	withProc(t, fakeProc(t, fakeProcess{pid: "7", comm: "tailscaled", args: []string{"tailscaled", "--tun=userspace-networking"}}))
+	r := httptest.NewRequest(http.MethodGet, "/v1/x", nil)
+	r.RemoteAddr = "127.0.0.1:5000"
+	if quietRequest(r, echo_middleware.RequestLoggerValues{Status: 200, Latency: time.Millisecond}) {
+		t.Fatal("loopback request under userspace tailscaled was not logged")
 	}
 }

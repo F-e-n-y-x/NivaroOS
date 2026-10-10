@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -966,15 +965,11 @@ func (d *diskService) CheckSerialDiskMount() {
 	}
 }
 
-// GetUSBDriveStatusList runs lsblk afresh only while a USB drive is
-// attached (its mount and free space change); with none, the cached list
-// does - a USB uevent drops the cache (monitorUEvent), so a new drive still
-// shows up. Saves an lsblk every 5 s on boxes without USB drives.
+// GetUSBDriveStatusList reads the cached lsblk list: the status tick
+// refreshes it every 5 s (sendStorageStats) and a USB partition uevent
+// drops it at once (monitorUEvent).
 func (d *diskService) GetUSBDriveStatusList() []model.USBDriveStatus {
 	blockList := d.LSBLK(true)
-	if slices.ContainsFunc(blockList, func(b model.LSBLKModel) bool { return b.Tran == "usb" }) {
-		blockList = d.LSBLK(false)
-	}
 	statusList := []model.USBDriveStatus{}
 	for _, v := range blockList {
 		if v.Tran != "usb" {
