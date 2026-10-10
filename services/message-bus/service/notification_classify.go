@@ -37,7 +37,8 @@ import (
 //     app:install-end / -error, app:uninstall-end / -error,
 //     app:update-end (only when the image really changed) / -error, and
 //     the failures app:apply-changes-error, app:start-error,
-//     app:stop-error, app:restart-error.
+//     app:stop-error, app:restart-error. Their action is
+//     {"target":"app","props":{"name":<app:name>}} (not for an uninstall).
 //     Not persisted: *-begin and *-progress (live progress), the
 //     successful start/stop/restart/apply-changes and "already up to date"
 //     (instant feedback to the click that caused them), app-store and
@@ -74,7 +75,8 @@ const (
 
 // notifySources are the sources whose ":notify" events are stored. Add a
 // service here when it starts raising notifications (the Download Station
-// sidecar is expected to publish as nivaroos-download).
+// sidecar publishes nivaroos-download:download:notify, with the action
+// {"target":"download","props":{"kind":"download"|"torrent","id":..}}).
 var notifySources = map[string]bool{
 	"nivaroos-backup":   true,
 	"nivaroos":          true, // core
@@ -162,6 +164,10 @@ func ClassifyNotification(event model.Event) (model.Notification, bool) {
 			Key:      o.key,
 			Args:     mustJSON(args),
 			Icon:     appIcon(p["app:icon"]),
+		}
+		// Opening it shows the app - unless it is gone.
+		if name := strings.TrimSpace(p["app:name"]); name != "" && event.Name != "app:uninstall-end" {
+			n.Action = mustJSON(map[string]interface{}{"target": "app", "props": map[string]string{"name": name}})
 		}
 
 	case event.SourceID == "local-storage" && (event.Name == "local-storage:storage-job:end" || event.Name == "local-storage:storage-job:error"):

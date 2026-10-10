@@ -68,6 +68,7 @@ func TestClassifyNotification(t *testing.T) {
 				SourceID: "app-management", EventName: "app:install-end", Category: "app", Level: "success",
 				Title: "App installed", Message: "Immich", Key: "notify.app.installed",
 				Args: `{"app":"Immich","app_title":"{\"en_us\":\"Immich\"}"}`, Icon: "https://i/icon.png",
+				Action: `{"props":{"name":"immich"},"target":"app"}`,
 			},
 		},
 		{
@@ -79,6 +80,7 @@ func TestClassifyNotification(t *testing.T) {
 				SourceID: "app-management", EventName: "app:install-error", Category: "app", Level: "error",
 				Title: "App installation failed", Message: "immich: port 2283 in use", Key: "notify.app.install_failed",
 				Args: `{"app":"immich","error":"port 2283 in use"}`,
+				Action: `{"props":{"name":"immich"},"target":"app"}`,
 			},
 		},
 		{

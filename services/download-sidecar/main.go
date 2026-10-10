@@ -55,6 +55,7 @@ func main() {
 	history := NewHistory(*dataDir)
 	rb := newRBClient(*browserSocket, *browserStaging, adblock, settings)
 	torrents := NewTorrents(*dataDir, settings, transport, manager.events)
+	manager.events.notify = busNotifier(*runtimePath)
 
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, manager, settings, adblock, browser, history)

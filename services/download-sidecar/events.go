@@ -16,6 +16,8 @@ type Event struct {
 	Path     string    `json:"path,omitempty"`
 	Message  string    `json:"message,omitempty"`
 	Time     time.Time `json:"time"`
+	// Torrent: ID is a torrent's info hash, not a download's id.
+	Torrent bool `json:"torrent,omitempty"`
 }
 
 type eventLog struct {
@@ -29,6 +31,9 @@ type eventLog struct {
 	seq    int64
 	events []Event
 	max    int
+	// notify, when set, also gets every event (the notification feed,
+	// busnotify.go). It must not block.
+	notify func(Event)
 }
 
 func newEventLog(max int) *eventLog { return &eventLog{max: max, epoch: newID()} }
@@ -44,6 +49,9 @@ func (l *eventLog) Push(e Event) {
 	l.events = append(l.events, e)
 	if len(l.events) > l.max {
 		l.events = l.events[len(l.events)-l.max:]
+	}
+	if l.notify != nil {
+		l.notify(e)
 	}
 }
 

@@ -685,7 +685,7 @@ func (t *Torrents) remember(list []TorrentInfo) {
 	t.cache = list
 	t.mu.Unlock()
 	for _, c := range done {
-		t.events.Push(Event{Kind: "completed", ID: c.Hash, Filename: c.Name, Path: c.Dir})
+		t.events.Push(Event{Kind: "completed", ID: c.Hash, Filename: c.Name, Path: c.Dir, Torrent: true})
 	}
 	if changed {
 		if err := writeJSONAtomic(t.path("torrents-cache.json"), list); err != nil {
