@@ -36,9 +36,9 @@ enum RfbStatus {
 /// tests pass one that talks to an in-memory RFB server.
 typedef RfbChannelFactory = Future<WebSocketChannel> Function(Uri uri, Map<String, String> headers);
 
-/// A minimal RFB (VNC) client over the sidecar's console WebSocket: raw and
-/// copy-rect frames, pointer and keys, and the clipboard - both the plain
-/// Latin-1 cut text and QEMU's Extended Clipboard (UTF-8, zlib), which it
+/// A minimal RFB (VNC) client over the sidecar's console WebSocket: Tight,
+/// ZRLE, Zlib, raw and copy-rect frames, pointer and keys, and the
+/// clipboard - both the plain Latin-1 cut text and QEMU's Extended Clipboard (UTF-8, zlib), which it
 /// offers when the VM has the qemu-vdagent channel.
 ///
 /// One class for both consoles: a [vmName] targets that VM
@@ -86,6 +86,21 @@ class RfbClient {
   int maxFps = 0;
   final Stopwatch _sinceRequest = Stopwatch()..start();
 
+  /// Tight JPEG quality 0-9 to ask for, or null for lossless only (the
+  /// server's default). Lower is fewer bytes on a slow link; changing it
+  /// mid-session tells the server at once.
+  int? get jpegQuality => _jpegQuality;
+  int? _jpegQuality;
+  set jpegQuality(int? q) {
+    if (q == _jpegQuality) return;
+    _jpegQuality = q;
+    if (isConnected) _setEncodings();
+  }
+
+  /// The decoded screen, RGBA. For tests.
+  @visibleForTesting
+  Uint8List? get pixels => _framebuffer;
+
   /// The server offered the Extended Clipboard (UTF-8 copy and paste).
   bool get extendedClipboard => _serverCaps != 0;
 
@@ -93,6 +108,12 @@ class RfbClient {
   StreamSubscription<dynamic>? _sub;
   _ByteQueue _reader = _ByteQueue();
   Uint8List? _framebuffer;
+
+  // One zlib stream per connection for Zlib and ZRLE, four for Tight: the
+  // server keeps its dictionary across rectangles, so must we.
+  _Inflater _zlib = _Inflater();
+  _Inflater _zrle = _Inflater();
+  List<_Inflater> _tightZ = List.generate(4, (_) => _Inflater());
   int _generation = 0;
   bool _disposed = false;
   bool _publishing = false;
@@ -105,7 +126,12 @@ class RfbClient {
 
   static const _encodingRaw = 0;
   static const _encodingCopyRect = 1;
+  static const _encodingZlib = 6;
+  static const _encodingTight = 7;
+  static const _encodingZrle = 16;
   static const _encodingDesktopSize = -223;
+  static const _encodingQuality0 = -32;
+  static const _encodingCompress0 = -256;
 
   /// 0xC0A1E5CE as a signed 32-bit number.
   static const encodingExtendedClipboard = -1063131698;
@@ -130,6 +156,9 @@ class RfbClient {
     _teardown();
     _reader = _ByteQueue();
     _serverCaps = 0;
+    _zlib = _Inflater();
+    _zrle = _Inflater();
+    _tightZ = List.generate(4, (_) => _Inflater());
     error.value = null;
     status.value = RfbStatus.connecting;
 
@@ -283,8 +312,21 @@ class RfbClient {
     _write(msg);
   }
 
+  // Preferred first: the server picks the first it supports, Raw always
+  // works. Data saver (quality <= 3) also asks for the strongest zlib.
   void _setEncodings() {
-    const encodings = [_encodingCopyRect, _encodingRaw, _encodingDesktopSize, encodingExtendedClipboard];
+    final q = _jpegQuality?.clamp(0, 9);
+    final encodings = [
+      _encodingCopyRect,
+      _encodingTight,
+      _encodingZrle,
+      _encodingZlib,
+      _encodingRaw,
+      _encodingDesktopSize,
+      encodingExtendedClipboard,
+      if (q != null) _encodingQuality0 + q,
+      if (q != null && q <= 3) _encodingCompress0 + 9,
+    ];
     final msg = ByteData(4 + encodings.length * 4)
       ..setUint8(0, 2)
       ..setUint16(2, encodings.length);
@@ -508,6 +550,26 @@ class RfbClient {
         case _encodingCopyRect:
           final src = await _reader.read(4);
           _copyRect(rx, ry, rw, rh, (src[0] << 8) | src[1], (src[2] << 8) | src[3]);
+        case _encodingZlib || _encodingZrle || _encodingTight:
+          if (rx + rw > width || ry + rh > height) {
+            throw RfbException('The console sent a picture outside its screen.');
+          }
+          if (encoding == _encodingTight) {
+            await _tight(rx, ry, rw, rh);
+            break;
+          }
+          final len = _u32(await _reader.read(4));
+          if (len > rw * rh * 5 + 4096) throw RfbException('The console sent a picture the app cannot read.');
+          final data = await _reader.read(len);
+          if (encoding == _encodingZlib) {
+            final raw = _zlib.inflate(data, rw * rh * 4);
+            if (raw.length != rw * rh * 4) throw RfbException('The console sent a picture the app cannot read.');
+            _blitRaw(rx, ry, rw, rh, raw);
+          } else {
+            // ZRLE's worst case: single-pixel runs (4 bytes each) plus tile headers.
+            final tiles = ((rw + 63) >> 6) * ((rh + 63) >> 6);
+            _blit32(rx, ry, rw, rh, decodeZrle(rw, rh, _zrle.inflate(data, rw * rh * 4 + tiles * 64)));
+          }
         case _encodingDesktopSize:
           if (rw > 0 && rh > 0 && rw <= 10000 && rh <= 10000) {
             width = rw;
@@ -546,6 +608,222 @@ class RfbClient {
         d += 4;
         s += 4;
       }
+    }
+  }
+
+  /// Copies a decoded RGBA rectangle (checked to fit) into the screen.
+  void _blit32(int rx, int ry, int rw, int rh, Uint32List px) {
+    final fb = _framebuffer;
+    if (fb == null) return;
+    final dst = Uint32List.view(fb.buffer);
+    for (var row = 0; row < rh; row++) {
+      final d = (ry + row) * width + rx;
+      dst.setRange(d, d + rw, px, row * rw);
+    }
+  }
+
+  /// A ZRLE rectangle from its inflated bytes: 64×64 tiles of raw, solid,
+  /// packed-palette, RLE and palette-RLE pixels (CPIXEL is B, G, R for our
+  /// pixel format). Throws [RfbException] on anything malformed.
+  @visibleForTesting
+  static Uint32List decodeZrle(int rw, int rh, Uint8List data) {
+    final out = Uint32List(rw * rh);
+    final c = _Cursor(data);
+    int cpixel() {
+      final b = c.take(3);
+      return 0xff000000 | b[0] << 16 | b[1] << 8 | b[2];
+    }
+
+    for (var ty = 0; ty < rh; ty += 64) {
+      final th = rh - ty < 64 ? rh - ty : 64;
+      for (var tx = 0; tx < rw; tx += 64) {
+        final tw = rw - tx < 64 ? rw - tx : 64;
+        final n = tw * th;
+        void put(int i, int p) => out[(ty + i ~/ tw) * rw + tx + i % tw] = p;
+        void run(int i, int len, int p) {
+          if (i + len > n) throw RfbException('The console sent a picture the app cannot read.');
+          for (var k = i; k < i + len; k++) {
+            put(k, p);
+          }
+        }
+
+        int runLength() {
+          var len = 1;
+          int b;
+          do {
+            b = c.u8();
+            len += b;
+          } while (b == 255 && len <= n);
+          return len;
+        }
+
+        final sub = c.u8();
+        if (sub == 0) {
+          for (var i = 0; i < n; i++) {
+            put(i, cpixel());
+          }
+        } else if (sub == 1) {
+          run(0, n, cpixel());
+        } else if (sub <= 16) {
+          final palette = [for (var i = 0; i < sub; i++) cpixel()];
+          final bits = sub == 2 ? 1 : (sub <= 4 ? 2 : 4);
+          final mask = (1 << bits) - 1;
+          for (var y = 0; y < th; y++) {
+            var byte = 0, left = 0;
+            for (var x = 0; x < tw; x++) {
+              if (left == 0) {
+                byte = c.u8();
+                left = 8;
+              }
+              left -= bits;
+              final idx = (byte >> left) & mask;
+              if (idx >= sub) throw RfbException('The console sent a picture the app cannot read.');
+              put(y * tw + x, palette[idx]);
+            }
+          }
+        } else if (sub == 128) {
+          for (var i = 0; i < n;) {
+            final p = cpixel();
+            final len = runLength();
+            run(i, len, p);
+            i += len;
+          }
+        } else if (sub >= 130) {
+          final palette = [for (var i = 0; i < sub - 128; i++) cpixel()];
+          for (var i = 0; i < n;) {
+            final b = c.u8();
+            final idx = b & 127;
+            if (idx >= palette.length) throw RfbException('The console sent a picture the app cannot read.');
+            final len = b & 128 != 0 ? runLength() : 1;
+            run(i, len, palette[idx]);
+            i += len;
+          }
+        } else {
+          throw RfbException('The console sent a picture the app cannot read.');
+        }
+      }
+    }
+    return out;
+  }
+
+  /// A Tight rectangle: fill, JPEG, or zlib (or tiny raw) data through the
+  /// copy, palette or gradient filter. TPIXEL is R, G, B.
+  Future<void> _tight(int rx, int ry, int rw, int rh) async {
+    final ctl = (await _reader.read(1))[0];
+    for (var i = 0; i < 4; i++) {
+      if (ctl & (1 << i) != 0) _tightZ[i] = _Inflater();
+    }
+    final type = ctl >> 4;
+    int tpixel(Uint8List b, int at) => 0xff000000 | b[at + 2] << 16 | b[at + 1] << 8 | b[at];
+    if (type == 8) {
+      _blit32(rx, ry, rw, rh, Uint32List(rw * rh)..fillRange(0, rw * rh, tpixel(await _reader.read(3), 0)));
+      return;
+    }
+    if (type == 9) {
+      _blit32(rx, ry, rw, rh, await _decodeJpeg(await _reader.read(await _compactLength()), rw, rh));
+      return;
+    }
+    if (type > 7) throw RfbException('The console sent a picture the app cannot read.');
+    final filter = type & 4 != 0 ? (await _reader.read(1))[0] : 0;
+    var palette = const <int>[];
+    final int size;
+    switch (filter) {
+      case 0 || 2:
+        size = rw * rh * 3;
+      case 1:
+        final colors = (await _reader.read(1))[0] + 1;
+        final p = await _reader.read(colors * 3);
+        palette = [for (var i = 0; i < colors; i++) tpixel(p, i * 3)];
+        size = colors == 2 ? ((rw + 7) >> 3) * rh : rw * rh;
+      default:
+        throw RfbException('The console sent a picture the app cannot read.');
+    }
+    final data = size < 12 ? await _reader.read(size) : _tightZ[type & 3].inflate(await _reader.read(await _compactLength()), size);
+    _blit32(rx, ry, rw, rh, decodeTightBasic(rw, rh, filter, palette, data));
+  }
+
+  /// The pixels of a Tight basic rectangle from its (inflated) data.
+  @visibleForTesting
+  static Uint32List decodeTightBasic(int rw, int rh, int filter, List<int> palette, Uint8List data) {
+    final n = rw * rh;
+    final out = Uint32List(n);
+    void bad() => throw RfbException('The console sent a picture the app cannot read.');
+    if (filter == 1) {
+      if (palette.length == 2) {
+        final stride = (rw + 7) >> 3;
+        if (data.length != stride * rh) bad();
+        for (var y = 0; y < rh; y++) {
+          for (var x = 0; x < rw; x++) {
+            out[y * rw + x] = palette[(data[y * stride + (x >> 3)] >> (7 - (x & 7))) & 1];
+          }
+        }
+      } else {
+        if (data.length != n) bad();
+        for (var i = 0; i < n; i++) {
+          if (data[i] >= palette.length) bad();
+          out[i] = palette[data[i]];
+        }
+      }
+      return out;
+    }
+    if (data.length != n * 3) bad();
+    if (filter == 2) {
+      // Gradient: each component is predicted from left + above - above-left.
+      final rgb = Uint8List(n * 3);
+      for (var y = 0; y < rh; y++) {
+        for (var x = 0; x < rw; x++) {
+          for (var k = 0; k < 3; k++) {
+            final i = (y * rw + x) * 3 + k;
+            final left = x > 0 ? rgb[i - 3] : 0;
+            final up = y > 0 ? rgb[i - rw * 3] : 0;
+            final upLeft = x > 0 && y > 0 ? rgb[i - rw * 3 - 3] : 0;
+            rgb[i] = data[i] + (left + up - upLeft).clamp(0, 255);
+          }
+        }
+      }
+      data = rgb;
+    }
+    for (var i = 0; i < n; i++) {
+      out[i] = 0xff000000 | data[i * 3 + 2] << 16 | data[i * 3 + 1] << 8 | data[i * 3];
+    }
+    return out;
+  }
+
+  Future<int> _compactLength() async {
+    var b = (await _reader.read(1))[0];
+    var len = b & 0x7f;
+    if (b & 0x80 != 0) {
+      b = (await _reader.read(1))[0];
+      len |= (b & 0x7f) << 7;
+      if (b & 0x80 != 0) len |= (await _reader.read(1))[0] << 14;
+    }
+    return len;
+  }
+
+  /// Decodes a Tight JPEG with the engine's codec, after checking its size
+  /// from the header (a hostile one can't make it decode a giant picture).
+  static Future<Uint32List> _decodeJpeg(Uint8List jpeg, int rw, int rh) async {
+    final buffer = await ui.ImmutableBuffer.fromUint8List(jpeg);
+    final ui.ImageDescriptor descriptor;
+    try {
+      descriptor = await ui.ImageDescriptor.encoded(buffer);
+    } catch (_) {
+      buffer.dispose();
+      throw RfbException('The console sent a picture the app cannot read.');
+    }
+    try {
+      if (descriptor.width != rw || descriptor.height != rh) {
+        throw RfbException('The console sent a picture the app cannot read.');
+      }
+      final codec = await descriptor.instantiateCodec();
+      final image = (await codec.getNextFrame()).image;
+      codec.dispose();
+      final bytes = await image.toByteData();
+      image.dispose();
+      return bytes!.buffer.asUint32List(bytes.offsetInBytes, rw * rh);
+    } finally {
+      descriptor.dispose();
+      buffer.dispose();
     }
   }
 
@@ -599,6 +877,48 @@ class RfbClient {
   }
 
   static int _u32(Uint8List b) => ByteData.sublistView(b, 0, 4).getUint32(0);
+}
+
+/// A zlib stream that lasts the whole connection.
+class _Inflater {
+  final RawZLibFilter _z = RawZLibFilter.inflateFilter();
+
+  /// Inflates [input], which the server flushed, refusing to produce more
+  /// than [max] bytes (a zlib bomb can't eat the phone's memory).
+  Uint8List inflate(Uint8List input, int max) {
+    final out = BytesBuilder(copy: false);
+    try {
+      for (var at = 0; at < input.length; at += 1 << 16) {
+        _z.process(input, at, at + (1 << 16) < input.length ? at + (1 << 16) : input.length);
+        for (List<int>? c; (c = _z.processed(flush: false)) != null;) {
+          out.add(c!);
+          if (out.length > max) throw RfbException('The console sent a picture the app cannot read.');
+        }
+      }
+    } on RfbException {
+      rethrow;
+    } catch (_) {
+      throw RfbException('The console sent a picture the app cannot read.');
+    }
+    return out.takeBytes();
+  }
+}
+
+/// Reads through a decoded buffer, failing cleanly at its end.
+class _Cursor {
+  _Cursor(this._b);
+  final Uint8List _b;
+  int _at = 0;
+
+  int u8() {
+    if (_at >= _b.length) throw RfbException('The console sent a picture the app cannot read.');
+    return _b[_at++];
+  }
+
+  Uint8List take(int n) {
+    if (_at + n > _b.length) throw RfbException('The console sent a picture the app cannot read.');
+    return Uint8List.sublistView(_b, _at, _at += n);
+  }
 }
 
 /// Bytes from the WebSocket, read back in the sizes the protocol asks for.

@@ -775,15 +775,18 @@ class ConsoleMenuItem {
   final void Function(BuildContext context)? onPressed;
 }
 
-/// How many pictures a second the console asks for.
+/// How many pictures a second the console asks for, and how lossy they may be.
 enum RfbQuality {
-  best('Best picture', 0),
-  balanced('Balanced · 20 fps', 20),
-  saver('Data saver · 5 fps', 5);
+  best('Best picture', 0, null),
+  balanced('Balanced · 20 fps', 20, 7),
+  saver('Data saver · 5 fps', 5, 2);
 
-  const RfbQuality(this.label, this.fps);
+  const RfbQuality(this.label, this.fps, this.jpeg);
   final String label;
   final int fps;
+
+  /// Tight JPEG quality 0-9 to ask the server for; null is lossless.
+  final int? jpeg;
 }
 
 /// A remote screen session, laid out like Microsoft's Windows App: the
@@ -959,6 +962,7 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
       _quality = quality ?? _quality;
     });
     _client.maxFps = _quality.fps;
+    _client.jpegQuality = _quality.jpeg;
     if (landscape) _setLandscape(true, save: false);
     if (_fit == RfbFit.matchPhone) await widget.onMatchPhone?.call(context);
   }
@@ -975,6 +979,7 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
     if (s == RfbStatus.connected) {
       _reconnects = 0;
       _client.maxFps = _quality.fps;
+      _client.jpegQuality = _quality.jpeg;
       _poke();
     } else if (_session &&
         (s == RfbStatus.disconnected || (s == RfbStatus.failed && _reconnects > 0)) &&
@@ -1160,6 +1165,7 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
   void _setQuality(RfbQuality q) {
     setState(() => _quality = q);
     _client.maxFps = q.fps;
+    _client.jpegQuality = q.jpeg;
     _savePref('quality@${widget.clipboardTarget}', q.name);
   }
 
