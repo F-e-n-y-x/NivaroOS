@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
@@ -76,22 +78,42 @@ func sendDiskBySocket() {
 
 	status.Health = healthy
 
-	message := make(map[string]interface{})
-	message["sys_disk"] = status
-
-	if err := service.MyService.NotifySystem().SendSystemStatusNotify(message); err != nil {
-		logger.Error("failed to send notify", zap.Any("message", message), zap.Error(err))
-	}
+	sendStatus("sys_disk", status)
 }
 
 func sendUSBBySocket() {
-	message := map[string]interface{}{
-		"sys_usb": service.MyService.Disk().GetUSBDriveStatusList(),
-	}
+	sendStatus("sys_usb", service.MyService.Disk().GetUSBDriveStatusList())
+}
 
-	if err := service.MyService.NotifySystem().SendSystemStatusNotify(message); err != nil {
-		logger.Error("failed to send notify", zap.Any("message", message), zap.Error(err))
+var (
+	statusMu   sync.Mutex
+	statusLast = map[string]sentStatus{}
+)
+
+type sentStatus struct {
+	body string
+	at   time.Time
+}
+
+// statusResend: an unchanged status is sent again after this long, so a
+// restarted core (it only keeps the last value in memory) has it again.
+const statusResend = time.Minute
+
+// sendStatus pushes one system status key to core when it changed (or
+// statusResend passed), not every 5 s tick.
+func sendStatus(key string, v any) {
+	statusMu.Lock()
+	defer statusMu.Unlock()
+	b, _ := json.Marshal(v)
+	if l, ok := statusLast[key]; ok && l.body == string(b) && time.Since(l.at) < statusResend {
+		return
 	}
+	if err := service.MyService.NotifySystem().SendSystemStatusNotify(map[string]interface{}{key: v}); err != nil {
+		delete(statusLast, key)
+		logger.Error("failed to send notify", zap.String("key", key), zap.Any("message", v), zap.Error(err))
+		return
+	}
+	statusLast[key] = sentStatus{body: string(b), at: time.Now()}
 }
 
 func monitorUEvent(ctx context.Context) {
