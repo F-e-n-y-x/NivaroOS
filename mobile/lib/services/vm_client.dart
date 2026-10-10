@@ -463,8 +463,10 @@ class HostDisplay {
 /// screen is locked (GNOME won't share it), or the desktop asked the host
 /// user to allow sharing (KDE and other portal desktops), or they declined.
 class HostDesktopStatus {
-  const HostDesktopStatus({this.reason = '', this.locked = false, this.needsConsent = false, this.consentDenied = false});
+  const HostDesktopStatus(
+      {this.reason = '', this.locked = false, this.needsConsent = false, this.consentDenied = false, this.socketPresent = false});
   final String reason;
+  final bool socketPresent;
   final bool locked;
   final bool needsConsent;
   final bool consentDenied;
@@ -474,6 +476,7 @@ class HostDesktopStatus {
         locked: j['locked'] == true,
         needsConsent: j['needs_consent'] == true,
         consentDenied: j['consent_denied'] == true,
+        socketPresent: j['socket_present'] == true,
       );
 }
 
@@ -737,6 +740,23 @@ class VmClient {
   /// Unlocks the server's own screen (GNOME on Wayland shares no locked
   /// screen); the server locks it again once nobody is watching.
   Future<void> unlockHostScreen() => _send('POST', '/host/desktop/unlock');
+
+  /// After an unlock: polls until the stream is back (not locked, socket
+  /// up), for at most [timeout]. False if it didn't come back in time.
+  Future<bool> waitHostDesktopReady(
+      {Duration timeout = const Duration(seconds: 15), Duration every = const Duration(seconds: 1)}) async {
+    final end = DateTime.now().add(timeout);
+    while (true) {
+      await Future<void>.delayed(every);
+      try {
+        final st = await hostDesktopStatus();
+        if (!st.locked && st.socketPresent) return true;
+      } on VmException {
+        // Keep trying until the deadline.
+      }
+      if (DateTime.now().isAfter(end)) return false;
+    }
+  }
 
   /// Restarts host desktop streaming - on a portal desktop that asks the
   /// host user to allow sharing again.

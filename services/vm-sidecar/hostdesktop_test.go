@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseXorgCmdline(t *testing.T) {
@@ -180,7 +181,7 @@ func TestInstallHostPackagesPerDistroOneAtATime(t *testing.T) {
 	if err != nil || pm.Name != "pacman" {
 		t.Fatalf("detect: %v %+v", err, pm)
 	}
-	warnings, err := installHostPackages(context.Background(), pm, io.Discard, false)
+	warnings, err := installHostPackages(context.Background(), pm, io.Discard, false, false)
 	if err != nil {
 		t.Fatalf("optional package failure must not fail the install: %v", err)
 	}
@@ -199,7 +200,7 @@ func TestInstallHostPackagesWaylandExtras(t *testing.T) {
 		if name == "apt-get" && args[0] == "install" {
 			pkg := args[len(args)-1]
 			installs = append(installs, pkg)
-			for k, v := range map[string]string{"gstreamer1.0-tools": "gst-launch-1.0", "gstreamer1.0-pipewire": "libgstpipewire.so", "gstreamer1.0-plugins-base": "libgstvideoconvert*.so", "wayvnc": "wayvnc"} {
+			for k, v := range map[string]string{"gstreamer1.0-tools": "gst-launch-1.0", "gstreamer1.0-pipewire": "libgstpipewire.so", "gstreamer1.0-plugins-base": "libgstvideoconvert*.so", "wayvnc": "wayvnc", "wlr-randr": "wlr-randr"} {
 				if pkg == k {
 					present[v] = true
 				}
@@ -208,13 +209,13 @@ func TestInstallHostPackagesWaylandExtras(t *testing.T) {
 		return nil
 	})
 	pm, _ := detectHostPkgManager()
-	if w, err := installHostPackages(context.Background(), pm, io.Discard, false); err != nil || len(w) != 0 || len(installs) != 0 {
+	if w, err := installHostPackages(context.Background(), pm, io.Discard, false, false); err != nil || len(w) != 0 || len(installs) != 0 {
 		t.Fatalf("X11-only host must install nothing more: %v %v %v", w, err, installs)
 	}
-	if w, err := installHostPackages(context.Background(), pm, io.Discard, true); err != nil || len(w) != 0 {
+	if w, err := installHostPackages(context.Background(), pm, io.Discard, true, true); err != nil || len(w) != 0 {
 		t.Fatalf("wayland install: %v %v", w, err)
 	}
-	if strings.Join(installs, ",") != "gstreamer1.0-tools,gstreamer1.0-pipewire,gstreamer1.0-plugins-base,wayvnc" {
+	if strings.Join(installs, ",") != "gstreamer1.0-tools,gstreamer1.0-pipewire,gstreamer1.0-plugins-base,wayvnc,wlr-randr" {
 		t.Fatalf("unexpected install sequence %v", installs)
 	}
 }
@@ -228,7 +229,7 @@ func TestInstallHostPackagesMissingX11vncIsAnError(t *testing.T) {
 		return nil
 	})
 	pm, _ := detectHostPkgManager()
-	if _, err := installHostPackages(context.Background(), pm, io.Discard, false); err == nil || !strings.Contains(err.Error(), "x11vnc") {
+	if _, err := installHostPackages(context.Background(), pm, io.Discard, false, false); err == nil || !strings.Contains(err.Error(), "x11vnc") {
 		t.Fatalf("want x11vnc error, got %v", err)
 	}
 }
@@ -254,5 +255,67 @@ func TestNearestDisplayMode(t *testing.T) {
 	}
 	if _, ok := nearestDisplayMode(nil, 1000, 800); ok {
 		t.Error("no modes should report none")
+	}
+}
+
+func TestInstallHostPackagesWlrootsOnlyWhenNeeded(t *testing.T) {
+	present := map[string]bool{"apt-get": true, "x11vnc": true, "xdotool": true, "xrandr": true, "xset": true, "xrefresh": true, "xdpyinfo": true,
+		"gst-launch-1.0": true, "libgstpipewire.so": true, "libgstvideoconvert*.so": true}
+	var installs []string
+	withFakeHost(t, present, true, func(name string, args []string) error {
+		if name == "apt-get" && args[0] == "install" {
+			installs = append(installs, args[len(args)-1])
+		}
+		return nil
+	})
+	pm, _ := detectHostPkgManager()
+	// GNOME/KDE: wayvnc and wlr-randr are not theirs to pull in.
+	if _, err := installHostPackages(context.Background(), pm, io.Discard, true, false); err != nil || len(installs) != 0 {
+		t.Fatalf("installed %v (%v)", installs, err)
+	}
+}
+
+func TestAutoWaylandInstallSkipsPacmanAndRunsOnce(t *testing.T) {
+	old := hostWaylandAutoMarker
+	hostWaylandAutoMarker = t.TempDir() + "/marker"
+	t.Cleanup(func() { hostWaylandAutoMarker = old })
+	var runs []string
+	present := map[string]bool{"pacman": true, "x11vnc": true}
+	withFakeHost(t, present, true, func(name string, args []string) error {
+		runs = append(runs, name+" "+strings.Join(args, " "))
+		return errors.New("offline")
+	})
+	autoInstallWaylandPackages()
+	if len(runs) != 0 {
+		t.Fatalf("pacman must not be driven automatically (partial upgrade): %v", runs)
+	}
+	delete(present, "pacman")
+	present["apt-get"] = true
+	autoInstallWaylandPackages()
+	if len(runs) == 0 {
+		t.Fatal("apt: expected an install attempt")
+	}
+	n := len(runs)
+	autoInstallWaylandPackages() // failed before: not again on every start
+	if len(runs) != n {
+		t.Fatalf("retried: %v", runs[n:])
+	}
+}
+
+func TestRelockWait(t *testing.T) {
+	now := time.Unix(1000, 0)
+	// Unlocked 50 s after the last viewer left: the minute counts from the unlock.
+	if d, ok := relockWait(now, now.Add(-10*time.Second), now.Add(-60*time.Second), 0); !ok || d != 50*time.Second {
+		t.Fatalf("%v %v", d, ok)
+	}
+	if d, ok := relockWait(now, now.Add(-2*time.Minute), now.Add(-90*time.Second), 0); !ok || d != 0 {
+		t.Fatalf("idle long enough: %v %v", d, ok)
+	}
+	// Never closed (sidecar restarted): from the unlock.
+	if d, ok := relockWait(now, now.Add(-30*time.Second), time.Unix(0, 0), 0); !ok || d != 30*time.Second {
+		t.Fatalf("%v %v", d, ok)
+	}
+	if _, ok := relockWait(now, now.Add(-2*time.Minute), time.Unix(0, 0), 1); ok {
+		t.Fatal("a connected viewer keeps it unlocked")
 	}
 }

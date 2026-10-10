@@ -247,7 +247,31 @@ void main() {
       expect(st.reason, "The server's screen is locked");
       expect(seen, ['GET /v1/vm-sidecar/host/desktop/status', 'POST /v1/vm-sidecar/host/desktop/unlock']);
       expect(HostDesktopStatus.fromJson({'reason': ''}).blocked, isFalse);
+      expect(HostDesktopStatus.fromJson({'socket_present': true}).socketPresent, isTrue);
       expect(HostDesktopStatus.fromJson({'needs_consent': true}).blocked, isTrue);
+    });
+
+    test('after an unlock it waits for the stream instead of a fixed delay', () async {
+      var polls = 0;
+      final ready = await http.runWithClient(
+          () => VmClient.withSession(FakeSession()).waitHostDesktopReady(every: Duration.zero),
+          () => MockClient((req) async {
+                polls++;
+                // Still "locked" (stale), then no socket yet, then back.
+                final body = switch (polls) {
+                  1 => '{"locked":true,"socket_present":false}',
+                  2 => '{"locked":false,"socket_present":false}',
+                  _ => '{"locked":false,"socket_present":true}',
+                };
+                return http.Response(body, 200);
+              }));
+      expect(ready, isTrue);
+      expect(polls, 3);
+      final gaveUp = await http.runWithClient(
+          () => VmClient.withSession(FakeSession())
+              .waitHostDesktopReady(timeout: Duration.zero, every: Duration.zero),
+          () => MockClient((_) async => http.Response('{"locked":true}', 200)));
+      expect(gaveUp, isFalse);
     });
 
     test('adding a disk is its own call', () async {

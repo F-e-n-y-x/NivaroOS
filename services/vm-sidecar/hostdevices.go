@@ -517,6 +517,9 @@ func queryXrandr(t hostXTarget) (xrandrState, error) {
 func GetHostDisplay() (HostDisplayInfo, error) {
 	t := resolveHostX()
 	if t.Display == "" || t.XWayland {
+		if info, ok, err := waylandHostDisplay(0, 0); ok {
+			return info, err
+		}
 		return HostDisplayInfo{}, errNoHostDisplay
 	}
 	st, err := queryXrandr(t)
@@ -544,6 +547,9 @@ func SetHostDisplay(w, h int) error {
 	}
 	t := resolveHostX()
 	if t.Display == "" || t.XWayland {
+		if _, ok, err := waylandHostDisplay(w, h); ok {
+			return err
+		}
 		return errNoHostDisplay
 	}
 

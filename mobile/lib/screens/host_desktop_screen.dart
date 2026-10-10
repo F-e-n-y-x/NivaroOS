@@ -96,8 +96,8 @@ class _HostDesktopScreenState extends State<HostDesktopScreen> {
     try {
       if (b.locked) {
         await _client.unlockHostScreen();
-        // The stream restarts on its own a moment later.
-        await Future<void>.delayed(const Duration(seconds: 3));
+        // The stream restarts on its own a few seconds later.
+        await _client.waitHostDesktopReady();
       } else if (b.consentDenied) {
         await _client.restartHostDesktop();
       }

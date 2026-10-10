@@ -159,7 +159,6 @@ func runHostVNCWayland(args []string) int {
 		return 1
 	}
 	uid, _ := strconv.Atoi(u.Uid)
-	gid, _ := strconv.Atoi(u.Gid)
 
 	var st wlStatus
 	if f, err := os.OpenFile(*statusPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644); err == nil {
@@ -185,7 +184,10 @@ func runHostVNCWayland(args []string) int {
 		// Root (like x11vnc) so the socket is created root-only 0600 in
 		// /run/nivaroos; it connects to the user's compositor socket.
 		syscall.Umask(0o077)
-		env := append(os.Environ(), "XDG_RUNTIME_DIR="+runtimeDir, "WAYLAND_DISPLAY="+wl)
+		// Set, not appended: exec takes the first of duplicate keys.
+		os.Setenv("XDG_RUNTIME_DIR", runtimeDir)
+		os.Setenv("WAYLAND_DISPLAY", wl)
+		env := os.Environ()
 		// No config (root's would be someone else's), control socket next
 		// to ours rather than in the user's runtime dir.
 		ctl := filepath.Join(filepath.Dir(*sock), "wayvncctl")
@@ -210,37 +212,26 @@ func runHostVNCWayland(args []string) int {
 
 	// The session bus only accepts its own user; PipeWire and the portal
 	// should see that user too.
-	if err := dropPrivileges(u, uid, gid); err != nil {
-		log.Printf("dropping to %s: %v", u.Username, err)
-		return 1
-	}
-	os.Setenv("HOME", u.HomeDir)
-	os.Setenv("USER", u.Username)
-	os.Setenv("LOGNAME", u.Username)
-	os.Setenv("XDG_RUNTIME_DIR", runtimeDir)
-	os.Setenv("WAYLAND_DISPLAY", wl)
-	os.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path="+runtimeDir+"/bus")
-
-	conn, err := dbus.ConnectSessionBus()
+	conn, err := becomeSessionUser(u, wl)
 	if err != nil {
 		st.set("error", backend, "Could not reach the desktop session's D-Bus: "+err.Error())
 		return 1
 	}
 	defer conn.Close()
 
-	var sess *wlSession
-	switch backend {
-	case "mutter":
-		sess, err = startMutterSession(conn)
-	default:
+	start := func() (*wlSession, error) { return startMutterSession(conn) }
+	if backend != "mutter" {
 		tokenFile := filepath.Join(u.HomeDir, ".local/state/nivaroos/host-desktop-restore-token")
-		sess, err = startPortalSession(conn, tokenFile, func() {
-			st.set("consent", backend, "Waiting for someone at the server to allow screen sharing: click \"Allow\"/\"Share\" in the dialog on the server's own screen (needed once).")
-		})
-		if errors.Is(err, errPortalDenied) {
-			st.set("denied", backend, "Screen sharing was declined on the server. Use \"Ask again\" to show the request on the server's screen again.")
-			return wlExitDenied
+		start = func() (*wlSession, error) {
+			return startPortalSession(conn, tokenFile, func() {
+				st.set("consent", backend, "Waiting for someone at the server to allow screen sharing: click \"Allow\"/\"Share\" in the dialog on the server's own screen (needed once).")
+			})
 		}
+	}
+	sess, err := start()
+	if errors.Is(err, errPortalDenied) {
+		st.set("denied", backend, "Screen sharing was declined on the server. Use \"Ask again\" to show the request on the server's screen again.")
+		return wlExitDenied
 	}
 	if err != nil && strings.Contains(err.Error(), "inhibited") {
 		// GNOME refuses (and ends) screen sharing while the screen is locked.
@@ -254,10 +245,34 @@ func runHostVNCWayland(args []string) int {
 	}
 
 	srv := newRFBServer(sess.input)
+	srv.useClip(sess.clip, sess.closed)
+	// A display mode change breaks the stream: mutter (GNOME 50) drops its
+	// PipeWire node without a word, and KWin's renegotiated stream stalls
+	// once the GStreamer child reconnects. So a fresh session takes over -
+	// on mutter's MonitorsChanged, or (portal) when the frame size
+	// changes; viewers stay connected and get a DesktopSize.
+	var monitorsChanged chan *dbus.Signal
+	if backend == "mutter" {
+		_ = conn.AddMatchSignal(dbus.WithMatchObjectPath("/org/gnome/Mutter/DisplayConfig"), dbus.WithMatchInterface("org.gnome.Mutter.DisplayConfig"), dbus.WithMatchMember("MonitorsChanged"))
+		monitorsChanged = make(chan *dbus.Signal, 8)
+		conn.Signal(monitorsChanged)
+	}
+	streams := make(chan wlStream, 1)
+	resized := make(chan struct{}, 1)
+	var onResize func()
+	if backend != "mutter" {
+		onResize = func() {
+			select {
+			case resized <- struct{}{}:
+			default:
+			}
+		}
+	}
 	fatal := make(chan error, 2)
 	listening := false
+	first := sess.wlStream
 	go func() {
-		fatal <- capturePipeWire(sess.node, sess.pwFD, func(w, h int, frame []byte) {
+		fatal <- capturePipeWire(first, streams, onResize, func(w, h int, frame []byte) {
 			srv.pushFrame(w, h, frame)
 			if !listening {
 				listening = true
@@ -271,15 +286,39 @@ func runHostVNCWayland(args []string) int {
 			}
 		})
 	}()
-	select {
-	case <-sess.closed:
-		log.Printf("the desktop ended the screen-sharing session")
-		st.set("error", backend, "The desktop ended the screen-sharing session (screen locked or logged out?) - reconnecting.")
-		return 1
-	case err := <-fatal:
-		log.Printf("capture: %v", err)
-		st.set("error", backend, "Screen capture stopped: "+fmt.Sprint(err))
-		return 1
+	for {
+		select {
+		case <-sess.closed:
+			log.Printf("the desktop ended the screen-sharing session")
+			st.set("error", backend, "The desktop ended the screen-sharing session (screen locked or logged out?) - reconnecting.")
+			return 1
+		case err := <-fatal:
+			log.Printf("capture: %v", err)
+			st.set("error", backend, "Screen capture stopped: "+fmt.Sprint(err))
+			return 1
+		case s := <-monitorsChanged:
+			if s.Path != "/org/gnome/Mutter/DisplayConfig" || s.Name != "org.gnome.Mutter.DisplayConfig.MonitorsChanged" {
+				continue
+			}
+			// One change often comes as a burst; let it settle.
+			time.Sleep(500 * time.Millisecond)
+			for len(monitorsChanged) > 0 {
+				<-monitorsChanged
+			}
+		case <-resized:
+		}
+		old := sess
+		if sess, err = start(); err != nil {
+			log.Printf("restarting after a display change: %v", err)
+			st.set("error", backend, "Restarting screen sharing after a display change failed: "+err.Error())
+			return 1
+		}
+		log.Printf("display changed: new stream, node %d", sess.node)
+		st.set("running", backend, "")
+		srv.setInput(sess.input)
+		srv.useClip(sess.clip, sess.closed)
+		streams <- sess.wlStream
+		old.stop()
 	}
 }
 
@@ -306,6 +345,24 @@ func listenUnixFD(fd int, path string) (net.Listener, error) {
 	f := os.NewFile(uintptr(fd), path)
 	defer f.Close()
 	return net.FileListener(f)
+}
+
+// becomeSessionUser drops to u, sets up its session environment (Wayland
+// display wl) and connects to its session bus.
+func becomeSessionUser(u *user.User, wl string) (*dbus.Conn, error) {
+	uid, _ := strconv.Atoi(u.Uid)
+	gid, _ := strconv.Atoi(u.Gid)
+	if err := dropPrivileges(u, uid, gid); err != nil {
+		return nil, fmt.Errorf("dropping to %s: %w", u.Username, err)
+	}
+	runtimeDir := "/run/user/" + u.Uid
+	os.Setenv("HOME", u.HomeDir)
+	os.Setenv("USER", u.Username)
+	os.Setenv("LOGNAME", u.Username)
+	os.Setenv("XDG_RUNTIME_DIR", runtimeDir)
+	os.Setenv("WAYLAND_DISPLAY", wl)
+	os.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path="+runtimeDir+"/bus")
+	return dbus.ConnectSessionBus()
 }
 
 func dropPrivileges(u *user.User, uid, gid int) error {
@@ -346,10 +403,17 @@ type wlInput interface {
 	Key(keysym uint32, down bool)
 }
 
+// wlStream: the PipeWire node to capture.
+type wlStream struct {
+	node uint32
+	pwFD *os.File // portal only: the PipeWire remote to read the node from
+}
+
 type wlSession struct {
-	node   uint32
-	pwFD   *os.File // portal only: the PipeWire remote to read the node from
+	wlStream
+	stop   func() // ends the session
 	input  wlInput
+	clip   *wlClip // nil: this desktop doesn't share its clipboard
 	closed chan struct{}
 }
 
@@ -429,7 +493,14 @@ func startMutterSession(conn *dbus.Conn) (*wlSession, error) {
 				continue
 			}
 			node, _ := s.Body[0].(uint32)
-			return &wlSession{node: node, input: mutterInput{sess: rd, stream: string(streamPath)}, closed: closed}, nil
+			sess := &wlSession{wlStream: wlStream{node: node}, input: mutterInput{sess: rd, stream: string(streamPath)}, closed: closed,
+				stop: func() { rd.Call(mutterRD+".Session.Stop", 0) }}
+			if err := rd.Call(mutterRD+".Session.EnableClipboard", 0, noOpts).Err; err == nil {
+				sess.clip = &wlClip{conn: conn, obj: rd, iface: mutterRD + ".Session", sigPath: rdPath, mimesKey: "mime-types", ownerKey: "session-is-owner"}
+			} else {
+				log.Printf("mutter clipboard: %v", err)
+			}
+			return sess, nil
 		case <-closed:
 			return nil, errors.New("session closed before its stream started")
 		case <-timeout:
@@ -439,9 +510,10 @@ func startMutterSession(conn *dbus.Conn) (*wlSession, error) {
 }
 
 const (
-	portalBus = "org.freedesktop.portal.Desktop"
-	portalRD  = "org.freedesktop.portal.RemoteDesktop"
-	portalSC  = "org.freedesktop.portal.ScreenCast"
+	portalBus  = "org.freedesktop.portal.Desktop"
+	portalRD   = "org.freedesktop.portal.RemoteDesktop"
+	portalSC   = "org.freedesktop.portal.ScreenCast"
+	portalClip = "org.freedesktop.portal.Clipboard"
 )
 
 var errPortalDenied = errors.New("screen sharing was declined")
@@ -542,6 +614,11 @@ func startPortalSession(conn *dbus.Conn, tokenFile string, askingUser func()) (*
 	if _, err := portalRequest(conn, portalSC+".SelectSources", srcOpts, session); err != nil {
 		return nil, fmt.Errorf("SelectSources: %w", err)
 	}
+	// Before Start, or the portal won't share the clipboard; older portals
+	// have no Clipboard interface at all.
+	if err := conn.Object(portalBus, "/org/freedesktop/portal/desktop").Call(portalClip+".RequestClipboard", 0, session, noOpts).Err; err != nil {
+		log.Printf("portal clipboard: %v", err)
+	}
 	askingUser()
 	res, err = portalRequest(conn, portalRD+".Start", map[string]dbus.Variant{}, session, "")
 	if err != nil {
@@ -563,7 +640,16 @@ func startPortalSession(conn *dbus.Conn, tokenFile string, askingUser func()) (*
 		return nil, fmt.Errorf("OpenPipeWireRemote: %w", err)
 	}
 	obj := conn.Object(portalBus, "/org/freedesktop/portal/desktop")
-	return &wlSession{node: node, pwFD: os.NewFile(uintptr(fd), "pipewire"), input: portalInput{obj: obj, session: session, stream: node}, closed: closed}, nil
+	pwFD := os.NewFile(uintptr(fd), "pipewire")
+	sess := &wlSession{wlStream: wlStream{node: node, pwFD: pwFD}, input: portalInput{obj: obj, session: session, stream: node}, closed: closed,
+		stop: func() {
+			conn.Object(portalBus, session).Call("org.freedesktop.portal.Session.Close", 0)
+			pwFD.Close()
+		}}
+	if on, _ := res["clipboard_enabled"].Value().(bool); on {
+		sess.clip = &wlClip{conn: conn, obj: obj, iface: portalClip, session: []interface{}{session}, sigPath: "/org/freedesktop/portal/desktop", mimesKey: "mime_types", ownerKey: "session_is_owner"}
+	}
+	return sess, nil
 }
 
 // firstPortalStream pulls the node id out of Start's a(ua{sv}) streams.
@@ -588,6 +674,157 @@ func toIfaceSlice(v interface{}) []interface{} {
 }
 
 // ---------------------------------------------------------------------------
+// Host clipboard (text): mutter's RemoteDesktop.Session and the portal's
+// Clipboard interface are the same API, apart from the interface, the
+// portal's leading session argument and the option key spelling.
+// ---------------------------------------------------------------------------
+
+// maxClipText bounds clipboard text both ways.
+const maxClipText = 10 << 20
+
+// clipTextMimes: what we offer when a viewer's text becomes the host
+// clipboard, and (in this order) what we ask the host for.
+var clipTextMimes = []string{"text/plain;charset=utf-8", "UTF8_STRING", "text/plain", "STRING", "TEXT"}
+
+type wlClip struct {
+	conn               *dbus.Conn
+	obj                dbus.BusObject
+	iface              string
+	session            []interface{} // portal: the session handle
+	sigPath            dbus.ObjectPath
+	mimesKey, ownerKey string
+
+	mu   sync.Mutex
+	text string // what we offer while we own the selection
+}
+
+func (c *wlClip) call(method string, args ...interface{}) *dbus.Call {
+	return c.obj.Call(c.iface+"."+method, 0, append(append([]interface{}{}, c.session...), args...)...)
+}
+
+// set makes text the host clipboard; the host asks for it with
+// SelectionTransfer when something pastes.
+func (c *wlClip) set(text string) {
+	c.mu.Lock()
+	c.text = text
+	c.mu.Unlock()
+	if err := c.call("SetSelection", map[string]dbus.Variant{c.mimesKey: dbus.MakeVariant(clipTextMimes)}).Err; err != nil {
+		log.Printf("clipboard SetSelection: %v", err)
+	}
+}
+
+// watch serves paste requests and reports text copied on the host.
+func (c *wlClip) watch(done <-chan struct{}, onHostText func(string)) {
+	_ = c.conn.AddMatchSignal(dbus.WithMatchObjectPath(c.sigPath), dbus.WithMatchInterface(c.iface))
+	sig := make(chan *dbus.Signal, 16)
+	c.conn.Signal(sig)
+	defer c.conn.RemoveSignal(sig)
+	for {
+		var s *dbus.Signal
+		select {
+		case s = <-sig:
+		case <-done:
+			return
+		}
+		if s.Path != c.sigPath || !strings.HasPrefix(s.Name, c.iface+".") {
+			continue
+		}
+		body := s.Body
+		if len(c.session) > 0 {
+			if len(body) == 0 || body[0] != c.session[0] {
+				continue
+			}
+			body = body[1:]
+		}
+		switch strings.TrimPrefix(s.Name, c.iface+".") {
+		case "SelectionOwnerChanged":
+			if len(body) != 1 {
+				continue
+			}
+			opts, _ := body[0].(map[string]dbus.Variant)
+			if own, _ := opts[c.ownerKey].Value().(bool); own {
+				continue // our own SetSelection
+			}
+			mimes := variantStrings(opts[c.mimesKey].Value())
+			if mime := pickTextMime(mimes); mime != "" {
+				if text, err := c.read(mime); err != nil {
+					log.Printf("clipboard read: %v", err)
+				} else if text != "" {
+					onHostText(text)
+				}
+			}
+		case "SelectionTransfer":
+			if len(body) != 2 {
+				continue
+			}
+			serial, _ := body[1].(uint32)
+			c.mu.Lock()
+			text := c.text
+			c.mu.Unlock()
+			ok := c.write(serial, text) == nil
+			c.call("SelectionWriteDone", serial, ok)
+		}
+	}
+}
+
+// variantStrings: an as, or mutter's (as) - its mime-types come in a struct.
+func variantStrings(v interface{}) []string {
+	switch x := v.(type) {
+	case []string:
+		return x
+	case []interface{}:
+		if len(x) == 1 {
+			return variantStrings(x[0])
+		}
+	}
+	return nil
+}
+
+func pickTextMime(offered []string) string {
+	for _, want := range clipTextMimes {
+		for _, m := range offered {
+			if strings.EqualFold(m, want) {
+				return m
+			}
+		}
+	}
+	return ""
+}
+
+func (c *wlClip) read(mime string) (string, error) {
+	var fd dbus.UnixFD
+	if err := c.call("SelectionRead", mime).Store(&fd); err != nil {
+		return "", err
+	}
+	f := pipeFile(int(fd))
+	defer f.Close()
+	_ = f.SetReadDeadline(time.Now().Add(5 * time.Second))
+	b, err := io.ReadAll(io.LimitReader(f, maxClipText))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(string(b), "\x00"), nil
+}
+
+func (c *wlClip) write(serial uint32, text string) error {
+	var fd dbus.UnixFD
+	if err := c.call("SelectionWrite", serial).Store(&fd); err != nil {
+		return err
+	}
+	f := pipeFile(int(fd))
+	defer f.Close()
+	_ = f.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_, err := io.WriteString(f, text)
+	return err
+}
+
+// pipeFile: non-blocking, so read/write deadlines work on it.
+func pipeFile(fd int) *os.File {
+	_ = syscall.SetNonblock(fd, true)
+	return os.NewFile(uintptr(fd), "clipboard")
+}
+
+// ---------------------------------------------------------------------------
 // PipeWire capture
 // ---------------------------------------------------------------------------
 
@@ -596,11 +833,26 @@ var gstCapsRe = regexp.MustCompile(`GstCapsFilter:nvout\.GstPad:src: caps = vide
 // capturePipeWire runs the GStreamer child until the stream ends, handing
 // over every BGRx frame. A size change restarts the child (its frames are
 // a raw byte stream, sized by the caps it printed).
-func capturePipeWire(node uint32, pwFD *os.File, onFrame func(w, h int, frame []byte)) error {
+// A new stream from streams replaces the current one; with onResize set,
+// a size change calls it and waits for that new stream instead of
+// reconnecting.
+func capturePipeWire(cur wlStream, streams <-chan wlStream, onResize func(), onFrame func(w, h int, frame []byte)) error {
 	failures := 0
 	for {
 		started := time.Now()
-		err := runGstOnce(node, pwFD, onFrame)
+		next, err := runGstOnce(cur, streams, onFrame)
+		if next != nil {
+			cur = *next
+			continue
+		}
+		if err == nil && onResize != nil {
+			onResize()
+			cur = <-streams
+			continue
+		}
+		if err == nil {
+			continue // new size: straight back
+		}
 		if time.Since(started) > 30*time.Second {
 			failures = 0
 		}
@@ -608,17 +860,18 @@ func capturePipeWire(node uint32, pwFD *os.File, onFrame func(w, h int, frame []
 		if failures > 5 {
 			return err
 		}
-		if err != nil {
-			log.Printf("gstreamer: %v - restarting", err)
-		}
+		log.Printf("gstreamer: %v - restarting", err)
 		time.Sleep(time.Second)
 	}
 }
 
-func runGstOnce(node uint32, pwFD *os.File, onFrame func(w, h int, frame []byte)) error {
+// runGstOnce returns nil when the size changed, or with next set when a
+// new node replaced this one (the child is stopped for it).
+func runGstOnce(st wlStream, streams <-chan wlStream, onFrame func(w, h int, frame []byte)) (next *wlStream, err error) {
+	node, pwFD := st.node, st.pwFD
 	pr, pw, err := os.Pipe()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer pr.Close()
 	src := []string{"pipewiresrc", fmt.Sprintf("path=%d", node)}
@@ -636,14 +889,32 @@ func runGstOnce(node uint32, pwFD *os.File, onFrame func(w, h int, frame []byte)
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		pw.Close()
-		return err
+		return nil, err
 	}
 	if err := cmd.Start(); err != nil {
 		pw.Close()
-		return err
+		return nil, err
 	}
 	pw.Close()
 	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
+	done := make(chan struct{})
+	got := make(chan wlStream, 1)
+	defer func() {
+		close(done)
+		select {
+		case n := <-got:
+			next, err = &n, nil
+		default:
+		}
+	}()
+	go func() {
+		select {
+		case n := <-streams:
+			got <- n
+			_ = cmd.Process.Kill()
+		case <-done:
+		}
+	}()
 
 	sizes := make(chan [2]int, 8)
 	go func() {
@@ -661,26 +932,26 @@ func runGstOnce(node uint32, pwFD *os.File, onFrame func(w, h int, frame []byte)
 	select {
 	case s, ok := <-sizes:
 		if !ok {
-			return errors.New("gst-launch-1.0 exited before negotiating a format")
+			return nil, errors.New("gst-launch-1.0 exited before negotiating a format")
 		}
 		cur = s
 	case <-time.After(30 * time.Second):
-		return errors.New("no video format from PipeWire within 30s")
+		return nil, errors.New("no video format from PipeWire within 30s")
 	}
 	if cur[0] <= 0 || cur[1] <= 0 || cur[0] > 16384 || cur[1] > 16384 {
-		return fmt.Errorf("bad frame size %dx%d", cur[0], cur[1])
+		return nil, fmt.Errorf("bad frame size %dx%d", cur[0], cur[1])
 	}
 	frame := make([]byte, cur[0]*cur[1]*4)
 	for {
 		if _, err := io.ReadFull(pr, frame); err != nil {
-			return fmt.Errorf("reading frames: %w", err)
+			return nil, fmt.Errorf("reading frames: %w", err)
 		}
 		select {
 		case s, ok := <-sizes:
 			// ponytail: the frame read alongside a renegotiation may be
 			// misframed; restarting at the new size fixes it a moment later.
 			if ok && s != cur {
-				return nil
+				return nil, nil
 			}
 		default:
 		}
@@ -707,9 +978,11 @@ var serverPF = pixelFormat{BPP: 32, Depth: 24, TrueColor: 1, RMax: 255, GMax: 25
 
 type rfbClient struct {
 	conn        net.Conn
+	wmu         sync.Mutex // the updater and clipboard replies both write
 	pf          pixelFormat
 	zlib        bool
 	desktopSize bool
+	extClip     bool // speaks the Extended Clipboard (UTF-8)
 	want        bool
 	resized     bool
 	closed      bool
@@ -724,6 +997,33 @@ type rfbServer struct {
 	fb      []byte
 	clients map[*rfbClient]bool
 	in      wlInput
+	clip    string            // the shared clipboard text, last copied on either side
+	toHost  func(text string) // nil: no host clipboard
+}
+
+func (s *rfbServer) setInput(in wlInput) {
+	s.mu.Lock()
+	s.in = in
+	s.mu.Unlock()
+}
+
+func (s *rfbServer) input() wlInput {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.in
+}
+
+// useClip shares clip (nil: none) with the viewers until done closes.
+func (s *rfbServer) useClip(clip *wlClip, done <-chan struct{}) {
+	s.mu.Lock()
+	s.toHost = nil
+	if clip != nil {
+		s.toHost = clip.set
+	}
+	s.mu.Unlock()
+	if clip != nil {
+		go clip.watch(done, func(text string) { s.clipboard(text, nil) })
+	}
 }
 
 func newRFBServer(in wlInput) *rfbServer {
@@ -837,6 +1137,8 @@ func (s *rfbServer) handle(conn net.Conn) {
 	}
 
 	c := &rfbClient{conn: conn, pf: serverPF}
+	// Held until ServerInit is out: a clipboard broadcast must not overtake it.
+	c.wmu.Lock()
 	s.mu.Lock()
 	tx, ty := tilesFor(s.w, s.h)
 	c.dirty = make([]bool, tx*ty)
@@ -856,7 +1158,9 @@ func (s *rfbServer) handle(conn net.Conn) {
 		s.cond.Broadcast()
 		s.mu.Unlock()
 	}()
-	if _, err := conn.Write(init); err != nil {
+	_, err = conn.Write(init)
+	c.wmu.Unlock()
+	if err != nil {
 		return
 	}
 	go s.updater(c)
@@ -913,15 +1217,25 @@ func (s *rfbServer) readLoop(c *rfbClient, r *bufio.Reader) error {
 			}
 			s.mu.Lock()
 			c.zlib, c.desktopSize = false, false
+			hadExtClip := c.extClip
 			for i := 0; i < n; i++ {
 				switch int32(binary.BigEndian.Uint32(encs[4*i:])) {
 				case 6:
 					c.zlib = true
 				case -223:
 					c.desktopSize = true
+				case encExtClip:
+					c.extClip = true
 				}
 			}
 			s.mu.Unlock()
+			if c.extClip && !hadExtClip {
+				// Our caps: text, every action, up to maxClipText unasked.
+				if err := c.write(extClipMsg(clipCaps|clipRequest|clipPeek|clipNotify|clipProvide|clipText,
+					binary.BigEndian.AppendUint32(nil, maxClipText))); err != nil {
+					return err
+				}
+			}
 		case 3: // FramebufferUpdateRequest
 			b, err := readFull(r, 9)
 			if err != nil {
@@ -941,23 +1255,35 @@ func (s *rfbServer) readLoop(c *rfbClient, r *bufio.Reader) error {
 			if err != nil {
 				return err
 			}
-			s.in.Key(binary.BigEndian.Uint32(b[3:]), b[0] != 0)
+			s.input().Key(binary.BigEndian.Uint32(b[3:]), b[0] != 0)
 		case 5: // PointerEvent
 			b, err := readFull(r, 5)
 			if err != nil {
 				return err
 			}
 			s.pointer(c, b[0], int(binary.BigEndian.Uint16(b[1:])), int(binary.BigEndian.Uint16(b[3:])))
-		case 6: // ClientCutText - host clipboard isn't wired up on Wayland
+		case 6: // ClientCutText
 			b, err := readFull(r, 7)
 			if err != nil {
 				return err
 			}
-			n := int64(int32(binary.BigEndian.Uint32(b[3:])))
-			if n < 0 {
-				n = -n
+			n := int(int32(binary.BigEndian.Uint32(b[3:])))
+			if n < -maxClipText-4 || n > maxClipText {
+				return fmt.Errorf("clipboard message of %d bytes", n)
 			}
-			if _, err := io.CopyN(io.Discard, r, n); err != nil {
+			if n >= 0 {
+				data, err := readFull(r, n)
+				if err != nil {
+					return err
+				}
+				s.clipboard(latin1ToString(data), c)
+				continue
+			}
+			data, err := readFull(r, -n)
+			if err != nil {
+				return err
+			}
+			if err := s.extClipboard(c, data); err != nil {
 				return err
 			}
 		default:
@@ -966,17 +1292,163 @@ func (s *rfbServer) readLoop(c *rfbClient, r *bufio.Reader) error {
 	}
 }
 
+func (c *rfbClient) write(b []byte) error {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+	_, err := c.conn.Write(b)
+	return err
+}
+
+// Extended Clipboard (the QEMU/noVNC extension: UTF-8, zlib).
+const (
+	encExtClip  = int32(-1063131698) // 0xC0A1E5CE
+	clipText    = 1 << 0
+	clipCaps    = 1 << 24
+	clipRequest = 1 << 25
+	clipPeek    = 1 << 26
+	clipNotify  = 1 << 27
+	clipProvide = 1 << 28
+)
+
+// extClipMsg: a ServerCutText with a negative length - the extension.
+func extClipMsg(flags uint32, payload []byte) []byte {
+	b := []byte{3, 0, 0, 0}
+	b = binary.BigEndian.AppendUint32(b, uint32(-int32(4+len(payload))))
+	b = binary.BigEndian.AppendUint32(b, flags)
+	return append(b, payload...)
+}
+
+// encodeClipProvide: zlib of (u32 length, UTF-8 text with CRLF line ends
+// and a trailing NUL), as noVNC and QEMU write it.
+func encodeClipProvide(text string) []byte {
+	body := []byte(strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n"), "\n", "\r\n") + "\x00")
+	var buf bytes.Buffer
+	zw := zlib.NewWriter(&buf)
+	zw.Write(binary.BigEndian.AppendUint32(nil, uint32(len(body))))
+	zw.Write(body)
+	zw.Close()
+	return buf.Bytes()
+}
+
+// decodeClipProvide: the text of a Provide payload whose formats include text
+// (text is the first format, so it comes first).
+func decodeClipProvide(payload []byte) (string, error) {
+	zr, err := zlib.NewReader(bytes.NewReader(payload))
+	if err != nil {
+		return "", err
+	}
+	defer zr.Close()
+	var n [4]byte
+	if _, err := io.ReadFull(zr, n[:]); err != nil {
+		return "", err
+	}
+	size := binary.BigEndian.Uint32(n[:])
+	if size > maxClipText {
+		return "", fmt.Errorf("clipboard text of %d bytes", size)
+	}
+	b := make([]byte, size)
+	if _, err := io.ReadFull(zr, b); err != nil {
+		return "", err
+	}
+	return strings.ReplaceAll(strings.TrimRight(string(b), "\x00"), "\r\n", "\n"), nil
+}
+
+func latin1ToString(b []byte) string {
+	r := make([]rune, len(b))
+	for i, c := range b {
+		r[i] = rune(c)
+	}
+	return string(r)
+}
+
+// legacyCutText: plain ServerCutText is Latin-1; anything else becomes "?".
+func legacyCutText(text string) []byte {
+	var data []byte
+	for _, r := range text {
+		if r > 0xff {
+			r = '?'
+		}
+		data = append(data, byte(r))
+	}
+	b := []byte{3, 0, 0, 0}
+	b = binary.BigEndian.AppendUint32(b, uint32(len(data)))
+	return append(b, data...)
+}
+
+// clipboard: text was copied - on the host (from nil) or by a viewer. Every
+// other viewer hears of it; a viewer's text becomes the host clipboard.
+func (s *rfbServer) clipboard(text string, from *rfbClient) {
+	s.mu.Lock()
+	if text == s.clip {
+		// Unchanged - also the host echoing what a viewer just set.
+		s.mu.Unlock()
+		return
+	}
+	s.clip = text
+	toHost := s.toHost
+	var others []*rfbClient
+	for c := range s.clients {
+		if c != from {
+			others = append(others, c)
+		}
+	}
+	s.mu.Unlock()
+	for _, c := range others {
+		if c.extClip {
+			c.write(extClipMsg(clipNotify|clipText, nil))
+		} else {
+			c.write(legacyCutText(text))
+		}
+	}
+	if from != nil && toHost != nil {
+		toHost(text)
+	}
+}
+
+// extClipboard handles one Extended Clipboard message from a viewer.
+func (s *rfbServer) extClipboard(c *rfbClient, data []byte) error {
+	if len(data) < 4 {
+		return errors.New("short clipboard message")
+	}
+	flags := binary.BigEndian.Uint32(data)
+	if flags&clipText == 0 {
+		return nil // only text is shared; caps need no answer
+	}
+	s.mu.Lock()
+	text := s.clip
+	s.mu.Unlock()
+	switch {
+	case flags&clipCaps != 0:
+	case flags&clipRequest != 0:
+		return c.write(extClipMsg(clipProvide|clipText, encodeClipProvide(text)))
+	case flags&clipPeek != 0:
+		if text == "" {
+			return c.write(extClipMsg(clipNotify, nil))
+		}
+		return c.write(extClipMsg(clipNotify|clipText, nil))
+	case flags&clipNotify != 0:
+		return c.write(extClipMsg(clipRequest|clipText, nil))
+	case flags&clipProvide != 0:
+		t, err := decodeClipProvide(data[4:])
+		if err != nil {
+			return fmt.Errorf("clipboard: %w", err)
+		}
+		s.clipboard(t, c)
+	}
+	return nil
+}
+
 func (s *rfbServer) pointer(c *rfbClient, mask uint8, x, y int) {
 	s.mu.Lock()
-	w, h := s.w, s.h
+	w, h, in := s.w, s.h, s.in
 	s.mu.Unlock()
-	s.in.Motion(float64(min(x, w-1)), float64(min(y, h-1)))
+	in.Motion(float64(min(x, w-1)), float64(min(y, h-1)))
 	prev := c.buttons
 	c.buttons = mask
 	for i, code := range rfbButtons {
 		bit := uint8(1) << i
 		if mask&bit != prev&bit {
-			s.in.Button(code, mask&bit != 0)
+			in.Button(code, mask&bit != 0)
 		}
 	}
 	// Bits 3-6 are wheel up/down/left/right "clicks": one step per press.
@@ -986,7 +1458,7 @@ func (s *rfbServer) pointer(c *rfbClient, mask uint8, x, y int) {
 	}{{0, -1}, {0, 1}, {1, -1}, {1, 1}} {
 		bit := uint8(1) << (3 + i)
 		if mask&bit != 0 && prev&bit == 0 {
-			s.in.Scroll(sc.axis, sc.steps)
+			in.Scroll(sc.axis, sc.steps)
 		}
 	}
 }
@@ -1049,7 +1521,7 @@ func (s *rfbServer) updater(c *rfbClient) {
 				msg = append(msg, r.data...)
 			}
 		}
-		if _, err := c.conn.Write(msg); err != nil {
+		if err := c.write(msg); err != nil {
 			c.conn.Close()
 			return
 		}

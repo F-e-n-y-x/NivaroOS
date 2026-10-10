@@ -102,6 +102,7 @@ type hostPkgReq struct {
 	// hostdesktop/../hostvnc_wayland.go). Globs: presence is these files
 	// (a GStreamer plugin), not Binary on PATH.
 	Wayland bool
+	Wlroots bool // only for wlroots compositors (sway, Hyprland...)
 	Globs   []string
 }
 
@@ -126,8 +127,10 @@ var hostDesktopPackages = []hostPkgReq{
 	{Binary: "videoconvert", Wayland: true, Why: "Wayland screen capture (GStreamer base plugins)",
 		Globs: gstPluginGlobs("libgstvideoconvert*.so"), Candidates: map[string][]string{
 			"apt": {"gstreamer1.0-plugins-base"}, "dnf": {"gstreamer1-plugins-base"}, "pacman": {"gst-plugins-base"}, "zypper": {"gstreamer-plugins-base"}}},
-	{Binary: "wayvnc", Wayland: true, Why: "Wayland streaming on wlroots compositors (sway, Hyprland, labwc...)", Candidates: map[string][]string{
+	{Binary: "wayvnc", Wayland: true, Wlroots: true, Why: "Wayland streaming on wlroots compositors (sway, Hyprland, labwc...)", Candidates: map[string][]string{
 		"apt": {"wayvnc"}, "dnf": {"wayvnc"}, "pacman": {"wayvnc"}, "zypper": {"wayvnc"}}},
+	{Binary: "wlr-randr", Wayland: true, Wlroots: true, Why: "resolution changes on wlroots compositors", Candidates: map[string][]string{
+		"apt": {"wlr-randr"}, "dnf": {"wlr-randr"}, "pacman": {"wlr-randr"}, "zypper": {"wlr-randr"}}},
 }
 
 func gstPluginGlobs(file string) []string {
@@ -155,6 +158,24 @@ func hostHasWaylandSessions() bool {
 		return true
 	}
 	return activeSeatSession().Type == "wayland"
+}
+
+// hostHasWlrootsSessions: a wlroots compositor's session is installed (or
+// running) - only then wayvnc and wlr-randr are needed.
+func hostHasWlrootsSessions() bool {
+	m, _ := hostGlob("/usr/share/wayland-sessions/*.desktop")
+	names := []string{strings.ToLower(activeSeatSession().Desktop)}
+	for _, f := range m {
+		names = append(names, strings.ToLower(filepath.Base(f)))
+	}
+	for _, n := range names {
+		for _, c := range wlrootsCompositors {
+			if n != "" && strings.Contains(n, strings.ToLower(c)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type hostPkgManager struct {
@@ -238,14 +259,14 @@ func isUbuntuLike() bool {
 }
 
 // installHostPackages installs whatever of hostDesktopPackages isn't there
-// yet (the Wayland ones only when wayland is set). Returns warnings for
-// optional ones still missing and an error only when a required one
-// (x11vnc) is.
-func installHostPackages(ctx context.Context, pm *hostPkgManager, out io.Writer, wayland bool) ([]string, error) {
+// yet (the Wayland ones only when wayland is set, the wlroots ones only
+// with wlroots too). Returns warnings for optional ones still missing and
+// an error only when a required one (x11vnc) is.
+func installHostPackages(ctx context.Context, pm *hostPkgManager, out io.Writer, wayland, wlroots bool) ([]string, error) {
 	var warnings []string
 	var reqs []hostPkgReq
 	for _, req := range hostDesktopPackages {
-		if !req.Wayland || wayland {
+		if (!req.Wayland || wayland) && (!req.Wlroots || wlroots) {
 			reqs = append(reqs, req)
 		}
 	}
@@ -429,7 +450,7 @@ func InstallHostDesktop(ctx context.Context, progress io.Writer) (HostDesktopIns
 	if err != nil {
 		return finish(err)
 	}
-	warnings, err := installHostPackages(ctx, pm, out, hostHasWaylandSessions())
+	warnings, err := installHostPackages(ctx, pm, out, hostHasWaylandSessions(), hostHasWlrootsSessions())
 	res.Warnings = append(res.Warnings, warnings...)
 	if err != nil {
 		return finish(err)
@@ -455,6 +476,39 @@ func InstallHostDesktop(ctx context.Context, progress io.Writer) (HostDesktopIns
 	return finish(nil)
 }
 
+// hostWaylandAutoMarker records which Wayland packages were already tried
+// automatically, so a failing install isn't retried on every start.
+var hostWaylandAutoMarker = "/var/lib/nivaroos/host-desktop-wayland-packages"
+
+// autoInstallWaylandPackages: installs from before Wayland support never
+// got its packages. Adds what this machine's Wayland desktops need, once
+// per set of needs - at sidecar start on a Wayland session, and when the
+// wrapper reports them missing (a Wayland login after start). Never on pacman: installing
+// single packages after a bare -Sy is a partial upgrade on Arch; there the
+// wrapper's message points at Reinstall instead.
+func autoInstallWaylandPackages() {
+	pm, err := detectHostPkgManager()
+	if err != nil || pm.Name == "pacman" {
+		return
+	}
+	wlroots := hostHasWlrootsSessions()
+	want := fmt.Sprintf("%s wayland wlroots=%v\n", pm.Name, wlroots)
+	if b, _ := os.ReadFile(hostWaylandAutoMarker); string(b) == want {
+		return
+	}
+	if !hostDesktopInstallMu.TryLock() {
+		return // an install is running anyway
+	}
+	defer hostDesktopInstallMu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), hostDesktopInstallTimeout)
+	defer cancel()
+	if w, err := installHostPackages(ctx, pm, io.Discard, true, wlroots); err != nil || len(w) > 0 {
+		log.Printf("host desktop: Wayland packages: %v %v", err, w)
+	}
+	_ = os.MkdirAll(filepath.Dir(hostWaylandAutoMarker), 0o755)
+	_ = os.WriteFile(hostWaylandAutoMarker, []byte(want), 0o644)
+}
+
 // IsHostDesktopInstalled: the unit is in place AND x11vnc actually exists.
 func IsHostDesktopInstalled() bool {
 	if _, err := os.Stat(hostDesktopUnitPath); err != nil {
@@ -478,17 +532,11 @@ func syncHostDesktopFiles() {
 		return
 	}
 	killLegacyWebsockify()
-	// Installs from before Wayland support never got its packages: add them
-	// once the machine is actually on a Wayland session (the wrapper waits
-	// for them meanwhile).
 	if activeSeatSession().Type == "wayland" {
-		if pm, err := detectHostPkgManager(); err == nil {
-			ctx, cancel := context.WithTimeout(context.Background(), hostDesktopInstallTimeout)
-			if w, err := installHostPackages(ctx, pm, io.Discard, true); err != nil || len(w) > 0 {
-				log.Printf("host desktop: Wayland packages: %v %v", err, w)
-			}
-			cancel()
-		}
+		autoInstallWaylandPackages()
+	}
+	if _, err := os.Stat(hostUnlockedPath); err == nil {
+		scheduleRelock() // unlocked before a sidecar restart
 	}
 	if unitChanged {
 		_ = exec.Command("systemctl", "daemon-reload").Run()
@@ -568,6 +616,9 @@ func GetHostDesktopStatus() HostDesktopStatus {
 		st.NeedsConsent = wl["STATE"] == "consent"
 		st.ConsentDenied = wl["STATE"] == "denied"
 		st.Locked = wl["STATE"] == "locked"
+		if wl["STATE"] == "missing" {
+			go autoInstallWaylandPackages()
+		}
 	}
 
 	switch {
@@ -703,13 +754,26 @@ func RegisterHostDesktopInstallRoutes(mux *http.ServeMux) {
 			writeError(w, http.StatusConflict, errors.New("nobody is signed in on the server's screen"))
 			return
 		}
+		// Only a locked user session: unlocking (and later re-locking) one
+		// someone is working in would lock them out.
+		out, _ := exec.Command("loginctl", "show-session", id, "-p", "LockedHint", "-p", "Class").Output()
+		if kv := parseKeyValueLines(string(out)); kv["LockedHint"] != "yes" || kv["Class"] != "user" {
+			writeError(w, http.StatusConflict, errors.New("the server's screen isn't locked"))
+			return
+		}
 		if out, err := exec.Command("loginctl", "unlock-session", id).CombinedOutput(); err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Errorf("loginctl unlock-session: %s (%w)", strings.TrimSpace(string(out)), err))
 			return
 		}
-		hostUnlockedMu.Lock()
-		hostUnlockedSession = id
-		hostUnlockedMu.Unlock()
+		// Kept in /run so a sidecar restart still re-locks it.
+		_ = os.MkdirAll(filepath.Dir(hostUnlockedPath), 0o755)
+		_ = os.WriteFile(hostUnlockedPath, []byte(fmt.Sprintf("%s %d\n", id, time.Now().UnixNano())), 0o600)
+		// The helper's "locked" is stale now; it rewrites the file once
+		// the stream is back.
+		if b, err := os.ReadFile(hostDesktopWaylandStatusPath); err == nil && parseKeyValueLines(string(b))["STATE"] == "locked" {
+			_ = os.WriteFile(hostDesktopWaylandStatusPath, []byte("STATE=starting\nBACKEND="+parseKeyValueLines(string(b))["BACKEND"]+"\nREASON=\n"), 0o644)
+		}
+		scheduleRelock()
 		writeJSON(w, http.StatusOK, map[string]bool{"unlocked": true})
 	})
 
@@ -841,12 +905,18 @@ var (
 
 func noteHostConsoleInput() { hostConsoleLastInput.Store(time.Now().UnixNano()) }
 
-// The session POST /host/desktop/unlock unlocked, re-locked by
-// noteHostConsoleClosed once no viewer has been connected for a minute.
+// hostUnlockedPath: "SESSION UNIXNANO" of the screen POST
+// /host/desktop/unlock unlocked; it's locked again once no viewer has been
+// connected for hostRelockAfter since the unlock or the last viewer left.
+const (
+	hostUnlockedPath = "/run/nivaroos/host-desktop-unlocked"
+	hostRelockAfter  = time.Minute
+)
+
 var (
-	hostUnlockedMu        sync.Mutex
-	hostUnlockedSession   string
 	hostConsoleLastClosed atomic.Int64
+	hostRelockMu          sync.Mutex
+	hostRelockTimer       *time.Timer
 )
 
 func noteHostConsoleClosed() {
@@ -854,19 +924,57 @@ func noteHostConsoleClosed() {
 		return
 	}
 	hostConsoleLastClosed.Store(time.Now().UnixNano())
-	time.AfterFunc(time.Minute, func() {
-		// A viewer that came back (or left again later) keeps it unlocked.
-		if hostConsoleSessions.Load() != 0 || time.Since(time.Unix(0, hostConsoleLastClosed.Load())) < time.Minute-time.Second {
-			return
-		}
-		hostUnlockedMu.Lock()
-		id := hostUnlockedSession
-		hostUnlockedSession = ""
-		hostUnlockedMu.Unlock()
-		if id != "" {
-			_ = exec.Command("loginctl", "lock-session", id).Run()
-		}
-	})
+	scheduleRelock()
+}
+
+// scheduleRelock (re)arms the one relock timer.
+func scheduleRelock() {
+	armRelock(hostRelockAfter)
+}
+
+func armRelock(d time.Duration) {
+	hostRelockMu.Lock()
+	defer hostRelockMu.Unlock()
+	if hostRelockTimer != nil {
+		hostRelockTimer.Stop()
+	}
+	hostRelockTimer = time.AfterFunc(d, relockIfIdle)
+}
+
+// relockWait: how long until an unlocked screen is locked again (0: now),
+// or ok=false while a viewer is connected (closing re-arms it).
+func relockWait(now, unlockedAt, lastClosed time.Time, viewers int32) (time.Duration, bool) {
+	if viewers != 0 {
+		return 0, false
+	}
+	idleSince := unlockedAt
+	if lastClosed.After(idleSince) {
+		idleSince = lastClosed
+	}
+	return max(0, hostRelockAfter-now.Sub(idleSince)), true
+}
+
+func relockIfIdle() {
+	b, err := os.ReadFile(hostUnlockedPath)
+	if err != nil {
+		return
+	}
+	var id string
+	var at int64
+	if _, err := fmt.Sscanf(string(b), "%s %d", &id, &at); err != nil {
+		_ = os.Remove(hostUnlockedPath)
+		return
+	}
+	wait, ok := relockWait(time.Now(), time.Unix(0, at), time.Unix(0, hostConsoleLastClosed.Load()), hostConsoleSessions.Load())
+	if !ok {
+		return
+	}
+	if wait > time.Second {
+		armRelock(wait)
+		return
+	}
+	_ = os.Remove(hostUnlockedPath)
+	_ = exec.Command("loginctl", "lock-session", id).Run()
 }
 
 func hostConsoleIdleFor() time.Duration {

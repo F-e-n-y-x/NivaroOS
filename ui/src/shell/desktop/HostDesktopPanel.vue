@@ -1416,8 +1416,16 @@ export default {
 			this.unlockingHost = true
 			try {
 				await this.sidecarPost('/host/desktop/unlock')
-				// The stream restarts on its own within a few seconds.
-				setTimeout(() => this.manualReconnect(), 3000)
+				// The stream restarts on its own a few seconds later: wait
+				// for it (up to 15 s) rather than reconnecting into "locked".
+				const end = Date.now() + 15000
+				while (Date.now() < end) {
+					await new Promise((resolve) => setTimeout(resolve, 1000))
+					await this.fetchServiceStatus()
+					const st = this.serviceStatus
+					if (st && !st.locked && st.socket_present) break
+				}
+				this.manualReconnect()
 			} catch (e) {
 				if (isUnauthorized(e)) this.authExpired = true
 				this.$buefy.toast.open({

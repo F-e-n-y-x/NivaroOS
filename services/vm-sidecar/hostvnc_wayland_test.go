@@ -9,6 +9,7 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPickWaylandBackend(t *testing.T) {
@@ -167,5 +168,153 @@ func TestGstCapsLine(t *testing.T) {
 	m := gstCapsRe.FindStringSubmatch(line)
 	if m == nil || m[1] != "1280" || m[2] != "800" {
 		t.Fatalf("got %v", m)
+	}
+}
+
+// rfbDial connects to srv and does the 3.8 handshake, discarding ServerInit.
+func rfbDial(t *testing.T, sock string) (net.Conn, func(int) []byte) {
+	t.Helper()
+	c, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	read := func(n int) []byte {
+		t.Helper()
+		b := make([]byte, n)
+		c.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if _, err := io.ReadFull(c, b); err != nil {
+			t.Fatalf("read %d: %v", n, err)
+		}
+		return b
+	}
+	read(12)
+	c.Write([]byte("RFB 003.008\n"))
+	read(2)
+	c.Write([]byte{1})
+	read(4)
+	c.Write([]byte{1})
+	init := read(24)
+	read(int(binary.BigEndian.Uint32(init[20:])))
+	return c, read
+}
+
+func clientExtClip(flags uint32, payload []byte) []byte {
+	b := []byte{6, 0, 0, 0}
+	b = binary.BigEndian.AppendUint32(b, uint32(-int32(4+len(payload))))
+	b = binary.BigEndian.AppendUint32(b, flags)
+	return append(b, payload...)
+}
+
+func TestRFBClipboardBothWays(t *testing.T) {
+	srv := newRFBServer(fakeInput{events: make(chan string, 32)})
+	srv.pushFrame(4, 2, make([]byte, 4*2*4))
+	toHost := make(chan string, 4)
+	srv.toHost = func(s string) { toHost <- s }
+	sock := t.TempDir() + "/s"
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go srv.serve(ln)
+
+	legacy, readL := rfbDial(t, sock)
+	ext, readE := rfbDial(t, sock)
+	// readMsg: one ServerCutText; returns (extended flags or 0, payload).
+	readMsg := func(read func(int) []byte) (uint32, []byte) {
+		t.Helper()
+		h := read(8)
+		if h[0] != 3 {
+			t.Fatalf("message type %d", h[0])
+		}
+		n := int32(binary.BigEndian.Uint32(h[4:]))
+		if n >= 0 {
+			return 0, read(int(n))
+		}
+		b := read(int(-n))
+		return binary.BigEndian.Uint32(b), b[4:]
+	}
+
+	// The extended viewer announces 0xC0A1E5CE and gets our caps.
+	ext.Write([]byte{2, 0, 0, 1, 0xc0, 0xa1, 0xe5, 0xce})
+	if f, _ := readMsg(readE); f != clipCaps|clipRequest|clipPeek|clipNotify|clipProvide|clipText {
+		t.Fatalf("caps %#x", f)
+	}
+
+	// Host copies: the legacy viewer gets Latin-1, the extended one a
+	// Notify, then the UTF-8 text on Request.
+	host := "grüße ✓"
+	srv.clipboard(host, nil)
+	if _, b := readMsg(readL); string(b) != "gr\xfc\xdfe ?" {
+		t.Fatalf("legacy cut text %q", b)
+	}
+	if f, _ := readMsg(readE); f != clipNotify|clipText {
+		t.Fatalf("want notify, got %#x", f)
+	}
+	ext.Write(clientExtClip(clipRequest|clipText, nil))
+	f, b := readMsg(readE)
+	if got, err := decodeClipProvide(b); f != clipProvide|clipText || err != nil || got != host {
+		t.Fatalf("provide %#x %q %v", f, got, err)
+	}
+	select {
+	case s := <-toHost:
+		t.Fatalf("host text went back to the host: %q", s)
+	default:
+	}
+
+	// The extended viewer copies: Notify -> our Request -> its Provide.
+	ext.Write(clientExtClip(clipNotify|clipText, nil))
+	if f, _ := readMsg(readE); f != clipRequest|clipText {
+		t.Fatalf("want request, got %#x", f)
+	}
+	ext.Write(clientExtClip(clipProvide|clipText, encodeClipProvide("héllo\nwörld")))
+	if s := <-toHost; s != "héllo\nwörld" {
+		t.Fatalf("to host %q", s)
+	}
+	if _, b := readMsg(readL); string(b) != "h\xe9llo\nw\xf6rld" {
+		t.Fatalf("other viewer got %q", b)
+	}
+
+	// The legacy viewer copies Latin-1.
+	legacy.Write(append([]byte{6, 0, 0, 0, 0, 0, 0, 2}, 0xdf, 'x'))
+	if s := <-toHost; s != "ßx" {
+		t.Fatalf("to host %q", s)
+	}
+	if f, _ := readMsg(readE); f != clipNotify|clipText {
+		t.Fatalf("want notify, got %#x", f)
+	}
+	// The host echoing it back is not news.
+	srv.clipboard("ßx", nil)
+	legacy.Write([]byte{4, 1, 0, 0, 0, 0, 0, 0x61}) // any message: the stream is still in sync
+	ext.Write(clientExtClip(clipPeek|clipText, nil))
+	if f, _ := readMsg(readE); f != clipNotify|clipText {
+		t.Fatalf("peek: %#x", f)
+	}
+}
+
+func TestClipProvideRoundTripCRLF(t *testing.T) {
+	p := encodeClipProvide("a\nb\r\nc")
+	zr, _ := zlib.NewReader(bytes.NewReader(p))
+	raw, _ := io.ReadAll(zr)
+	if string(raw[4:]) != "a\r\nb\r\nc\x00" || binary.BigEndian.Uint32(raw) != uint32(len(raw)-4) {
+		t.Fatalf("wire %q", raw)
+	}
+	if s, err := decodeClipProvide(p); err != nil || s != "a\nb\nc" {
+		t.Fatalf("got %q %v", s, err)
+	}
+}
+
+func TestHostClipboardMimes(t *testing.T) {
+	// mutter wraps its mime-types in a struct, the portal doesn't.
+	mutter := []interface{}{[]string{"text/plain", "UTF8_STRING"}}
+	if got := pickTextMime(variantStrings(mutter)); got != "UTF8_STRING" {
+		t.Fatalf("mutter: %q", got)
+	}
+	if got := pickTextMime(variantStrings([]string{"image/png", "TEXT", "text/plain;charset=UTF-8"})); got != "text/plain;charset=UTF-8" {
+		t.Fatalf("portal: %q", got)
+	}
+	if got := pickTextMime(variantStrings([]string{"image/png"})); got != "" {
+		t.Fatalf("no text: %q", got)
 	}
 }
