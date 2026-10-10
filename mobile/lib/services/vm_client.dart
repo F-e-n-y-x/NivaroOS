@@ -459,6 +459,24 @@ class HostDisplay {
       );
 }
 
+/// Why the host desktop can't stream right now, on a Wayland server: its
+/// screen is locked (GNOME won't share it), or the desktop asked the host
+/// user to allow sharing (KDE and other portal desktops), or they declined.
+class HostDesktopStatus {
+  const HostDesktopStatus({this.reason = '', this.locked = false, this.needsConsent = false, this.consentDenied = false});
+  final String reason;
+  final bool locked;
+  final bool needsConsent;
+  final bool consentDenied;
+  bool get blocked => locked || needsConsent || consentDenied;
+  factory HostDesktopStatus.fromJson(Map<String, dynamic> j) => HostDesktopStatus(
+        reason: j['reason'] as String? ?? '',
+        locked: j['locked'] == true,
+        needsConsent: j['needs_consent'] == true,
+        consentDenied: j['consent_denied'] == true,
+      );
+}
+
 /// REST client for the VM sidecar (VM Manager and Host Desktop), through
 /// the gateway with the app's session: every call retries once after a
 /// 401 with a refreshed token (plan M-03).
@@ -712,6 +730,17 @@ class VmClient {
     final j = _json(await _send('GET', '/host/desktop/installed'));
     return j is Map && j['installed'] == true;
   }
+
+  Future<HostDesktopStatus> hostDesktopStatus() async =>
+      HostDesktopStatus.fromJson(_json(await _send('GET', '/host/desktop/status')) as Map<String, dynamic>);
+
+  /// Unlocks the server's own screen (GNOME on Wayland shares no locked
+  /// screen); the server locks it again once nobody is watching.
+  Future<void> unlockHostScreen() => _send('POST', '/host/desktop/unlock');
+
+  /// Restarts host desktop streaming - on a portal desktop that asks the
+  /// host user to allow sharing again.
+  Future<void> restartHostDesktop() => _send('POST', '/host/desktop/restart');
 
   // The host desktop's own display resolution: the host X server's mode,
   // which x11vnc serves as it is. No per-VM equivalent.

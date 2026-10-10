@@ -98,6 +98,11 @@ type hostPkgReq struct {
 	Required   bool
 	Why        string
 	Candidates map[string][]string
+	// Wayland: only installed where a Wayland session exists (see
+	// hostdesktop/../hostvnc_wayland.go). Globs: presence is these files
+	// (a GStreamer plugin), not Binary on PATH.
+	Wayland bool
+	Globs   []string
 }
 
 var hostDesktopPackages = []hostPkgReq{
@@ -113,6 +118,43 @@ var hostDesktopPackages = []hostPkgReq{
 		"apt": {"x11-xserver-utils"}, "dnf": {"xrefresh", "xorg-x11-server-utils"}, "pacman": {"xorg-xrefresh"}, "zypper": {"xrefresh"}}},
 	{Binary: "xdpyinfo", Why: "display/Wayland detection", Candidates: map[string][]string{
 		"apt": {"x11-utils"}, "dnf": {"xdpyinfo", "xorg-x11-utils"}, "pacman": {"xorg-xdpyinfo"}, "zypper": {"xdpyinfo"}}},
+	{Binary: "gst-launch-1.0", Wayland: true, Why: "Wayland screen capture (GNOME, KDE)", Candidates: map[string][]string{
+		"apt": {"gstreamer1.0-tools"}, "dnf": {"gstreamer1"}, "pacman": {"gstreamer"}, "zypper": {"gstreamer-utils"}}},
+	{Binary: "pipewiresrc", Wayland: true, Why: "Wayland screen capture (GStreamer PipeWire plugin)",
+		Globs: gstPluginGlobs("libgstpipewire.so"), Candidates: map[string][]string{
+			"apt": {"gstreamer1.0-pipewire"}, "dnf": {"pipewire-gstreamer"}, "pacman": {"gst-plugin-pipewire"}, "zypper": {"gstreamer-plugin-pipewire"}}},
+	{Binary: "videoconvert", Wayland: true, Why: "Wayland screen capture (GStreamer base plugins)",
+		Globs: gstPluginGlobs("libgstvideoconvert*.so"), Candidates: map[string][]string{
+			"apt": {"gstreamer1.0-plugins-base"}, "dnf": {"gstreamer1-plugins-base"}, "pacman": {"gst-plugins-base"}, "zypper": {"gstreamer-plugins-base"}}},
+	{Binary: "wayvnc", Wayland: true, Why: "Wayland streaming on wlroots compositors (sway, Hyprland, labwc...)", Candidates: map[string][]string{
+		"apt": {"wayvnc"}, "dnf": {"wayvnc"}, "pacman": {"wayvnc"}, "zypper": {"wayvnc"}}},
+}
+
+func gstPluginGlobs(file string) []string {
+	return []string{"/usr/lib/*/gstreamer-1.0/" + file, "/usr/lib64/gstreamer-1.0/" + file, "/usr/lib/gstreamer-1.0/" + file}
+}
+
+// present: whether this requirement is already met.
+func (r hostPkgReq) present() bool {
+	if len(r.Globs) == 0 {
+		_, err := hostLookPath(r.Binary)
+		return err == nil
+	}
+	for _, g := range r.Globs {
+		if m, _ := hostGlob(g); len(m) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// hostHasWaylandSessions: a Wayland desktop is installed (or running), so
+// Host Desktop needs its Wayland packages too.
+func hostHasWaylandSessions() bool {
+	if m, _ := hostGlob("/usr/share/wayland-sessions/*.desktop"); len(m) > 0 {
+		return true
+	}
+	return activeSeatSession().Type == "wayland"
 }
 
 type hostPkgManager struct {
@@ -139,6 +181,7 @@ var (
 		st, err := os.Stat("/run/systemd/system")
 		return err == nil && st.IsDir()
 	}
+	hostGlob = filepath.Glob
 )
 
 func detectHostPkgManager() (*hostPkgManager, error) {
@@ -194,14 +237,21 @@ func isUbuntuLike() bool {
 	return strings.Contains(ids, " ubuntu ")
 }
 
-// installHostPackages installs whatever of hostDesktopPackages isn't on
-// PATH yet. Returns warnings for optional binaries still missing and an
-// error only when a required one (x11vnc) is.
-func installHostPackages(ctx context.Context, pm *hostPkgManager, out io.Writer) ([]string, error) {
+// installHostPackages installs whatever of hostDesktopPackages isn't there
+// yet (the Wayland ones only when wayland is set). Returns warnings for
+// optional ones still missing and an error only when a required one
+// (x11vnc) is.
+func installHostPackages(ctx context.Context, pm *hostPkgManager, out io.Writer, wayland bool) ([]string, error) {
 	var warnings []string
-	missing := false
+	var reqs []hostPkgReq
 	for _, req := range hostDesktopPackages {
-		if _, err := hostLookPath(req.Binary); err != nil {
+		if !req.Wayland || wayland {
+			reqs = append(reqs, req)
+		}
+	}
+	missing := false
+	for _, req := range reqs {
+		if !req.present() {
 			missing = true
 			break
 		}
@@ -215,8 +265,8 @@ func installHostPackages(ctx context.Context, pm *hostPkgManager, out io.Writer)
 	}
 	universeTried := false
 	tried := map[string]error{}
-	for _, req := range hostDesktopPackages {
-		if _, err := hostLookPath(req.Binary); err == nil {
+	for _, req := range reqs {
+		if req.present() {
 			continue
 		}
 		var lastErr error
@@ -249,7 +299,7 @@ func installHostPackages(ctx context.Context, pm *hostPkgManager, out io.Writer)
 				break
 			}
 		}
-		if _, err := hostLookPath(req.Binary); err == nil {
+		if req.present() {
 			continue
 		}
 		msg := fmt.Sprintf("%s (%s) could not be installed", req.Binary, req.Why)
@@ -379,7 +429,7 @@ func InstallHostDesktop(ctx context.Context, progress io.Writer) (HostDesktopIns
 	if err != nil {
 		return finish(err)
 	}
-	warnings, err := installHostPackages(ctx, pm, out)
+	warnings, err := installHostPackages(ctx, pm, out, hostHasWaylandSessions())
 	res.Warnings = append(res.Warnings, warnings...)
 	if err != nil {
 		return finish(err)
@@ -428,6 +478,18 @@ func syncHostDesktopFiles() {
 		return
 	}
 	killLegacyWebsockify()
+	// Installs from before Wayland support never got its packages: add them
+	// once the machine is actually on a Wayland session (the wrapper waits
+	// for them meanwhile).
+	if activeSeatSession().Type == "wayland" {
+		if pm, err := detectHostPkgManager(); err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), hostDesktopInstallTimeout)
+			if w, err := installHostPackages(ctx, pm, io.Discard, true); err != nil || len(w) > 0 {
+				log.Printf("host desktop: Wayland packages: %v %v", err, w)
+			}
+			cancel()
+		}
+	}
 	if unitChanged {
 		_ = exec.Command("systemctl", "daemon-reload").Run()
 	}
@@ -448,6 +510,14 @@ type HostDesktopStatus struct {
 	Desktop         string `json:"desktop"`
 	Reason          string `json:"reason"`
 	DistroSupported bool   `json:"distro_supported"`
+	// Wayland only: which backend streams it (mutter, wayvnc, portal), and
+	// whether the host user has to click "Allow" on the server's screen
+	// (needs_consent) or declined it (consent_denied).
+	Backend       string `json:"backend,omitempty"`
+	NeedsConsent  bool   `json:"needs_consent"`
+	ConsentDenied bool   `json:"consent_denied"`
+	// Locked: GNOME won't share a locked screen (POST /host/desktop/unlock).
+	Locked bool `json:"locked"`
 }
 
 func hostDesktopServiceState() string {
@@ -490,6 +560,15 @@ func GetHostDesktopStatus() HostDesktopStatus {
 	if st.SessionType == "" {
 		st.SessionType = state["SESSION_TYPE"]
 	}
+	var wl map[string]string
+	if state["SESSION_TYPE"] == "wayland" {
+		b, _ := os.ReadFile(hostDesktopWaylandStatusPath)
+		wl = parseKeyValueLines(string(b))
+		st.SessionType, st.Backend = "wayland", wl["BACKEND"]
+		st.NeedsConsent = wl["STATE"] == "consent"
+		st.ConsentDenied = wl["STATE"] == "denied"
+		st.Locked = wl["STATE"] == "locked"
+	}
 
 	switch {
 	case !st.DistroSupported:
@@ -500,6 +579,8 @@ func GetHostDesktopStatus() HostDesktopStatus {
 		st.Reason = "The Host Desktop service (" + hostDesktopUnitName + ") has failed - restart it, or check: journalctl -u " + hostDesktopUnitName
 	case st.ServiceState == "inactive" || st.ServiceState == "unknown":
 		st.Reason = "The Host Desktop service is not running."
+	case !st.SocketPresent && wl["REASON"] != "":
+		st.Reason = wl["REASON"]
 	case !st.SocketPresent && state["REASON"] != "":
 		st.Reason = state["REASON"]
 	case !st.SocketPresent:
@@ -611,6 +692,25 @@ func RegisterHostDesktopInstallRoutes(mux *http.ServeMux) {
 			time.Sleep(500 * time.Millisecond)
 		}
 		writeJSON(w, http.StatusOK, GetHostDesktopStatus())
+	})
+
+	// GNOME ends and refuses screen sharing while the screen is locked: let
+	// the viewer unlock it (the admin token this needs already means root
+	// on this box). Locked again once the last viewer has left.
+	mux.HandleFunc("POST /host/desktop/unlock", func(w http.ResponseWriter, r *http.Request) {
+		id := activeSeatSession().ID
+		if id == "" {
+			writeError(w, http.StatusConflict, errors.New("nobody is signed in on the server's screen"))
+			return
+		}
+		if out, err := exec.Command("loginctl", "unlock-session", id).CombinedOutput(); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("loginctl unlock-session: %s (%w)", strings.TrimSpace(string(out)), err))
+			return
+		}
+		hostUnlockedMu.Lock()
+		hostUnlockedSession = id
+		hostUnlockedMu.Unlock()
+		writeJSON(w, http.StatusOK, map[string]bool{"unlocked": true})
 	})
 
 	mux.HandleFunc("GET /host/desktop/settings", func(w http.ResponseWriter, r *http.Request) {
@@ -740,6 +840,34 @@ var (
 )
 
 func noteHostConsoleInput() { hostConsoleLastInput.Store(time.Now().UnixNano()) }
+
+// The session POST /host/desktop/unlock unlocked, re-locked by
+// noteHostConsoleClosed once no viewer has been connected for a minute.
+var (
+	hostUnlockedMu        sync.Mutex
+	hostUnlockedSession   string
+	hostConsoleLastClosed atomic.Int64
+)
+
+func noteHostConsoleClosed() {
+	if hostConsoleSessions.Add(-1) != 0 {
+		return
+	}
+	hostConsoleLastClosed.Store(time.Now().UnixNano())
+	time.AfterFunc(time.Minute, func() {
+		// A viewer that came back (or left again later) keeps it unlocked.
+		if hostConsoleSessions.Load() != 0 || time.Since(time.Unix(0, hostConsoleLastClosed.Load())) < time.Minute-time.Second {
+			return
+		}
+		hostUnlockedMu.Lock()
+		id := hostUnlockedSession
+		hostUnlockedSession = ""
+		hostUnlockedMu.Unlock()
+		if id != "" {
+			_ = exec.Command("loginctl", "lock-session", id).Run()
+		}
+	})
+}
 
 func hostConsoleIdleFor() time.Duration {
 	last := hostConsoleLastInput.Load()

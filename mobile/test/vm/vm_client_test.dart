@@ -229,6 +229,27 @@ void main() {
       await expectLater(future, throwsA(isA<VmException>().having((e) => e.kind, 'kind', VmErrorKind.offline)));
     });
 
+    test('host desktop status: a locked Wayland screen and its unlock call', () async {
+      final seen = <String>[];
+      final client = VmClient.withSession(FakeSession());
+      final st = await http.runWithClient(() async {
+        final st = await client.hostDesktopStatus();
+        await client.unlockHostScreen();
+        return st;
+      }, () => MockClient((req) async {
+            seen.add('${req.method} ${req.url.path}');
+            return req.method == 'GET'
+                ? http.Response('{"reason":"The server\'s screen is locked","locked":true,"needs_consent":false}', 200)
+                : http.Response('{"unlocked":true}', 200);
+          }));
+      expect(st.blocked, isTrue);
+      expect(st.locked, isTrue);
+      expect(st.reason, "The server's screen is locked");
+      expect(seen, ['GET /v1/vm-sidecar/host/desktop/status', 'POST /v1/vm-sidecar/host/desktop/unlock']);
+      expect(HostDesktopStatus.fromJson({'reason': ''}).blocked, isFalse);
+      expect(HostDesktopStatus.fromJson({'needs_consent': true}).blocked, isTrue);
+    });
+
     test('adding a disk is its own call', () async {
       late http.Request seen;
       await http.runWithClient(

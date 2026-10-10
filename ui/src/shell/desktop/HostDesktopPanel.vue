@@ -1,10 +1,11 @@
 <!-- src/shell/desktop/HostDesktopPanel.vue -->
 <!--
 	Host PC / Server Desktop Console.
-	Streams the host machine's own X11 desktop into the NivaroOS desktop
+	Streams the host machine's own desktop into the NivaroOS desktop
 	window or a standalone browser tab via noVNC (RFB), over vm-sidecar's
-	authenticated /host/console WebSocket (which proxies to x11vnc's
-	root-only unix socket - there is no raw VNC port).
+	authenticated /host/console WebSocket (which proxies to a root-only
+	unix socket - x11vnc on X11, host-vnc-wayland on Wayland; there is no
+	raw VNC port).
 	Follows the UI architecture, design tokens, and components of VmConsolePanel:
 	- Console toolbar with identity, status pill, and grouped action bars
 	- Draggable floating on-screen keyboard
@@ -51,26 +52,11 @@
 				<p v-if="deState === 'no_de'">
 					{{ $t('This machine has no desktop environment installed yet.') }}
 				</p>
-				<p v-else-if="deState === 'wayland_session'">
-					{{ $t('{de} is currently running a Wayland session. Log out on the server and choose the "Xorg" or "X11" session at the login screen, then check again.', { de: deDisplayName || $t('Your desktop') }) }}
-				</p>
-				<p v-else-if="deState === 'unsupported'">
+				<p v-else>
 					{{ deReason || $t('Host Desktop streaming is not supported on this system.') }}
 				</p>
-				<p v-else>
-					{{ $t('{de} is running under Wayland, which Host Desktop cannot capture - only an X11 session can be streamed.', { de: deDisplayName || $t('Your desktop') }) }}
-				</p>
-				<p v-if="deReason && deState !== 'unsupported'" class="not-installed-hint">{{ deReason }}</p>
 
 				<div v-if="canProvision" class="de-choice-list">
-					<button
-						v-if="deState === 'wayland_only' && deX11Companion"
-						type="button"
-						class="de-choice-btn"
-						@click="chooseDesktop('x11-companion')"
-					>
-						{{ $t('Add an X11 session to your existing {de} (recommended)', { de: deDisplayName }) }}
-					</button>
 					<button type="button" class="de-choice-btn" @click="chooseDesktop('alongside', 'xfce')">
 						{{ $t('Install XFCE alongside (lightweight, most compatible)') }}
 					</button>
@@ -80,38 +66,6 @@
 					<button type="button" class="de-choice-btn" @click="chooseDesktop('alongside', 'mate')">
 						{{ $t('Install MATE alongside (lightweight, classic look)') }}
 					</button>
-					<button
-						v-if="deState === 'wayland_only' && deName"
-						type="button"
-						class="de-choice-btn de-choice-destructive"
-						@click="openReplaceDesktopPrompt"
-					>
-						{{ $t('Replace {de} entirely (destructive)', { de: deDisplayName }) }}
-					</button>
-				</div>
-
-				<div v-if="showReplacePrompt && canProvision" class="de-replace-confirm">
-					<p>{{ $t('This removes {de} and installs the desktop you pick next. Type its name to confirm:', { de: deName }) }}</p>
-					<div class="de-replace-row">
-						<label class="sr-only" for="hd-replace-choice">{{ $t('Desktop to install') }}</label>
-						<select id="hd-replace-choice" v-model="replaceChoice" class="de-replace-select">
-							<option value="xfce">XFCE</option>
-							<option value="cinnamon">Cinnamon</option>
-							<option value="mate">MATE</option>
-						</select>
-						<label class="sr-only" for="hd-replace-confirm">{{ $t('Type {de} to confirm', { de: deName }) }}</label>
-						<input
-							id="hd-replace-confirm"
-							v-model="replaceConfirmText"
-							type="text"
-							:placeholder="deName"
-							class="de-replace-input"
-							autocomplete="off"
-						/>
-						<b-button type="is-danger" :disabled="replaceConfirmText !== deName" @click="confirmReplaceDesktop">
-							{{ $t('Replace') }}
-						</b-button>
-					</div>
 				</div>
 
 				<!-- Standalone tab has no window manager to open a terminal in:
@@ -515,14 +469,34 @@
 
 			<!-- Disconnected / Reconnecting Overlay -->
 			<div v-if="status !== 'connected'" class="console-status" aria-live="polite">
-				<b-icon v-if="status === 'connecting'" icon="loading" custom-class="mdi-spin" custom-size="mdi-36px"></b-icon>
+				<!-- Wayland: someone at the server has to click "Allow" once
+				     (portal), or GNOME's screen is locked - say so instead of
+				     spinning. -->
+				<b-icon v-if="hostBlocker === 'locked'" icon="monitor-lock" custom-size="mdi-36px"></b-icon>
+				<b-icon v-else-if="hostBlocker" icon="monitor-share" custom-size="mdi-36px"></b-icon>
+				<b-icon v-else-if="status === 'connecting'" icon="loading" custom-class="mdi-spin" custom-size="mdi-36px"></b-icon>
 				<b-icon v-else icon="lan-disconnect" custom-size="mdi-36px"></b-icon>
-				<span>{{ statusText }}</span>
+				<span v-if="hostBlocker === 'needed'">{{ $t('Allow screen sharing on the server') }}</span>
+				<span v-else-if="hostBlocker === 'denied'">{{ $t('Screen sharing was declined on the server') }}</span>
+				<span v-else-if="hostBlocker === 'locked'">{{ $t('The server\'s screen is locked') }}</span>
+				<span v-else>{{ statusText }}</span>
 				<span v-if="connectError" class="console-status-reason">{{ connectError }}</span>
-				<span v-else-if="status === 'disconnected' && serviceStatus && serviceStatus.reason" class="console-status-reason">
+				<span v-else-if="(status === 'disconnected' || hostBlocker) && serviceStatus && serviceStatus.reason" class="console-status-reason">
 					{{ serviceStatus.reason }}
 				</span>
-				<div v-if="status === 'disconnected'" class="console-status-actions">
+				<div v-if="status === 'disconnected' || hostBlocker" class="console-status-actions">
+					<button
+						v-if="hostBlocker === 'denied'"
+						type="button"
+						class="reconnect-btn"
+						:disabled="restartingService"
+						@click="restartService"
+					>
+						{{ $t('Ask again') }}
+					</button>
+					<button v-if="hostBlocker === 'locked'" type="button" class="reconnect-btn" :disabled="unlockingHost" @click="unlockHost">
+						{{ $t('Unlock the server\'s screen') }}
+					</button>
 					<button type="button" class="reconnect-btn" @click="manualReconnect">
 						{{ $t('Reconnect') }}
 					</button>
@@ -708,18 +682,6 @@ const QUALITY_OPTIONS = [
 	{ mode: 'balanced', icon: 'tune-vertical', label: 'Balanced', desc: 'Good picture, moderate data' },
 	{ mode: 'low', icon: 'speedometer-slow', label: 'Low Bandwidth', desc: 'Softer picture, least lag' },
 ]
-
-const DE_DISPLAY_NAMES = {
-	gnome: 'GNOME',
-	plasma: 'KDE Plasma',
-	xfce: 'Xfce',
-	cinnamon: 'Cinnamon',
-	mate: 'MATE',
-	lxqt: 'LXQt',
-	budgie: 'Budgie',
-	deepin: 'Deepin',
-	lxde: 'LXDE',
-}
 
 // The on-screen keyboard's host window id (see Dock.vue / ContextMenu.vue).
 const HOST_DESKTOP_WINDOW_ID = 'host-desktop'
@@ -939,18 +901,14 @@ export default {
 			authExpired: false,
 			deChecked: false,
 			deState: '',
-			deName: '',
 			deReason: '',
-			deX11Companion: false,
 			forceConnect: false,
 			checkingAgain: false,
 			provisionCommand: '',
-			showReplacePrompt: false,
-			replaceChoice: 'xfce',
-			replaceConfirmText: '',
 			serviceStatus: null,
 			connectError: '',
 			restartingService: false,
+			unlockingHost: false,
 			streamSettings: { fixscreen: 0, noxdamage: true, fps: 0, snapfb: false },
 			savingSettings: false,
 			connectedThisAttempt: false,
@@ -966,11 +924,16 @@ export default {
 			return !this.forceConnect && this.deChecked && this.deState !== '' && this.deState !== 'supported'
 		},
 		canProvision() {
-			return this.deState === 'no_de' || this.deState === 'wayland_only'
+			return this.deState === 'no_de'
 		},
-		deDisplayName() {
-			if (!this.deName) return ''
-			return DE_DISPLAY_NAMES[this.deName] || this.deName
+		// Wayland: 'needed' / 'denied' while the desktop portal waits for the
+		// host user, 'locked' while GNOME's screen is locked.
+		hostBlocker() {
+			const st = this.serviceStatus
+			if (!st || this.status === 'connected') return ''
+			if (st.locked) return 'locked'
+			if (st.consent_denied) return 'denied'
+			return st.needs_consent ? 'needed' : ''
 		},
 		statusText() {
 			switch (this.status) {
@@ -1356,9 +1319,7 @@ export default {
 				const res = await this.sidecarGet('/host/desktop/de-status')
 				const d = res.data || {}
 				this.deState = d.state || 'supported'
-				this.deName = d.de_name || ''
 				this.deReason = d.reason || ''
-				this.deX11Companion = !!d.x11_companion_available
 				if (d.display && !this.displayName) this.displayName = d.display
 			} catch (e) {
 				if (isUnauthorized(e)) this.authExpired = true
@@ -1415,16 +1376,6 @@ export default {
 			})
 		},
 
-		openReplaceDesktopPrompt() {
-			this.showReplacePrompt = true
-			this.replaceConfirmText = ''
-		},
-
-		confirmReplaceDesktop() {
-			if (this.replaceConfirmText !== this.deName) return
-			this.chooseDesktop('replace', this.replaceChoice, this.deName)
-			this.showReplacePrompt = false
-		},
 
 		async installHostDesktop() {
 			this.installing = true
@@ -1458,6 +1409,24 @@ export default {
 				this.installError = errorMessage(e, this.$t('Failed to install Host Desktop streaming'))
 			} finally {
 				this.installing = false
+			}
+		},
+
+		async unlockHost() {
+			this.unlockingHost = true
+			try {
+				await this.sidecarPost('/host/desktop/unlock')
+				// The stream restarts on its own within a few seconds.
+				setTimeout(() => this.manualReconnect(), 3000)
+			} catch (e) {
+				if (isUnauthorized(e)) this.authExpired = true
+				this.$buefy.toast.open({
+					message: errorMessage(e, this.$t('Could not unlock the server\'s screen')),
+					type: 'is-danger',
+					duration: 4000,
+				})
+			} finally {
+				this.unlockingHost = false
 			}
 		},
 
@@ -2217,42 +2186,6 @@ export default {
 
 .de-choice-btn:hover {
 	background: rgba(255, 255, 255, 0.12);
-}
-
-.de-choice-destructive {
-	border-color: rgba(241, 70, 104, 0.4);
-	color: #f14668;
-}
-
-.de-replace-confirm {
-	width: 100%;
-	margin-top: var(--space-2, 0.5rem);
-	padding-top: var(--space-2, 0.5rem);
-	border-top: 1px solid rgba(255, 255, 255, 0.1);
-
-	p {
-		margin: 0 0 var(--space-2, 0.5rem);
-		font-size: 0.85rem;
-		color: rgba(255, 255, 255, 0.7);
-	}
-}
-
-.de-replace-row {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-2, 0.5rem);
-	align-items: center;
-}
-
-.de-replace-select,
-.de-replace-input {
-	flex: 1;
-	padding: 0.4rem 0.6rem;
-	border-radius: 6px;
-	border: 1px solid rgba(255, 255, 255, 0.15);
-	background: rgba(255, 255, 255, 0.06);
-	color: #fff;
-	font-size: 0.85rem;
 }
 
 .console-toolbar {

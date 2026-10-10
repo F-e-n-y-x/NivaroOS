@@ -7,18 +7,18 @@
 #  /usr/local/bin/nivaroos-host-desktop-de-install.sh by the same install
 #  logic that installs the x11vnc service. Edit it here only.
 #
-#  Host Desktop streaming (x11vnc) can only capture an X11 (Xorg) session -
-#  never Wayland. This script answers "will streaming actually show
-#  anything on this machine" and fixes it when the answer is no.
+#  Host Desktop streams X11 sessions with x11vnc and Wayland sessions with
+#  nivaroos-vm-sidecar's host-vnc-wayland. This script answers "is there a
+#  desktop to stream on this machine" and installs one when the answer is no.
 #
 #  Usage:
 #    bash host-desktop-de-install.sh --status
 #        Detection only, one line of JSON, installs nothing, needs no root.
 #
 #    bash host-desktop-de-install.sh --action=x11-companion
-#        Adds an X11 session to the existing GNOME/Plasma desktop (only
-#        valid when --status reports state=wayland_only and
-#        x11_companion_available=true).
+#        Adds an X11 session to an existing Wayland-only GNOME/Plasma
+#        (optional now that Wayland streams too; not every release still
+#        ships one).
 #
 #    bash host-desktop-de-install.sh --action=alongside --de=xfce|cinnamon|mate
 #        Installs the given desktop (plus Xorg and a display manager if
@@ -325,12 +325,6 @@ detect_xsession() {
 	return 0
 }
 
-gnome_major_version() {
-	local v
-	v="$(gnome-shell --version 2>/dev/null | grep -oE '[0-9]+' | head -n1 || true)"
-	printf '%s\n' "${v:-0}"
-}
-
 # companion_packages <de> - candidates (first installable wins) for the X11
 # session of an installed GNOME/Plasma. GNOME 49+ and Plasma 6.8+ dropped
 # their X11 sessions upstream, which is why this checks availability rather
@@ -346,19 +340,6 @@ companion_candidates() {
 		plasma:pacman) echo "plasma-x11-session" ;;
 		plasma:zypper) echo "plasma6-session-x11 plasma5-session" ;;
 	esac
-}
-
-companion_available() {
-	local de="$1" cands
-	case "$de" in
-		gnome) [ "$(gnome_major_version)" -ge 49 ] && return 1 ;;
-		plasma) ;;
-		*) return 1 ;;
-	esac
-	cands="$(companion_candidates "$de")"
-	[ -n "$cands" ] || return 1
-	# shellcheck disable=SC2086
-	first_available $cands >/dev/null
 }
 
 detect_display_server_support() {
@@ -382,26 +363,12 @@ detect_display_server_support() {
 		return
 	fi
 
-	if [ "$SESSION_TYPE" = "wayland" ]; then
-		if [ -n "$DETECTED_XSESSION_NAME" ]; then
-			DE_SUPPORT_STATE="wayland_session"
-			REASON="You are logged in to a Wayland session. Log out and choose the '${DETECTED_XSESSION_NAME}' (Xorg/X11) session at the login screen."
-		else
-			DE_SUPPORT_STATE="wayland_only"
-			REASON="The desktop only has a Wayland session installed."
-		fi
-	elif [ -n "$DETECTED_XSESSION_NAME" ]; then
+	# Wayland sessions stream too (host-vnc-wayland), so any desktop will do.
+	if [ "$SESSION_TYPE" = "wayland" ] || [ -n "$DETECTED_XSESSION_NAME" ] || [ -n "$DETECTED_DE_NAME" ]; then
 		DE_SUPPORT_STATE="supported"
-	elif [ -n "$DETECTED_DE_NAME" ]; then
-		DE_SUPPORT_STATE="wayland_only"
-		REASON="The desktop only has a Wayland session installed."
 	else
 		DE_SUPPORT_STATE="no_de"
 		REASON="No desktop environment is installed."
-	fi
-
-	if [ "$DE_SUPPORT_STATE" = "wayland_only" ] && companion_available "$DETECTED_DE_NAME"; then
-		X11_COMPANION_AVAILABLE="true"
 	fi
 }
 
@@ -702,8 +669,8 @@ do_install() {
 
 	case "$ACTION" in
 		x11-companion)
-			if [ "$DE_SUPPORT_STATE" != "wayland_only" ]; then
-				error "x11-companion only applies when --status reports state=wayland_only (currently: ${DE_SUPPORT_STATE})."
+			if [ -z "$DETECTED_DE_NAME" ] || [ -n "$DETECTED_XSESSION_NAME" ]; then
+				error "x11-companion only applies to a desktop without an X11 session (desktop: '${DETECTED_DE_NAME}', X11 session: '${DETECTED_XSESSION_NAME}')."
 				exit 1
 			fi
 			info "Adding an X11 session to your existing ${DETECTED_DE_NAME} desktop..."

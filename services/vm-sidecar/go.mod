@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/F-e-n-y-x/NivaroOS/services/common v0.0.0
+	github.com/godbus/dbus/v5 v5.1.0
 	github.com/gorilla/websocket v1.5.3
 	libvirt.org/go/libvirt v1.12006.0
 )

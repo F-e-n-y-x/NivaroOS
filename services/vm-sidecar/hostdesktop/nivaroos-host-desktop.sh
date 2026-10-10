@@ -20,6 +20,8 @@
 #       active graphical session.
 #    3. Runs x11vnc on a root-only unix socket (no TCP port at all). The
 #       only way in is vm-sidecar's authenticated /host/console WebSocket.
+#    4. On a Wayland session (x11vnc can't capture one) runs
+#       `nivaroos-vm-sidecar host-vnc-wayland` on that same socket instead.
 #
 #  Usage:
 #    nivaroos-host-desktop.sh            run (what the systemd unit does)
@@ -386,6 +388,52 @@ maybe_fix_headless() {
 }
 
 # ------------------------------------------------------------------------------
+# Wayland: x11vnc can't capture it, so nivaroos-vm-sidecar's host-vnc-wayland
+# serves RFB on the same socket (GNOME: mutter's own API; wlroots: wayvnc;
+# others: the desktop portal, whose "Allow" the host user clicks once). See
+# services/vm-sidecar/hostvnc_wayland.go.
+# ------------------------------------------------------------------------------
+WL_HELPER=/usr/bin/nivaroos-vm-sidecar
+WL_STATUS="$RUN_DIR/host-desktop-wayland.status"
+WL_EXIT_DENIED=3
+WL_EXIT_MISSING=4
+WL_EXIT_LOCKED=5
+
+# wayland_session: the active seat0 session is Wayland - logind says so, or
+# a compositor started from a tty (Type=tty) has no X display but a socket.
+wayland_session() {
+	[ -n "$R_UID" ] || return 1
+	[ "$R_TYPE" = "wayland" ] && return 0
+	[ -z "$R_DISPLAY" ] && compgen -G "/run/user/$R_UID/wayland-[0-9]*" >/dev/null
+}
+
+# run_wayland: stream the session until it ends or seat0 switches to
+# another one; returns the helper's exit code.
+run_wayland() {
+	local sid rc
+	sid="$(active_seat_session)"
+	rm -f "$SOCK"
+	R_DISPLAY="" write_state running ""
+	"$WL_HELPER" host-vnc-wayland --uid "$R_UID" --desktop "$R_DESKTOP" --socket "$SOCK" --status "$WL_STATUS" &
+	CHILD=$!
+	trap 'kill "$CHILD" 2>/dev/null; rm -f "$SOCK"; R_DISPLAY="" write_state stopped ""; exit 0' TERM INT
+	while kill -0 "$CHILD" 2>/dev/null; do
+		sleep 2 &
+		wait $! 2>/dev/null || true
+		if [ "$(active_seat_session)" != "$sid" ]; then
+			echo "host-desktop: seat0 switched sessions - restarting the Wayland stream" >&2
+			kill "$CHILD" 2>/dev/null
+		fi
+	done
+	wait "$CHILD" 2>/dev/null
+	rc=$?
+	trap - TERM INT
+	CHILD=""
+	rm -f "$SOCK"
+	return "$rc"
+}
+
+# ------------------------------------------------------------------------------
 # Entry points
 # ------------------------------------------------------------------------------
 if [ "${1:-}" = "--resolve" ]; then
@@ -410,8 +458,35 @@ while :; do
 	if [ -n "$R_DISPLAY" ] && [ "$R_XWAYLAND" != 1 ] && x_reachable; then
 		break
 	fi
+	if wayland_session && [ -x "$WL_HELPER" ]; then
+		R_TYPE=wayland # also a compositor started from a tty
+		wl_sid="$(active_seat_session)"
+		if [ "$(session_prop "$wl_sid" Class)" = "greeter" ]; then
+			rm -f "$WL_STATUS"
+			write_state waiting "Nobody is signed in on the server's screen yet - Wayland login screens can't be shared. Sign in on the server (or enable automatic login)."
+			sleep 5
+			continue
+		fi
+		run_wayland
+		case $? in
+			"$WL_EXIT_DENIED")
+				# Don't pop the request up again by itself: wait for the
+				# panel's "Ask again" (a service restart) or a new session.
+				write_state waiting "Screen sharing was declined on the server."
+				while [ "$(active_seat_session)" = "$wl_sid" ]; do sleep 10; done
+				;;
+			"$WL_EXIT_LOCKED")
+				# Retry as soon as it's unlocked (or the session changes).
+				while [ "$(active_seat_session)" = "$wl_sid" ] && [ "$(session_prop "$wl_sid" LockedHint)" = "yes" ]; do sleep 2; done
+				sleep 1
+				;;
+			"$WL_EXIT_MISSING") write_state waiting "Wayland streaming packages are missing - they are being installed; reinstall Host Desktop from the dashboard if this persists." ; sleep 15 ;;
+			*) sleep 5 ;;
+		esac
+		continue
+	fi
 	if [ "$R_TYPE" = "wayland" ]; then
-		write_state waiting "The active login session is Wayland; Host Desktop can only stream an X11 (Xorg) session. Log out and pick the Xorg/X11 session at the login screen."
+		write_state waiting "The active login session is Wayland and this NivaroOS has no Wayland streaming helper ($WL_HELPER) - update NivaroOS, or log out and pick an Xorg/X11 session."
 	elif [ -n "$R_DISPLAY" ]; then
 		write_state waiting "X display $R_DISPLAY exists but could not be opened (no usable X authority cookie found)."
 	else

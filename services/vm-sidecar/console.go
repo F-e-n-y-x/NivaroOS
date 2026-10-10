@@ -149,7 +149,7 @@ func handleHostConsole() http.HandlerFunc {
 		defer wsConn.Close()
 
 		hostConsoleSessions.Add(1)
-		defer hostConsoleSessions.Add(-1)
+		defer noteHostConsoleClosed()
 		noteHostConsoleInput()
 		proxyConsole(wsConn, hostInputTracker{vncConn})
 	}

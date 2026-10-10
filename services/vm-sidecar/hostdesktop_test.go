@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -97,7 +98,7 @@ func TestHostDesktopSettingsRoundTrip(t *testing.T) {
 
 func TestEmbeddedHostDesktopFiles(t *testing.T) {
 	script := string(hostDesktopScriptContent)
-	for _, want := range []string{"-unixsock", "-rfbport 0", "-noprimary", "-add_keysyms", "-nowf", "-noscr", "-snapfb", "-wait", "-defer", "--resolve"} {
+	for _, want := range []string{"-unixsock", "-rfbport 0", "-noprimary", "-add_keysyms", "-nowf", "-noscr", "-snapfb", "-wait", "-defer", "--resolve", "host-vnc-wayland"} {
 		if !strings.Contains(script, want) {
 			t.Errorf("wrapper script lacks %q", want)
 		}
@@ -140,8 +141,14 @@ func TestHostRoutesNeverSkipAuthOnLoopback(t *testing.T) {
 
 func withFakeHost(t *testing.T, present map[string]bool, systemd bool, run func(name string, args []string) error) {
 	t.Helper()
-	oldLook, oldRun, oldSd := hostLookPath, hostRunCmd, hostHasSystemd
-	t.Cleanup(func() { hostLookPath, hostRunCmd, hostHasSystemd = oldLook, oldRun, oldSd })
+	oldLook, oldRun, oldSd, oldGlob := hostLookPath, hostRunCmd, hostHasSystemd, hostGlob
+	t.Cleanup(func() { hostLookPath, hostRunCmd, hostHasSystemd, hostGlob = oldLook, oldRun, oldSd, oldGlob })
+	hostGlob = func(pattern string) ([]string, error) {
+		if present[filepath.Base(pattern)] {
+			return []string{pattern}, nil
+		}
+		return nil, nil
+	}
 	hostLookPath = func(b string) (string, error) {
 		if present[b] {
 			return "/usr/bin/" + b, nil
@@ -173,7 +180,7 @@ func TestInstallHostPackagesPerDistroOneAtATime(t *testing.T) {
 	if err != nil || pm.Name != "pacman" {
 		t.Fatalf("detect: %v %+v", err, pm)
 	}
-	warnings, err := installHostPackages(context.Background(), pm, io.Discard)
+	warnings, err := installHostPackages(context.Background(), pm, io.Discard, false)
 	if err != nil {
 		t.Fatalf("optional package failure must not fail the install: %v", err)
 	}
@@ -181,6 +188,33 @@ func TestInstallHostPackagesPerDistroOneAtATime(t *testing.T) {
 		t.Fatalf("want one xrefresh warning, got %v", warnings)
 	}
 	if strings.Join(installs, ",") != "x11vnc,xdotool,xorg-xrandr,xorg-xset,xorg-xrefresh,xorg-xdpyinfo" {
+		t.Fatalf("unexpected install sequence %v", installs)
+	}
+}
+
+func TestInstallHostPackagesWaylandExtras(t *testing.T) {
+	present := map[string]bool{"apt-get": true, "x11vnc": true, "xdotool": true, "xrandr": true, "xset": true, "xrefresh": true, "xdpyinfo": true}
+	var installs []string
+	withFakeHost(t, present, true, func(name string, args []string) error {
+		if name == "apt-get" && args[0] == "install" {
+			pkg := args[len(args)-1]
+			installs = append(installs, pkg)
+			for k, v := range map[string]string{"gstreamer1.0-tools": "gst-launch-1.0", "gstreamer1.0-pipewire": "libgstpipewire.so", "gstreamer1.0-plugins-base": "libgstvideoconvert*.so", "wayvnc": "wayvnc"} {
+				if pkg == k {
+					present[v] = true
+				}
+			}
+		}
+		return nil
+	})
+	pm, _ := detectHostPkgManager()
+	if w, err := installHostPackages(context.Background(), pm, io.Discard, false); err != nil || len(w) != 0 || len(installs) != 0 {
+		t.Fatalf("X11-only host must install nothing more: %v %v %v", w, err, installs)
+	}
+	if w, err := installHostPackages(context.Background(), pm, io.Discard, true); err != nil || len(w) != 0 {
+		t.Fatalf("wayland install: %v %v", w, err)
+	}
+	if strings.Join(installs, ",") != "gstreamer1.0-tools,gstreamer1.0-pipewire,gstreamer1.0-plugins-base,wayvnc" {
 		t.Fatalf("unexpected install sequence %v", installs)
 	}
 }
@@ -194,7 +228,7 @@ func TestInstallHostPackagesMissingX11vncIsAnError(t *testing.T) {
 		return nil
 	})
 	pm, _ := detectHostPkgManager()
-	if _, err := installHostPackages(context.Background(), pm, io.Discard); err == nil || !strings.Contains(err.Error(), "x11vnc") {
+	if _, err := installHostPackages(context.Background(), pm, io.Discard, false); err == nil || !strings.Contains(err.Error(), "x11vnc") {
 		t.Fatalf("want x11vnc error, got %v", err)
 	}
 }

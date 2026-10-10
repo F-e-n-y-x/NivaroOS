@@ -199,7 +199,7 @@ var standardResolutions = []DisplayResolution{
 // errNoHostDisplay: no X11 display to talk to (nothing running, Wayland
 // only, or the cookie can't be found). Handlers answer 503 with it rather
 // than inventing a 1920x1080 display that doesn't exist.
-var errNoHostDisplay = errors.New("no X11 display found on this machine - Host Desktop needs a running Xorg session (not Wayland)")
+var errNoHostDisplay = errors.New("no X11 display found on this machine - resolution and CapsLock control need an Xorg session (on Wayland, use the desktop's own display settings)")
 
 // hostXTarget is the X display Host Desktop streams and how to authenticate
 // to it. It's resolved the same way the x11vnc wrapper
@@ -310,7 +310,7 @@ func listXorgServers() []xorgServer {
 	return out
 }
 
-type seatSession struct{ Type, Display, Desktop, User, UID string }
+type seatSession struct{ ID, Type, Display, Desktop, User, UID string }
 
 func activeSeatSession() seatSession {
 	var s seatSession
@@ -327,7 +327,7 @@ func activeSeatSession() seatSession {
 		return s
 	}
 	kv := parseKeyValueLines(string(out))
-	return seatSession{Type: kv["Type"], Display: kv["Display"], Desktop: kv["Desktop"], User: kv["Name"], UID: kv["User"]}
+	return seatSession{ID: id, Type: kv["Type"], Display: kv["Display"], Desktop: kv["Desktop"], User: kv["Name"], UID: kv["User"]}
 }
 
 // guessXAuth mirrors the wrapper's guess_auth_for: well-known cookie

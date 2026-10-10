@@ -31,6 +31,35 @@ before `qemu-system-x86`/`libvirt-daemon-system` are even installed.
   connection the request itself arrived over. This box uses classic
   Debian ifupdown (`/etc/network/interfaces.d/`), not netplan.
 
+## Host Desktop
+
+`GET /host/console` (WebSocket) streams this machine's own desktop from a
+root-only RFB socket, `/run/nivaroos/hostvnc.sock`, served by the wrapper
+`hostdesktop/nivaroos-host-desktop.sh` (embedded; installed by
+`install-host-desktop`):
+
+- X11 session: x11vnc, as always.
+- Wayland session: `nivaroos-vm-sidecar host-vnc-wayland`
+  (`hostvnc_wayland.go`) picks a backend by the compositor running as the
+  session user:
+  - GNOME (mutter): mutter's own RemoteDesktop/ScreenCast D-Bus API, frames
+    via PipeWire (`gst-launch-1.0 pipewiresrc`), keysym input. No prompt;
+    GNOME refuses to share a locked screen, so the panel offers
+    `POST /host/desktop/unlock` (`loginctl unlock-session`; re-locked a
+    minute after the last viewer leaves).
+  - wlroots-style (sway, Hyprland, labwc, river, wayfire): `wayvnc
+    --unix-socket`.
+  - anything else (KDE Plasma 6, ...): xdg-desktop-portal RemoteDesktop. The
+    host user clicks "Allow" once; the restore token is kept in
+    `~/.local/state/nivaroos/host-desktop-restore-token`.
+  `GET /host/desktop/status` reports `backend`, `needs_consent`,
+  `consent_denied` and `locked` so the clients can say what's needed. The
+  Wayland login screen itself can't be shared. Not on Wayland (yet): host
+  clipboard sync, resolution changes, keysyms the host keymap lacks.
+  Wayland packages (GStreamer PipeWire plugin, wayvnc) are installed where a
+  Wayland desktop exists, and on sidecar start for older installs once the
+  active session is Wayland.
+
 ## Testing
 
 Handlers are unit-tested against libvirt's `test:///default` fake driver

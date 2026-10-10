@@ -1648,9 +1648,10 @@ remove_backup_module() {
 # are embedded in it (services/vm-sidecar/hostdesktop/, the single source of
 # truth), and `nivaroos-vm-sidecar install-host-desktop` is exactly what the
 # dashboard's Install button and `nivaroos host-desktop enable` run -
-# per-distro packages (x11vnc, xdotool, xrandr/xset/xrefresh, xdpyinfo) and
-# all. Whether there's an X11 session to stream is checked later, from the
-# dashboard.
+# per-distro packages (x11vnc, xdotool, xrandr/xset/xrefresh, xdpyinfo; plus
+# GStreamer's PipeWire capture and wayvnc where a Wayland desktop is
+# installed) and all. Whether there's a desktop to stream is checked later,
+# from the dashboard.
 # ------------------------------------------------------------------------------
 install_host_desktop() {
 	run_step "Installing Host Desktop Streaming (x11vnc)" "

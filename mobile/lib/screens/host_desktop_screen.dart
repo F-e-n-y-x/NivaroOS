@@ -8,9 +8,10 @@ import '../ui/ui.dart';
 import '../widgets/rfb_view.dart';
 import 'host_display_fit.dart';
 
-/// The NivaroOS server's own desktop (x11vnc on its display), through the
-/// same console as a VM (`/v1/vm-sidecar/host/console`). The one thing
-/// only the host has is its display resolution.
+/// The NivaroOS server's own desktop (x11vnc on X11, host-vnc-wayland on
+/// Wayland), through the same console as a VM
+/// (`/v1/vm-sidecar/host/console`). Only the host has a display resolution,
+/// and - on Wayland - a locked screen or a sharing prompt to get past.
 class HostDesktopScreen extends StatefulWidget {
   const HostDesktopScreen({super.key, this.client, this.rfb, this.history});
 
@@ -30,15 +31,19 @@ class _HostDesktopScreenState extends State<HostDesktopScreen> {
   bool? _installed;
   VmException? _error;
   HostDisplay? _display;
+  HostDesktopStatus? _blocked;
+  bool _unblocking = false;
 
   @override
   void initState() {
     super.initState();
+    _rfb.status.addListener(_onRfbStatus);
     _check();
   }
 
   @override
   void dispose() {
+    _rfb.status.removeListener(_onRfbStatus);
     if (widget.rfb == null) _rfb.dispose();
     if (widget.client == null) _client.close();
     super.dispose();
@@ -67,6 +72,44 @@ class _HostDesktopScreenState extends State<HostDesktopScreen> {
         _checking = false;
       });
     }
+  }
+
+  // A failed connect may be a locked screen or a sharing prompt: ask why.
+  void _onRfbStatus() {
+    final s = _rfb.status.value;
+    if (s == RfbStatus.failed || s == RfbStatus.disconnected) unawaited(_loadBlocked());
+  }
+
+  Future<void> _loadBlocked() async {
+    try {
+      final st = await _client.hostDesktopStatus();
+      if (mounted) setState(() => _blocked = st.blocked ? st : null);
+    } on VmException {
+      // The console's own error stays.
+    }
+  }
+
+  Future<void> _unblock() async {
+    final b = _blocked;
+    if (b == null) return;
+    setState(() => _unblocking = true);
+    try {
+      if (b.locked) {
+        await _client.unlockHostScreen();
+        // The stream restarts on its own a moment later.
+        await Future<void>.delayed(const Duration(seconds: 3));
+      } else if (b.consentDenied) {
+        await _client.restartHostDesktop();
+      }
+    } on VmException catch (e) {
+      if (mounted) ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+    if (!mounted) return;
+    setState(() {
+      _unblocking = false;
+      _blocked = null;
+    });
+    unawaited(_rfb.connect());
   }
 
   Future<void> _loadDisplay() async {
@@ -137,6 +180,21 @@ class _HostDesktopScreenState extends State<HostDesktopScreen> {
         message: "Turn on host desktop streaming in the NivaroOS web dashboard. Then you can use the server's own screen from here.",
         actionLabel: 'Check again',
         onAction: _check,
+      );
+    }
+    final b = _blocked;
+    if (b != null) {
+      return ConsolePlaceholder(
+        icon: b.locked ? Icons.lock_outline : Icons.screen_share_outlined,
+        title: b.locked
+            ? "The server's screen is locked"
+            : b.consentDenied
+                ? 'Screen sharing was declined on the server'
+                : 'Allow screen sharing on the server',
+        message: b.reason,
+        actionLabel: b.locked ? "Unlock the server's screen" : (b.consentDenied ? 'Ask again' : 'Retry'),
+        onAction: _unblock,
+        busy: _unblocking,
       );
     }
     return null;

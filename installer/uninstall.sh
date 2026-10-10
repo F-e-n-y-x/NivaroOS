@@ -356,12 +356,13 @@ remove_ds_extras() {
 	return 0
 }
 
-# Host Desktop: GDM's WaylandEnable=false back to what it was, and the
-# display drop-ins it wrote.
+# Host Desktop: GDM's WaylandEnable=false back to what it was, the display
+# drop-ins it wrote, and the Wayland portal's remembered screen-share grant.
 revert_host_desktop() {
 	rm -f /usr/local/bin/nivaroos-host-desktop.sh /usr/local/bin/nivaroos-host-desktop-de-install.sh \
 		/etc/lightdm/lightdm.conf.d/60-nivaroos-host-desktop.conf /etc/sddm.conf.d/60-nivaroos-host-desktop.conf \
-		/etc/X11/xorg.conf.d/10-nivaroos-headless.conf
+		/etc/X11/xorg.conf.d/10-nivaroos-headless.conf /run/nivaroos/host-desktop-wayland.status \
+		/root/.local/state/nivaroos/host-desktop-restore-token /home/*/.local/state/nivaroos/host-desktop-restore-token
 	[ -n "$GDM_WAYLAND_INFO" ] || return 0
 	local conf orig
 	conf="$(printf '%s\n' "$GDM_WAYLAND_INFO" | sed -n 1p)"
