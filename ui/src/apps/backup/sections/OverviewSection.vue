@@ -34,6 +34,8 @@
 				</ul>
 			</section>
 
+			<coverage-list :jobs="jobs"></coverage-list>
+
 			<upcoming-list :items="upcoming" :fmt="fmt" :caps="app.caps" @open-job="job => app.showJob(job.id)"></upcoming-list>
 		</template>
 	</div>
@@ -45,11 +47,12 @@ import EmptyState from '../components/EmptyState.vue'
 import AttentionList from '../components/AttentionList.vue'
 import RunningJobCard from '../components/RunningJobCard.vue'
 import UpcomingList from '../components/UpcomingList.vue'
+import CoverageList from '../components/CoverageList.vue'
 import { overallState, attentionItems, runningItems, upcomingItems } from '../state'
 
 export default {
 	name: 'OverviewSection',
-	components: { StatusHeader, EmptyState, AttentionList, RunningJobCard, UpcomingList },
+	components: { StatusHeader, EmptyState, AttentionList, RunningJobCard, UpcomingList, CoverageList },
 	inject: { app: 'backupApp' },
 	props: {
 		jobs: { type: Array, required: true },

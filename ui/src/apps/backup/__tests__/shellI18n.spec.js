@@ -20,7 +20,7 @@ import { PHONE_CATEGORIES, PHONE_CONDITIONS, SETTINGS_LIMITS } from '../phones'
 const UI = path.resolve(__dirname, '../../..')
 const en = JSON.parse(fs.readFileSync(path.join(UI, 'assets/lang/en_US.json'), 'utf8'))
 
-const COMPONENTS = ['ActivityList', 'AttentionList', 'BackupVsSyncExplainer', 'EmptyState', 'ErrorExplain', 'JobCard', 'JobDetailsPane', 'JobMenu',
+const COMPONENTS = ['ActivityList', 'AttentionList', 'BackupVsSyncExplainer', 'CoverageList', 'EmptyState', 'ErrorExplain', 'JobCard', 'JobDetailsPane', 'JobMenu',
 	'RunningJobCard', 'RunProgress', 'RunSteps', 'RunSummary', 'RunLog', 'StatusHeader', 'StatusPill', 'UpcomingList', 'VersionList']
 const FILES = [
 	'apps/backup/BackupApp.vue',
@@ -73,6 +73,7 @@ const DYNAMIC = {
 	'backup.trigger.': TRIGGERS,
 	'backup.type.': JOB_TYPES.flatMap(t => [`${t}.label`, `${t}.promise`, `${t}.deleted`]),
 	'backup.ver.': ['current', 'recycle', 'archive', 'files'],
+	'backup.coverage.gap.': ['media', 'offsite'],
 	'backup.attention.': ['waiting', 'migrated_unresolved', 'partial', 'stale'].flatMap(r => [`${r}.title`, `${r}.cause`])
 }
 // Families whose prefix is itself built (`${base}.title`), checked by the
