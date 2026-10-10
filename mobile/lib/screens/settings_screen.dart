@@ -11,12 +11,14 @@ import '../services/permission_service.dart';
 import '../services/session_service.dart';
 import '../services/storage_service.dart';
 import '../services/widget_refresh.dart';
+import '../services/crash_reports.dart';
 import '../ui/ui.dart';
 import '../widgets/server_power.dart';
 import 'login_screen.dart';
 import 'profile_picture.dart';
 import 'system_updates_screen.dart';
 import 'phone_backup/phone_backup_screen.dart';
+import 'crash_reports_screen.dart';
 
 /// The app's own settings: how often Home refreshes, this phone's
 /// permissions, server power, about, and sign out. The account and the theme live on More (one home each);
@@ -271,6 +273,16 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                 subtitle: const Text('github.com/F-e-n-y-x/NivaroOS'),
                 trailing: const Icon(Icons.open_in_new_outlined),
                 onTap: () => _open(AppUpdateService.releasesPage),
+              ),
+              ValueListenableBuilder(
+                valueListenable: CrashReports.instance.reports,
+                builder: (context, reports, _) => ListTile(
+                  leading: const Icon(Icons.bug_report_outlined),
+                  title: const Text('Crash reports'),
+                  subtitle: Text(reports.isEmpty ? 'None · Kept on this phone' : '${reports.length} on this phone · Send to your server'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const CrashReportsScreen())),
+                ),
               ),
               ListTile(
                 leading: const Icon(Icons.description_outlined),

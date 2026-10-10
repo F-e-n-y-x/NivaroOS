@@ -81,6 +81,14 @@ const sys = {
 		return api.get(`${PREFIX}/logs`, { line: lines });
 	},
 
+	// Phone app crash reports its users chose to send here.
+	getCrashReports() {
+		return api.get(`${PREFIX}/crash-reports`);
+	},
+	getCrashReport(id) {
+		return api.get(`${PREFIX}/crash-reports/${encodeURIComponent(id)}`);
+	},
+
 	//Get Debug Info
 	getDebugInfo() {
 		return api.get(`${PREFIX}/debug`);

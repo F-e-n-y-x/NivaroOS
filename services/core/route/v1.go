@@ -121,6 +121,9 @@ func InitV1Router() http.Handler {
 			// v1SysGroup.GET("/config", v1.GetSystemConfig) //delete
 			// v1SysGroup.POST("/config", v1.PostSetSystemConfig)
 			v1SysGroup.GET("/logs", v1.GetNivaroOSErrorLogs) // error/logs
+			v1SysGroup.POST("/crash-reports", v1.PostCrashReport)
+			v1SysGroup.GET("/crash-reports", v1.GetCrashReports)
+			v1SysGroup.GET("/crash-reports/:id", v1.GetCrashReport)
 			// v1SysGroup.GET("/widget/config", v1.GetWidgetConfig)//delete
 			// v1SysGroup.POST("/widget/config", v1.PostSetWidgetConfig)//delete
 

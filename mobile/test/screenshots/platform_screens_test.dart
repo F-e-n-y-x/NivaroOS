@@ -11,6 +11,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nivaroos_mobile/models/server_profile.dart';
 import 'package:nivaroos_mobile/screens/companion_devices_screen.dart';
+import 'package:nivaroos_mobile/screens/crash_reports_screen.dart';
 import 'package:nivaroos_mobile/screens/discovery_screen.dart';
 import 'package:nivaroos_mobile/screens/login_screen.dart';
 import 'package:nivaroos_mobile/screens/more_screen.dart';
@@ -20,6 +21,7 @@ import 'package:nivaroos_mobile/services/api_client.dart';
 import 'package:nivaroos_mobile/services/app_update_service.dart';
 import 'package:nivaroos_mobile/services/avatar_service.dart';
 import 'package:nivaroos_mobile/services/background_service.dart';
+import 'package:nivaroos_mobile/services/crash_reports.dart';
 import 'package:nivaroos_mobile/services/device_sync_service.dart';
 import 'package:nivaroos_mobile/services/discovery_service.dart';
 import 'package:nivaroos_mobile/services/storage_service.dart';
@@ -240,6 +242,24 @@ final Map<String, _Shot> _shots = {
       'GET /v1/tailscale/installed': const FakeResponse({'success': 200, 'data': {'installed': false}}),
     },
   ),
+  'crash_reports': _Shot(
+    () => const CrashReportsScreen(),
+    setup: () async => CrashReports.instance.reports.value = [
+      CrashReport(
+        time: shotTime.subtract(const Duration(minutes: 5)),
+        error: "Bad state: Cannot add new events after calling close",
+        stack: '#0      _BroadcastStreamController.add (dart:async/broadcast_stream_controller.dart:243:24)\n#1      UtilizationFeed._tick (package:nivaroos_mobile/services/utilization_feed.dart:88:13)',
+        source: 'platform',
+      ),
+      CrashReport(
+        time: shotTime.subtract(const Duration(days: 2)),
+        error: 'RangeError (index): Invalid value: Not in inclusive range 0..2: 3',
+        stack: '#0      List.[] (dart:core-patch/growable_array.dart:264:36)',
+        source: 'flutter',
+      ),
+    ],
+  ),
+  'crash_reports_empty': _Shot(() => const CrashReportsScreen(), dense: false),
   'more': _Shot(() => const MoreScreen(), tab: true, tablet: true),
 };
 
@@ -254,6 +274,7 @@ void main() {
     BackgroundService.debugIsAndroid = null;
     DiscoveryService.debugDiscover = null;
     DeviceSyncService.debugFetchDevices = null;
+    CrashReports.instance.reports.value = const [];
   });
 
   for (final MapEntry(key: name, value: s) in _shots.entries) {

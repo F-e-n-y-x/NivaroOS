@@ -100,6 +100,24 @@
 			</div>
 			<pre class="log-view" tabindex="0" role="region" :aria-label="$t('System Logs')">{{ logText }}</pre>
 		</div>
+
+		<!-- Crash reports the phone app's users sent to this server -->
+		<h3 class="setting-card-title">{{ $t('Phone app crash reports') }}</h3>
+		<div class="setting-card">
+			<p v-if="!crashReports.length" class="setting-row setting-desc">
+				{{ $t('None. In the app, Settings > Crash reports > Send to my server puts them here; nothing is sent anywhere else.') }}
+			</p>
+			<div v-for="r in crashReports" :key="r.id" class="setting-row">
+				<b-icon class="row-icon" icon="cellphone" pack="mdi" size="is-20"></b-icon>
+				<div class="row-label">
+					<div class="setting-title">{{ new Date(r.received_at).toLocaleString() }} &middot; {{ r.device || $t('Unknown') }} &middot; {{ r.app_version }}</div>
+					<div class="setting-desc crash-error">{{ r.count }} &times; {{ r.first_error }}</div>
+				</div>
+				<div class="row-control">
+					<b-button rounded size="is-small" @click="downloadCrash(r.id)">{{ $t('Download') }}</b-button>
+				</div>
+			</div>
+		</div>
 	</div>
 </template>
 
@@ -128,7 +146,8 @@ export default {
 			hostnameInput: '',
 			savingHostname: false,
 			hostnameError: '',
-			logText: ''
+			logText: '',
+			crashReports: []
 		}
 	},
 	computed: {
@@ -163,6 +182,7 @@ export default {
 		this.loadUtilization()
 		this.loadDisksUsage()
 		this.loadLogs()
+		this.loadCrashReports()
 	},
 	methods: {
 		openFeedback() {
@@ -206,6 +226,23 @@ export default {
 				this.hostnameError = e.response && e.response.data ? e.response.data.data : this.$t('Failed to change hostname')
 			}).finally(() => {
 				this.savingHostname = false
+			})
+		},
+		loadCrashReports() {
+			this.$api.sys.getCrashReports().then(res => {
+				if (res.data.success === 200) this.crashReports = res.data.data || []
+			}).catch(() => {}) // not an administrator: the card stays empty
+		},
+		downloadCrash(id) {
+			this.$api.sys.getCrashReport(id).then(res => {
+				const url = URL.createObjectURL(new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' }))
+				const a = document.createElement('a')
+				a.href = url
+				a.download = `nivaroos-crash-${id}.json`
+				document.body.appendChild(a)
+				a.click()
+				a.remove()
+				URL.revokeObjectURL(url)
 			})
 		},
 		loadLogs() {
@@ -291,6 +328,11 @@ html[data-theme="dark"] .about-brand-img {
 		font-weight: 500;
 		color: var(--theme-text-primary, #1e293b);
 	}
+}
+
+.crash-error {
+	font-family: $family-monospace;
+	word-break: break-word;
 }
 
 .log-view {

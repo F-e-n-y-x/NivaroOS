@@ -9,12 +9,14 @@ import 'ui/theme/theme_controller.dart';
 import 'services/api_client.dart';
 import 'services/storage_service.dart';
 import 'services/widget_refresh.dart';
+import 'services/crash_reports.dart';
 import 'screens/discovery_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_shell.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  CrashReports.instance.install();
   // Draw behind the status and navigation bars (Android 15 enforces this
   // for apps targeting 35+ anyway); screens handle the insets.
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);

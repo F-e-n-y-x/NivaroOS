@@ -49,7 +49,7 @@ These services see your server's IP address, as with any internet connection, an
 
 ## Android app
 
-The app connects only to the NivaroOS servers you add to it. It asks Android for permissions (photos, files, contacts, messages, call log, notifications) only for features you turn on, such as **Back up this phone**. The data goes only to your own server. The app has no ads, analytics or crash-reporting services.
+The app connects only to the NivaroOS servers you add to it. It asks Android for permissions (photos, files, contacts, messages, call log, notifications) only for features you turn on, such as **Back up this phone**. The data goes only to your own server. The app has no ads, analytics or crash-reporting services. If the app hits an error it keeps the details on the phone (Settings > Crash reports, the last 20); they leave the phone only when you tap **Send to my server**, and then only to your own NivaroOS server, which keeps the last 100 (at most 5 MB) for you to read in Settings > About.
 
 ## Children
 
