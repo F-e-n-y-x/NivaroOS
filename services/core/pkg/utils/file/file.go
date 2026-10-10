@@ -604,50 +604,79 @@ func AddFile(ar *Archive, path, commonPath string) error {
 // AddFileReport is AddFile with every skipped entry reported to onErr, so a
 // download can tell the user what's missing instead of silently shipping a
 // partial archive.
+//
+// path itself may be a symlink (the user picked it), but nothing below it is
+// followed: a folder is walked through os.Root and every symlink inside it is
+// skipped, so a link planted in a shared folder (e.g. "etc -> /") can never
+// pull files from outside it into the archive - not even by swapping a
+// folder for a link mid-walk.
 func AddFileReport(ar *Archive, path, commonPath string, onErr func(path string, err error)) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return err
 	}
+	name := strings.TrimPrefix(strings.TrimPrefix(path, commonPath), string(filepath.Separator))
 
-	if !info.IsDir() && !info.Mode().IsRegular() {
-		onErr(path, fmt.Errorf("special file skipped"))
-		return nil
+	if !info.IsDir() {
+		if !info.Mode().IsRegular() {
+			onErr(path, fmt.Errorf("special file skipped"))
+			return nil
+		}
+		if name == "" { // path is commonPath itself: nothing to name it by
+			return nil
+		}
+		return ar.Add(info, name, func() (fs.File, error) { return os.Open(path) })
 	}
 
-	file, err := os.Open(path)
+	root, err := os.OpenRoot(path)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
-
-	if path != commonPath {
-		//filename := info.Name()
-		filename := strings.TrimPrefix(path, commonPath)
-		filename = strings.TrimPrefix(filename, string(filepath.Separator))
-		var open func() (fs.File, error)
-		if !info.IsDir() {
-			open = func() (fs.File, error) { return os.Open(path) }
-		}
-		if err := ar.Add(info, filename, open); err != nil {
+	defer root.Close()
+	if name != "" {
+		if err := ar.Add(info, name, nil); err != nil {
 			return err
 		}
 	}
+	return addRootDir(ar, root, ".", path, name, onErr)
+}
 
-	if info.IsDir() {
-		names, err := file.Readdirnames(0)
+// addRootDir adds the children of rel (a folder inside root) to the archive.
+func addRootDir(ar *Archive, root *os.Root, rel, abs, name string, onErr func(path string, err error)) error {
+	dir, err := root.Open(rel)
+	if err != nil {
+		return err
+	}
+	names, err := dir.Readdirnames(0)
+	dir.Close()
+	if err != nil {
+		return err
+	}
+	for _, n := range names {
+		childRel, childAbs, childName := filepath.Join(rel, n), filepath.Join(abs, n), filepath.Join(name, n)
+		info, err := root.Lstat(childRel)
 		if err != nil {
-			return err
+			onErr(childAbs, err)
+			continue
 		}
-
-		for _, name := range names {
-			child := filepath.Join(path, name)
-			if err := AddFileReport(ar, child, commonPath, onErr); err != nil {
-				onErr(child, err)
+		switch {
+		case info.Mode()&fs.ModeSymlink != 0:
+			onErr(childAbs, fmt.Errorf("symbolic link skipped"))
+		case info.IsDir():
+			if err := ar.Add(info, childName, nil); err != nil {
+				return err
 			}
+			if err := addRootDir(ar, root, childRel, childAbs, childName, onErr); err != nil {
+				onErr(childAbs, err)
+			}
+		case info.Mode().IsRegular():
+			if err := ar.Add(info, childName, func() (fs.File, error) { return root.Open(childRel) }); err != nil {
+				return err
+			}
+		default:
+			onErr(childAbs, fmt.Errorf("special file skipped"))
 		}
 	}
-
 	return nil
 }
 
