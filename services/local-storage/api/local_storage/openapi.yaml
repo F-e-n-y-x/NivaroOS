@@ -48,8 +48,6 @@ paths:
   /merge:
     get:
       summary: Get merges
-      description: |-
-        (TODO)
       operationId: getMerges
       tags:
         - Merge methods
@@ -69,8 +67,6 @@ paths:
 
     post:
       summary: Set a merge
-      description: |-
-        (TODO)
       operationId: setMerge
       tags:
         - Merge methods
@@ -88,8 +84,6 @@ paths:
   /merge/init:
     get:
       summary: Get merge initialization status
-      description: |-
-        (TODO)
       operationId: getMergeInitStatus
       tags:
         - Merge methods
@@ -100,8 +94,6 @@ paths:
           $ref: "#/components/responses/ResponseServiceUnavailable"
     post:
       summary: Initialize a merge
-      description: |-
-        (TODO)
       operationId: initMerge
       tags:
         - Merge methods
@@ -159,8 +151,6 @@ paths:
 
     post:
       summary: Mount a volume
-      description: |-
-        (TODO)
       operationId: mount
       tags:
         - Mount methods
@@ -216,8 +206,6 @@ paths:
 
     delete:
       summary: Umount volume
-      description: |-
-        (TODO)
       operationId: Umount
       tags:
         - Mount methods
@@ -501,7 +489,6 @@ components:
           readOnly: true
         uuid:
           type: string
-          description: (TODO)
           readOnly: true
           example: 5c682e86-cec3-4761-9350-8e1a0c2d1ae9
         path:
@@ -509,7 +496,6 @@ components:
           example: /dev/sdb1
         state:
           type: integer
-          description: (TODO)
         mount_point:
           type: string
           example: /mnt/sdb_1

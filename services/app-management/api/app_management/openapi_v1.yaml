@@ -23,8 +23,6 @@ paths:
   /usage:
     get:
       summary: Get the usage list of all container apps
-      description: |
-        TODO - add description
       operationId: getAppUsageList
       tags:
         - Container methods
@@ -35,8 +33,6 @@ paths:
   /{id}:
     get:
       summary: Get the container app
-      description: |
-        TODO - add description
       operationId: containerUpdateInfo
       tags:
         - Container methods
@@ -51,8 +47,6 @@ paths:
           $ref: "#/components/responses/ResponseInternalServerError"
     put:
       summary: Update the container app
-      description: |
-        TODO - add description
       operationId: updateContainerByID
       tags:
         - Container methods
@@ -67,8 +61,6 @@ paths:
           $ref: "#/components/responses/ResponseInternalServerError"
     delete:
       summary: Uninstall the container app
-      description: |
-        TODO - add description
       operationId: uninstallContainerByID
       tags:
         - Container methods
@@ -85,8 +77,6 @@ paths:
   /{id}/compose:
     get:
       summary: Convert legacy container app to compose app
-      description: |
-        TODO - add description
       operationId: convertContainerToCompose
       tags:
         - Container methods
@@ -101,8 +91,6 @@ paths:
   /networks:
     get:
       summary: Get docker networks
-      description: |
-        TODO - add description
       operationId: getNetworkList
       tags:
         - Container methods
@@ -113,8 +101,6 @@ paths:
   /archive/{id}:
     get:
       summary: Archive the container app
-      description: |
-        TODO - add description
       operationId: archiveContainerByID
       tags:
         - Container methods
@@ -129,8 +115,6 @@ paths:
   /{id}/terminal:
     get:
       summary: Get the terminal of the container app
-      description: |
-        TODO - add description
       operationId: getContainerTerminal
       tags:
         - Container methods

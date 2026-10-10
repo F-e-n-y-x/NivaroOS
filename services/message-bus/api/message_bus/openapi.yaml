@@ -436,7 +436,7 @@ components:
 
   requestBodies:
     RegisterEventTypes:
-      description: (TODO)
+      description: Source IDs, names and property names are 1-128 of `A-Za-z0-9._:-`, with at most 64 property types; the whole batch is checked before any of it is registered.
       required: true
       content:
         application/json:
@@ -446,7 +446,7 @@ components:
               $ref: "#/components/schemas/EventType"
 
     PublishEvent:
-      description: (TODO)
+      description: A JSON object of string values, at most 1 MiB. Properties not in the type are allowed.
       required: true
       content:
         application/json:
@@ -461,7 +461,7 @@ components:
               local-storage:uuid: 442e0e5b-9d3e-4fe8-b46f-9c4141fdecd7
 
     RegisterActionTypes:
-      description: (TODO)
+      description: Same rules as event types.
       required: true
       content:
         application/json:
@@ -471,7 +471,7 @@ components:
               $ref: "#/components/schemas/ActionType"
 
     TriggerAction:
-      description: (TODO)
+      description: A JSON object of string values, at most 1 MiB.
       required: true
       content:
         application/json:
@@ -520,7 +520,7 @@ components:
             $ref: "#/components/schemas/BaseResponse"
 
     ResponseInternalServerError:
-      description: (TODO)
+      description: Internal Server Error
       content:
         application/json:
           schema:

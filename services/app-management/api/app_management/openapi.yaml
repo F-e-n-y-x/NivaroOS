@@ -223,8 +223,6 @@ paths:
   /appstore:
     get:
       summary: Get the list of registered app stores
-      description: |
-        (TODO)
       operationId: appStoreList
       tags:
         - AppStore methods
@@ -236,8 +234,6 @@ paths:
 
     post:
       summary: Register an app store
-      description: |
-        (TODO)
       operationId: registerAppStore
       tags:
         - AppStore methods
@@ -256,8 +252,6 @@ paths:
   /appstore/{id}:
     delete:
       summary: Unregister an app store
-      description: |
-        (TODO)
       operationId: unregisterAppStore
       tags:
         - AppStore methods
@@ -274,8 +268,6 @@ paths:
   /categories:
     get:
       summary: Get the list of app categories
-      description: |
-        (TODO)
       operationId: CategoryList
       tags:
         - AppStore methods
@@ -304,8 +296,6 @@ paths:
   /apps/upgradable:
     get:
       summary: Get the list of upgradable apps from installed app.
-      description: |
-        (TODO)
       operationId: upgradableAppList
       tags:
         - AppStore methods
@@ -402,8 +392,6 @@ paths:
   /compose:
     get:
       summary: Get the list of installed compose apps
-      description: |
-        TODO - add description
       operationId: myComposeAppList
       tags:
         - Compose methods
@@ -509,8 +497,6 @@ paths:
           $ref: "#/components/responses/ResponseInternalServerError"
     delete:
       summary: Uninstall a compose app
-      description: |
-        TODO - add description
       operationId: uninstallComposeApp
       tags:
         - Compose methods
@@ -528,8 +514,6 @@ paths:
   /compose/{id}/status:
     put:
       summary: Start/restart/stop a compose app
-      description: |
-        TODO - add description
       operationId: setComposeAppStatus
       tags:
         - Compose methods
@@ -550,8 +534,6 @@ paths:
   /compose/{id}/containers:
     get:
       summary: Get the list of containers of a compose app
-      description: |
-        TODO - add description
       operationId: composeAppContainers
       tags:
         - Compose methods
@@ -568,8 +550,6 @@ paths:
   /compose/{id}/logs:
     get:
       summary: Get the logs of a compose app
-      description: |
-        TODO - add description
       operationId: composeAppLogs
       tags:
         - Compose methods
@@ -615,8 +595,6 @@ paths:
   /container/{id}:
     patch:
       summary: Recreate the container app
-      description: |
-        TODO - add description
       operationId: recreateContainerByID
       tags:
         - Container methods
@@ -690,8 +668,6 @@ paths:
   /web/sync/appstore:
     post:
       summary: Register an app store in Sync.
-      description: |
-        (TODO)
       operationId: registerAppStoreSync
       tags:
         - AppStore methods
