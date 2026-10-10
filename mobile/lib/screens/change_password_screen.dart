@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/api_client.dart';
 import '../ui/ui.dart';
 
-/// More › Change password: the current one, the new one twice. The server
+/// Settings › Account › Change password: the current one, the new one twice. The server
 /// signs out every other device on the account; this phone continues with
 /// the new tokens it hands back ([ApiClient.changePassword]).
 class ChangePasswordScreen extends StatefulWidget {

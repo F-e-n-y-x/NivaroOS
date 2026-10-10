@@ -18,6 +18,7 @@ import 'login_screen.dart';
 import 'profile_picture.dart';
 import 'system_updates_screen.dart';
 import 'phone_backup/phone_backup_screen.dart';
+import 'change_password_screen.dart';
 import 'crash_reports_screen.dart';
 
 /// The app's own settings: how often Home refreshes, this phone's
@@ -181,6 +182,14 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => changeProfilePicture(context),
                 ),
+              ),
+              // In the avatar's 40dp slot, so both rows keep one text edge.
+              ListTile(
+                leading: const SizedBox(width: 40, child: Icon(Icons.password_outlined)),
+                title: const Text('Change password'),
+                subtitle: const Text('Signs out your other devices'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ChangePasswordScreen())),
               ),
             ]),
           TileGroup(

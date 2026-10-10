@@ -13,7 +13,6 @@ import '../services/terminal_sessions.dart';
 import '../ui/ui.dart';
 import '../widgets/tailscale_modal.dart';
 import 'backup/backup_screen.dart';
-import 'change_password_screen.dart';
 import 'companion_devices_screen.dart';
 import 'download_station/download_station_screen.dart';
 import 'host_desktop_screen.dart';
@@ -151,14 +150,6 @@ class _MoreScreenState extends State<MoreScreen> {
               subtitle: Text(_serverHost == null ? 'No server' : '$_serverHost · Switch server'),
               onTap: () => _push(const ServerProfilesScreen()),
             ),
-            // In the avatar's 40dp slot, so both rows keep one text edge.
-            if (known)
-              ListTile(
-                leading: const SizedBox(width: 40, child: Icon(Icons.password_outlined)),
-                title: const Text('Change password'),
-                subtitle: const Text('Signs out your other devices'),
-                onTap: () => _push(const ChangePasswordScreen()),
-              ),
           ]),
           TileGroup(title: 'Server', children: [
             ListTile(

@@ -81,6 +81,9 @@ void main() {
     await pump(tester, const SettingsScreen());
     final row = find.text('Sign out');
     await tester.scrollUntilVisible(row, 300, scrollable: find.byType(Scrollable).first);
+    // Clear of the bottom edge, so the tap reaches the row.
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -200));
+    await tester.pump();
     await tester.tap(row);
     await _settle(tester);
     await tester.tap(find.widgetWithText(TextButton, 'Sign out'));
