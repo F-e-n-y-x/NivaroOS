@@ -49,6 +49,20 @@ func remotes() []remote {
 	return out
 }
 
+// remoteSection is a remote's rclone.conf section as one string, without
+// its OAuth token (refreshed mid-run; it doesn't change where data goes).
+func remoteSection(name string) string {
+	data := config.LoadedData()
+	var b strings.Builder
+	for _, k := range data.GetKeyList(name) {
+		if k != "token" {
+			v, _ := data.GetValue(name, k)
+			b.WriteString(k + "=" + v + "\n")
+		}
+	}
+	return b.String()
+}
+
 func findRemote(name string) (remote, bool) {
 	for _, r := range remotes() {
 		if r.Name == name {

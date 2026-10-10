@@ -322,7 +322,9 @@ func TestVolumeMountedMatchesByIdentity(t *testing.T) {
 }
 
 func TestVolumeMountedIgnoresAmbiguousClone(t *testing.T) {
-	h := newHarness(t, true)
+	// Both mounts must land inside the clone's settle window; 10 ms is too
+	// tight when the events goroutine is starved under load.
+	h := newHarness(t, true, func(c *Config, _ *harness) { c.Timings.VolumeSettle = 100 * time.Millisecond })
 	j := usbJob("Stick", 0, false)
 	j.Dest.Match = nil // only the (cloneable) UUID pins it
 	job := h.createJob(j)
@@ -331,8 +333,13 @@ func TestVolumeMountedIgnoresAmbiguousClone(t *testing.T) {
 	clone.MountID, clone.Serial = 300, "CLONE"
 	h.eng.Emit(mountEv(clone, false))
 	h.eng.Emit(mountEv(stick, false))
-	settle()
-	settle()
+	// Both settle timers have run.
+	h.eventually("settled", func() bool {
+		h.svc.trig.mu.Lock()
+		defer h.svc.trig.mu.Unlock()
+		return len(h.svc.trig.known) == 2 && len(h.svc.trig.pending) == 0
+	})
+	settle() // a run they'd queue lands right behind
 	if n := len(h.runsBy(job.ID, RunByVolumeMounted)); n != 0 {
 		t.Fatalf("%d runs with two drives answering to one UUID", n)
 	}

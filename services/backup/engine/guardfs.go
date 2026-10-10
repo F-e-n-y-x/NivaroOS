@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"io"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -28,8 +29,11 @@ type mountGuard struct {
 	dev        uint64
 	// beforeDelete runs once, before the first delete or move into the
 	// recycle folder: the identity marker is checked again (spec §6.2).
+	// rclone deletes in parallel: the other deletes wait for that check,
+	// or one could read the marker after a sibling already deleted it.
 	beforeDelete func(ctx context.Context) error
-	deleteOK     atomic.Int32 // 0 unchecked, 1 ok, 2 failed
+	deleteOnce   sync.Once
+	deleteErr    error
 	writes       atomic.Int64 // successful guarded writes (tests)
 }
 
@@ -62,22 +66,17 @@ func (g *mountGuard) checkDelete(ctx context.Context) error {
 	if err := g.check(); err != nil {
 		return err
 	}
-	switch g.deleteOK.Load() {
-	case 1:
-		return nil
-	case 2:
-		return fserrors.FatalError(Errorf(CodeDestMarkerMismatch, "the destination marker changed during the run"))
-	}
-	if g.beforeDelete != nil {
-		if err := g.beforeDelete(ctx); err != nil {
-			g.deleteOK.Store(2)
-			if g.j != nil {
-				g.j.cancel(err)
-			}
-			return fserrors.FatalError(err)
+	g.deleteOnce.Do(func() {
+		if g.beforeDelete == nil {
+			return
 		}
+		if g.deleteErr = g.beforeDelete(ctx); g.deleteErr != nil && g.j != nil {
+			g.j.cancel(g.deleteErr)
+		}
+	})
+	if g.deleteErr != nil {
+		return fserrors.FatalError(g.deleteErr)
 	}
-	g.deleteOK.Store(1)
 	return nil
 }
 

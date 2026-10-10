@@ -569,7 +569,15 @@ func TestRestoreAPI(t *testing.T) {
 			t.Errorf("case %d: HTTP %d, want %d: %s", i, rec.Code, c.want, rec.Body.String())
 		}
 	}
-	_, req := h.startedJob(1)
+	// The two accepted restores don't share a write lock, so they run side
+	// by side and reach the engine in either order: pick the "current" one.
+	h.startedJob(2)
+	var req engine.JobRequest
+	for _, c := range h.eng.CallsTo("StartJob") {
+		if r := c.Req.(engine.JobRequest); r.Restore != nil && r.Restore.VersionID == "current" {
+			req = r
+		}
+	}
 	if req.Op != engine.OpRestore || req.Restore == nil || req.Restore.Conflict != engine.ConflictKeepBoth || !sameEndpoint(req.Restore.Target, j.Sources[0]) {
 		t.Errorf("restore request: %+v", req.Restore)
 	}

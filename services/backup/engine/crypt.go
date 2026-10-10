@@ -75,7 +75,10 @@ func checkKeys(enc *Encryption) error {
 // cryptFsAt opens rel of an encrypted destination: crypt over the plain
 // destination, which only ever sees encrypted names.
 func (t *target) cryptFsAt(ctx context.Context, rel string, o fsOpts) (fs.Fs, error) {
-	sum := sha256.Sum256([]byte(strings.Join([]string{t.backend, t.fsName, t.fsRoot, t.path, fmt.Sprint(t.opts), fmt.Sprint(o.links, o.oneFileSystem)}, "\x00")))
+	// rclone caches the wrapped remote by this id: the remote's rclone.conf
+	// section is part of it, so a remote re-pointed under the same name
+	// isn't served from a stale cached filesystem.
+	sum := sha256.Sum256([]byte(strings.Join([]string{t.backend, t.fsName, t.fsRoot, t.path, fmt.Sprint(t.opts), fmt.Sprint(o.links, o.oneFileSystem), remoteSection(t.fsName)}, "\x00")))
 	id := hex.EncodeToString(sum[:])[:20]
 	wrapMakers.Store(id, func(ctx context.Context, root string) (fs.Fs, error) { return t.plainFsAt(ctx, root, o) })
 	return newCryptFs(ctx, ":"+wrapBackend+",id="+id+":", rel, t.enc.Keys)

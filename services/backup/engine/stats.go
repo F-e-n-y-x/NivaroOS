@@ -25,8 +25,10 @@ func (e *Engine) liveStats(j *job) Stats {
 	if state == JobQueued {
 		return st
 	}
+	statsMu.Lock()
 	sg := accounting.StatsGroup(context.Background(), j.group)
 	out, err := sg.RemoteStats(false)
+	statsMu.Unlock()
 	if err == nil {
 		st.Bytes = asInt64(out["bytes"])
 		st.Files = asInt64(out["transfers"])

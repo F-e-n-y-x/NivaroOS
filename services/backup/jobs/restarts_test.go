@@ -84,13 +84,7 @@ func TestRestartLoopGivesUpAfterADay(t *testing.T) {
 	if hd := decodeHooksDone(r.HooksDone); !hd[0].PostDone {
 		t.Fatalf("not given up: %s", r.HooksDone)
 	}
-	found := false
-	for _, k := range h.bus.notifications() {
-		if k == "backup.notify.restart_gave_up" {
-			found = true
-		}
-	}
-	if !found {
+	if !h.notified("backup.notify.restart_gave_up") {
 		t.Fatalf("no give-up notification: %v", h.bus.notifications())
 	}
 }

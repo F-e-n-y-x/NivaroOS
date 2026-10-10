@@ -346,8 +346,15 @@ func (m *jobManager) finish(j *job, res Result, err error) {
 	m.e.subs.emit(Event{Type: EventJobDone, Time: now, JobID: j.id, RunID: j.req.RunID, State: state})
 }
 
+// statsMu serialises reading a stats group with deleting one: rclone's
+// RemoteStats reads errors/lastError outside its lock while stats-delete
+// resets them, a race that can end in a nil lastError.Error() panic.
+var statsMu sync.Mutex
+
 // deleteStatsGroup frees rclone's accounting for a finished job.
 func deleteStatsGroup(group string) {
+	statsMu.Lock()
+	defer statsMu.Unlock()
 	if call := rc.Calls.Get("core/stats-delete"); call != nil {
 		_, _ = call.Fn(context.Background(), rc.Params{"group": group})
 	}
