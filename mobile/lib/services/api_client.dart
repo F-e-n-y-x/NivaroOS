@@ -337,9 +337,11 @@ class ApiClient {
   // Requests
   // ---------------------------------------------------------------------
 
-  Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) async {
+  /// [timeout] replaces [requestTimeout], for a screen that would rather
+  /// say "can't reach" and offer Retry sooner.
+  Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query, Duration? timeout}) async {
     final uri = _uri(path, query);
-    return _send('GET', uri, () => http.get(uri, headers: _headers()));
+    return _send('GET', uri, () => http.get(uri, headers: _headers()), timeout: timeout);
   }
 
   /// [timeout] replaces [requestTimeout] for a request the server takes

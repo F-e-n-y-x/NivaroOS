@@ -409,7 +409,10 @@ func jobHealth(j Job, st JobState, last, active *RunRow, online *bool, now time.
 	return HealthOK
 }
 
-// destOnline resolves destinations concurrently, 3 s each.
+// destOnline is each job's destination state (nil = not known). A
+// destination is resolved (3 s at most) the first time it is asked for;
+// after that the last answer is returned at once and refreshed in the
+// background once it is older than onlineTTL (swr.go).
 func (s *Service) destOnline(ctx context.Context, jobs []Job) []*bool {
 	out := make([]*bool, len(jobs))
 	var wg sync.WaitGroup
@@ -418,30 +421,43 @@ func (s *Service) destOnline(ctx context.Context, jobs []Job) []*bool {
 		wg.Add(1)
 		go func(i int, j Job) {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			cctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			defer cancel()
-			creds, err := s.smbCredsFor(cctx, []Endpoint{j.Dest})
-			if err != nil {
-				f := false
-				out[i] = &f
-				return
-			}
-			req := engine.ResolveRequest{Endpoint: j.Dest}
-			if c, ok := creds[j.Dest.RefID]; ok {
-				req.SMBCreds = &c
-			}
-			res, err := s.engine.Resolve(cctx, req)
-			if err != nil && engine.CodeOf(err) == ErrEngineUnavailable {
-				return // unknown
-			}
-			on := err == nil && res.Online
-			out[i] = &on
+			key := j.ID + "|" + string(j.Dest.Kind) + "|" + j.Dest.RefID + "|" + j.Dest.SubPath
+			out[i] = s.onlineCache.get(ctx, s.ctx, &s.wg, key, onlineTTL, s.now, func(ctx context.Context) (*bool, bool) {
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				return s.resolveOnline(ctx, j)
+			})
 		}(i, j)
 	}
 	wg.Wait()
 	return out
+}
+
+const (
+	onlineTTL   = 30 * time.Second
+	versionsTTL = 60 * time.Second
+)
+
+// resolveOnline asks the engine whether j's destination is there now;
+// ok=false when the answer shouldn't be kept.
+func (s *Service) resolveOnline(ctx context.Context, j Job) (*bool, bool) {
+	cctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	creds, err := s.smbCredsFor(cctx, []Endpoint{j.Dest})
+	if err != nil {
+		f := false
+		return &f, ctx.Err() == nil
+	}
+	req := engine.ResolveRequest{Endpoint: j.Dest}
+	if c, ok := creds[j.Dest.RefID]; ok {
+		req.SMBCreds = &c
+	}
+	res, err := s.engine.Resolve(cctx, req)
+	if err != nil && engine.CodeOf(err) == ErrEngineUnavailable {
+		return nil, false // unknown
+	}
+	on := err == nil && res.Online
+	return &on, ctx.Err() == nil
 }
 
 func (s *Service) handleJobsList(w http.ResponseWriter, r *http.Request) {
@@ -474,9 +490,7 @@ func (s *Service) jobDetail(ctx context.Context, j Job) (JobDetail, error) {
 	st, _ := s.store.JobState(j.ID)
 	d.Stats.SizeBytes, d.Stats.LastSuccess = st.SizeBytes, st.LastSuccessAt
 	if j.Type != TypeCopy && online != nil && *online {
-		vctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		if vers, err := s.versions(vctx, j); err == nil {
+		if vers, err := s.cachedVersions(ctx, j, 5*time.Second); err == nil {
 			for _, v := range vers {
 				if v.Kind != engine.VersionCurrent {
 					d.Stats.VersionsCount++
@@ -998,15 +1012,35 @@ func (s *Service) versions(ctx context.Context, j Job) ([]Version, error) {
 	return vers, err
 }
 
+type versionsAnswer struct {
+	vers []Version
+	err  error
+}
+
+// cachedVersions is versions through the swr cache, keyed by the job's
+// revision and its last finished run, so a new archive or a changed
+// destination is listed at once. Errors are returned but not kept.
+func (s *Service) cachedVersions(ctx context.Context, j Job, timeout time.Duration) ([]Version, error) {
+	key := j.ID + "|" + strconv.Itoa(j.Revision)
+	if last, err := s.store.LastRun(j.ID, nil, finalStatuses); err == nil && last != nil {
+		key += "|" + last.ID
+	}
+	a := s.versionsCache.get(ctx, s.ctx, &s.wg, key, versionsTTL, s.now, func(ctx context.Context) (versionsAnswer, bool) {
+		vctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		vers, err := s.versions(vctx, j)
+		return versionsAnswer{vers, err}, err == nil
+	})
+	return a.vers, a.err
+}
+
 func (s *Service) handleVersions(w http.ResponseWriter, r *http.Request) {
 	j, err := s.store.GetJob(r.PathValue("id"))
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
-	vers, err := s.versions(ctx, j)
+	vers, err := s.cachedVersions(r.Context(), j, 30*time.Second)
 	if err != nil {
 		s.fail(w, err)
 		return

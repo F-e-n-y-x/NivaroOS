@@ -70,8 +70,8 @@ const _styles = [DesignDirection.rack, DesignDirection.tonal, DesignDirection.co
 
 void main() {
   setUp(() async {
-    BackupScreen.clearCache();
     await signIn();
+    await BackupScreen.clearCache();
   });
 
   for (final d in _styles) {

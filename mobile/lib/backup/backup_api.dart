@@ -75,6 +75,11 @@ class BackupApi {
 
   static const base = '/backup';
 
+  /// The overview's reads (health, jobs, a run): the server answers them
+  /// from its own state at once, so a slower answer means the link is bad
+  /// and the screen should say so with Retry instead of waiting a minute.
+  static const readTimeout = Duration(seconds: 20);
+
   Future<T> _call<T>(Future<Map<String, dynamic>> Function() request, T Function(Object? data) parse) async {
     try {
       final res = await request();
@@ -84,19 +89,24 @@ class BackupApi {
     }
   }
 
-  /// Whether the optional module is installed and answering. Any failure
-  /// (no route, stopped, a web page instead of JSON) means it isn't.
+  /// Whether the optional module is installed and answering. Any answer
+  /// but its health (no route, stopped, a web page instead of JSON) means
+  /// it isn't; no answer at all (no network, timed out) is a [BackupError]
+  /// the caller shows as "can't reach".
   Future<BackupHealth> health() async {
     try {
       // Not enveloped: the whole answer is the health.
-      final res = await _c.get('$base/health');
+      final res = await _c.get('$base/health', timeout: readTimeout);
       return BackupHealth.fromJson(res);
+    } on ApiException catch (e) {
+      if (e.statusCode == null && e.isUnreachable) throw BackupError.from(e);
+      return const BackupHealth(installed: false, running: false);
     } catch (_) {
       return const BackupHealth(installed: false, running: false);
     }
   }
 
-  Future<List<BackupJob>> jobs() => _call(() => _c.get('$base/jobs'), (d) => [for (final j in d is List ? d : const []) BackupJob.fromJson(j)]);
+  Future<List<BackupJob>> jobs() => _call(() => _c.get('$base/jobs', timeout: readTimeout), (d) => [for (final j in d is List ? d : const []) BackupJob.fromJson(j)]);
 
   Future<BackupJob> job(String id) => _call(() => _c.get('$base/jobs/${Uri.encodeComponent(id)}'), BackupJob.fromJson);
 
@@ -120,7 +130,7 @@ class BackupApi {
         RunList.fromJson,
       );
 
-  Future<BackupRun> getRun(String id) => _call(() => _c.get('$base/runs/${Uri.encodeComponent(id)}'), BackupRun.fromJson);
+  Future<BackupRun> getRun(String id) => _call(() => _c.get('$base/runs/${Uri.encodeComponent(id)}', timeout: readTimeout), BackupRun.fromJson);
 
   Future<LogPage> log(String runId, {int after = 0, int limit = 500}) =>
       _call(() => _c.get('$base/runs/${Uri.encodeComponent(runId)}/log', query: {'after': '$after', 'limit': '$limit'}), LogPage.fromJson);

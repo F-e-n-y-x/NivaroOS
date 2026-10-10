@@ -3,6 +3,7 @@
 // the decision on a waiting run, and the state when the module isn't
 // installed.
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +15,7 @@ import 'package:nivaroos_mobile/screens/backup/backup_restore_screen.dart';
 import 'package:nivaroos_mobile/screens/backup/backup_run_screen.dart';
 import 'package:nivaroos_mobile/screens/backup/backup_screen.dart';
 import 'package:nivaroos_mobile/screens/dashboard_screen.dart';
+import 'package:nivaroos_mobile/ui/ui.dart';
 
 import '../screenshots/backup_test.dart' show backupMissing, backupServer, photosJob;
 import '../screenshots/harness.dart';
@@ -28,7 +30,8 @@ Future<void> _settle(WidgetTester tester) async {
 /// Requests with their JSON bodies, "POST /v1/backup/jobs/x/run" -> body.
 typedef Sent = List<(String, Object?)>;
 
-Future<Sent> _run(WidgetTester tester, Widget screen, Future<void> Function() body, {Map<String, Object> overrides = const {}}) async {
+Future<Sent> _run(WidgetTester tester, Widget screen, Future<void> Function() body,
+    {Map<String, Object> overrides = const {}, Duration Function(String route)? delay}) async {
   await loadRealFonts();
   tester.view.physicalSize = const Size(412, 915) * 3;
   tester.view.devicePixelRatio = 3;
@@ -37,7 +40,11 @@ Future<Sent> _run(WidgetTester tester, Widget screen, Future<void> Function() bo
   final inner = server.client;
   final sent = <(String, Object?)>[];
   final client = MockClient((req) async {
-    sent.add(('${req.method} ${req.url.path}', req.body.isEmpty ? null : jsonDecode(req.body)));
+    final route = '${req.method} ${req.url.path}';
+    sent.add((route, req.body.isEmpty ? null : jsonDecode(req.body)));
+    final wait = delay?.call(route) ?? Duration.zero;
+
+    if (wait > Duration.zero) await Future<void>.delayed(wait);
     final copy = http.Request(req.method, req.url)
       ..headers.addAll(req.headers)
       ..bodyBytes = req.bodyBytes;
@@ -72,8 +79,8 @@ bool _posted(Sent sent, String route) => sent.any((s) => s.$1 == route);
 
 void main() {
   setUp(() async {
-    BackupScreen.clearCache();
     await signIn();
+    await BackupScreen.clearCache();
   });
 
   testWidgets("Home's backup row opens the job in the app, not the web interface", (tester) async {
@@ -144,6 +151,64 @@ void main() {
         await _settle(tester);
       }, overrides: {'POST /v1/backup/jobs/bk_photos/toggle': {'success': 200, 'message': 'ok', 'data': {...(backupServer['GET /v1/backup/jobs/bk_photos'] as Map)['data'] as Map, 'enabled': false, 'health': 'disabled'}}});
       expect(sent.where((s) => s.$1 == 'POST /v1/backup/jobs/bk_photos/toggle').single.$2, {'enabled': false});
+    });
+  });
+
+  // The overview on a slow link or a slow server (the owner waited minutes
+  // on it): what's known shows at once, a dead request ends in Retry.
+  group('loading', () {
+    const runRoute = 'GET /v1/backup/runs/run_docs_2';
+
+    testWidgets("the jobs show without waiting for a running job's progress", (tester) async {
+      await _run(tester, const BackupScreen(), () async {
+        expect(find.text('Running now'), findsOneWidget);
+        expect(find.text('Photos to Sandisk'), findsWidgets);
+        expect(find.textContaining('3,210 of 4,700 files'), findsNothing);
+        await tester.pump(const Duration(seconds: 6));
+        await _settle(tester);
+        expect(find.textContaining('3,210 of 4,700 files'), findsOneWidget);
+      }, delay: (r) => r == runRoute ? const Duration(seconds: 5) : Duration.zero);
+    });
+
+    testWidgets('a jobs answer that never comes ends in Retry, not an endless spinner', (tester) async {
+      var hang = true;
+      await _run(tester, const BackupScreen(), () async {
+        expect(find.byType(SliverLoadingList), findsOneWidget);
+        await tester.pump(const Duration(seconds: 21));
+        await _settle(tester);
+        expect(find.text("Can't reach the server"), findsOneWidget);
+        hang = false;
+        await tester.tap(find.text('Retry'));
+
+        await _settle(tester);
+        expect(find.text('Photos to Sandisk'), findsWidgets);
+      }, delay: (r) => r == 'GET /v1/backup/jobs' && hang ? const Duration(seconds: 30) : Duration.zero);
+    });
+
+    testWidgets("a health check that gets no answer says can't reach, not \"isn't installed\"", (tester) async {
+      await _run(tester, const BackupScreen(), () async {
+        await tester.pump(const Duration(seconds: 21));
+        await _settle(tester);
+        expect(find.text("Backup & Sync isn't installed"), findsNothing);
+        expect(find.text("Can't reach the server"), findsOneWidget);
+      }, delay: (r) => r == 'GET /v1/backup/health' ? const Duration(seconds: 30) : Duration.zero);
+    });
+
+    testWidgets('the first visit after the app starts opens on the last answer kept on disk', (tester) async {
+      final file = File('${Directory.systemTemp.createTempSync('backup_cache').path}/jobs.json');
+      final jobs = (fixture('backup/jobs')['data'] as List).take(1).toList();
+      file.writeAsStringSync(jsonEncode({'server': fakeServer, 'at': '2026-10-10T08:00:00Z', 'jobs': jobs}));
+      final was = BackupScreen.diskCache;
+      BackupScreen.diskCache = () async => file;
+      addTearDown(() => BackupScreen.diskCache = was);
+      await _run(tester, const BackupScreen(), () async {
+        expect(find.byType(SliverLoadingList), findsNothing);
+        expect(find.text('Photos to Sandisk'), findsWidgets);
+        expect(find.text('Documents to tank'), findsNothing, reason: 'the server has not answered yet');
+        await tester.pump(const Duration(seconds: 11));
+        await _settle(tester);
+        expect(find.text('Documents to tank'), findsWidgets);
+      }, delay: (r) => r == 'GET /v1/backup/jobs' ? const Duration(seconds: 10) : Duration.zero);
     });
   });
 

@@ -84,6 +84,9 @@ type Service struct {
 	liveMu sync.Mutex
 	lives  map[string]LiveStats
 
+	onlineCache   swr[*bool]
+	versionsCache swr[versionsAnswer]
+
 	migrateMu sync.Mutex
 
 	// restartKick wakes the restart loop after a restart failed.

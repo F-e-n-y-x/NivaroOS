@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../backup/backup_api.dart';
+import '../backup/backup_models.dart' show BackupHealth;
 import '../backup/backup_state.dart';
 import '../backup/backup_strings.dart';
 import '../services/api_client.dart';
@@ -99,7 +100,7 @@ class _MoreScreenState extends State<MoreScreen> {
 
   Future<void> _loadBackup() async {
     final api = BackupApi();
-    final health = await api.health();
+    final health = await api.health().catchError((Object _) => const BackupHealth(installed: false, running: false));
     String summary;
     if (!health.installed) {
       summary = 'Not installed on this server';

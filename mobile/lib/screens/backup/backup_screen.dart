@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../backup/backup_api.dart';
 import '../../backup/backup_models.dart';
@@ -31,8 +34,21 @@ class BackupScreen extends StatefulWidget {
   /// For tests; the app's session otherwise.
   final BackupApi? api;
 
-  /// Forgets the last answer kept for the next visit (tests).
-  static void clearCache() => _BackupScreenState._cache.clear();
+  /// Forgets the last answer kept for the next visit, in memory and on
+  /// disk (tests).
+  static Future<void> clearCache() async {
+    _BackupScreenState._cache.clear();
+    try {
+      await (await _BackupScreenState.diskCache()).delete();
+    } catch (_) {}
+  }
+
+  /// Where the last answer is kept on disk, per server, so the first
+  /// visit after the app starts opens on it too (replaced as soon as the
+  /// server answers).
+  @visibleForTesting
+  static Future<File> Function() get diskCache => _BackupScreenState.diskCache;
+  static set diskCache(Future<File> Function() f) => _BackupScreenState.diskCache = f;
 
   @override
   State<BackupScreen> createState() => _BackupScreenState();
@@ -49,7 +65,6 @@ class _BackupScreenState extends State<BackupScreen> with WidgetsBindingObserver
   List<BackupJob>? _jobs;
   DateTime? _loadedAt;
   Object? _error;
-  bool _loading = false;
   final Map<String, LiveStats?> _live = {};
   final Set<String> _busy = {};
 
@@ -60,6 +75,8 @@ class _BackupScreenState extends State<BackupScreen> with WidgetsBindingObserver
     if (cached != null) {
       _jobs = cached.jobs;
       _loadedAt = cached.at;
+    } else {
+      unawaited(_readDisk());
     }
     _load();
     startPolling();
@@ -71,6 +88,29 @@ class _BackupScreenState extends State<BackupScreen> with WidgetsBindingObserver
     super.dispose();
   }
 
+  static Future<File> Function() diskCache = () async => File('${(await getApplicationSupportDirectory()).path}/backup_jobs.json');
+
+  Future<void> _readDisk() async {
+    try {
+      final j = jsonDecode(await (await diskCache()).readAsString());
+      if (j is! Map || j['server'] != ApiClient.instance.baseUrl || j['jobs'] is! List) return;
+      final jobs = [for (final x in j['jobs'] as List) BackupJob.fromJson(x)];
+      final at = DateTime.tryParse('${j['at']}');
+      if (!mounted || _jobs != null) return;
+      setState(() {
+        _jobs = jobs;
+        _loadedAt = at;
+      });
+    } catch (_) {}
+  }
+
+  static Future<void> _writeDisk(String server, List<BackupJob> jobs, DateTime at) async {
+    try {
+      final f = await diskCache();
+      await f.writeAsString(jsonEncode({'server': server, 'at': at.toIso8601String(), 'jobs': [for (final j in jobs) j.raw]}));
+    } catch (_) {}
+  }
+
   // Not installed: nothing to follow until "Check again".
   @override
   bool get wantsPolling => _health?.installed ?? true;
@@ -78,17 +118,46 @@ class _BackupScreenState extends State<BackupScreen> with WidgetsBindingObserver
   @override
   Future<void> poll() => _load(quiet: true);
 
-  Future<void> _load({bool quiet = false}) async {
-    if (_loading) return;
-    _loading = true;
+  // The load in flight: a poll while one runs joins it instead of
+  // starting another. Retry and pull to refresh start a new one; [_gen]
+  // makes the answer of the one they replaced count for nothing.
+  Future<void>? _loading;
+  int _gen = 0;
+
+  Future<void> _load({bool quiet = false, bool fresh = false}) {
+    final running = _loading;
+    if (running != null && !fresh) return running;
+    final gen = ++_gen;
+    late final Future<void> f;
+    f = _fetch(quiet: quiet, gen: gen).whenComplete(() {
+      if (identical(_loading, f)) _loading = null;
+    });
+    return _loading = f;
+  }
+
+  // The jobs show as soon as they come; the running jobs' progress fills
+  // in after.
+  Future<void> _fetch({required bool quiet, required int gen}) async {
+    bool current() => mounted && gen == _gen;
     try {
       if (_health == null || !_health!.installed || !quiet) {
         final h = await _api.health();
-        if (!mounted) return;
+        if (!current()) return;
         setState(() => _health = h);
         if (!h.installed || !h.running) return;
       }
       final jobs = await _api.jobs();
+      if (!current()) return;
+      final now = clock.now();
+      final server = ApiClient.instance.baseUrl;
+      _cache[server] = (jobs: jobs, at: now);
+      unawaited(_writeDisk(server, jobs, now));
+      setState(() {
+        _jobs = jobs;
+        _loadedAt = now;
+        _error = null;
+        _live.removeWhere((id, _) => !jobs.any((j) => j.id == id && j.activeRun?.status == 'running'));
+      });
       final live = <String, LiveStats?>{};
       await Future.wait([
         for (final j in jobs)
@@ -97,32 +166,20 @@ class _BackupScreenState extends State<BackupScreen> with WidgetsBindingObserver
               try {
                 live[j.id] = (await _api.getRun(j.activeRun!.id)).live;
               } catch (_) {
-                live[j.id] = _live[j.id];
+                // Keeps the last progress.
               }
             }(),
       ]);
-      if (!mounted) return;
-      final now = clock.now();
-      _cache[ApiClient.instance.baseUrl] = (jobs: jobs, at: now);
-      setState(() {
-        _jobs = jobs;
-        _loadedAt = now;
-        _error = null;
-        _live
-          ..clear()
-          ..addAll(live);
-      });
+      if (current() && live.isNotEmpty) setState(() => _live.addAll(live));
     } catch (e) {
-      if (!mounted) return;
+      if (!current()) return;
       setState(() => _error = e);
-    } finally {
-      _loading = false;
     }
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh() {
     _health = null;
-    await _load();
+    return _load(fresh: true);
   }
 
   Future<void> _open(Widget screen) async {
