@@ -11,6 +11,9 @@ Live events: one WebSocket per source at `/v2/message_bus/event/{source}`
 moved to the WebSockets; `nivaroos-cli message-bus subscribe` keeps its
 websocket subcommands). Requests from this host that succeed fast are not
 logged (shared `RequestLogger`); per-event socket lines aren't either.
+Type registration checks names (1-128 of `[A-Za-z0-9._:-]`, at most 64
+property types); publish/trigger bodies are at most 1 MiB, a JSON object of
+strings.
 
 ## Notification feed
 

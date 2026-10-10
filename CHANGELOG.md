@@ -35,6 +35,13 @@ by re-running the installer; the app changes ship in the next APK.
   posted on the phone in Downloads / Backups / System channels without
   Google's push service: live while the app runs, otherwise from the
   15-minute background check. The permission is asked from the inbox.
+- Network widget (web and app): each physical NIC's link speed ("enp7s0 ·
+  1 Gbit/s", or Wi-Fi) and today's received/sent totals, kept across
+  restarts and reboots (`/var/lib/nivaroos/net-today.json`).
+- App: the Backup & Sync job form has every option the web wizard has
+  (skip patterns, stop apps/VMs, run conditions, safety limits, advanced),
+  new encrypted jobs, and Preview, Check backup, Duplicate, Delete, Test
+  password and Reconnect on the job page.
 - Finished and failed downloads and torrents go to the notification feed,
   so the web Notification Center and the phone get them with no Download
   Station window open. App install/update entries open the app.
@@ -96,12 +103,18 @@ by re-running the installer; the app changes ship in the next APK.
   saved; a failed Reconnect puts the old sign-in back; Connect no longer
   stays disabled after a single paste.
 - Download Station: a finished browser download could miss its
-  "completed" event.
+  "completed" event; a finished torrent could be announced twice.
+- App: moving an encrypted backup job to another destination was refused.
+- Profile pictures uploaded straight from a phone photo are turned upright
+  (EXIF orientation).
 - Backup: two engine races (purge marker check, rclone stats) and a stale
   cached remote after re-pointing an encrypted job's remote.
 
 ### Security
 
+- The message bus validates registered type names (1-128 of
+  `[A-Za-z0-9._:-]`) and caps publish/trigger bodies at 1 MiB (JSON object
+  of strings); bad ones get a 400.
 - Go 1.27.2 and golang.org/x/net v0.60.0 (net/http HTTP/2 and CONNECT
   fixes, GO-2026-6603/6610-6613/6617). govulncheck: 0 in every module.
 

@@ -34,9 +34,10 @@ around the web dashboard. Requires Android 7.0 or newer.
   and true black.
 
 What changed per release: [`CHANGELOG.md`](../CHANGELOG.md). Since 1.4.11
-(next APK): the notifications inbox and phone notifications, and a Backup &
-Sync overview that opens at once and says "Can't reach the server" with
-Retry instead of spinning.
+(next APK): the notifications inbox and phone notifications; a Backup &
+Sync overview that opens at once (and says "Can't reach the server" with
+Retry instead of spinning); every web wizard option in the job form; link
+speed and today's traffic on Home and Network.
 
 ## Architecture
 

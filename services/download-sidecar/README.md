@@ -97,7 +97,7 @@ no cgo, no system packages. State lives in
   at half CPU/IO weight.
 - The ad-block engine (10 lists, ~150k rules, ~37 MB) is built the first
   time the browser or the Ad Blocker panel needs it.
-- Each finished/failed download and finished torrent is published as
+- Each finished/failed download and torrent is published as
   `nivaroos-download:download:notify` with the action
   `{target: download, props: {kind, id}}`, so it lands in the message
   bus's notification feed (web and phone) with no window open.
