@@ -11,6 +11,27 @@ The optional Backup & Sync module (spec: `docs/specs/2026-09-24-backup-sync-app.
 | `engine/enginetest/` | `FakeEngine`, an in-memory `engine.API` for jobs tests |
 | `cmd/gen-uicontract/` | writes `ui/src/apps/backup/errorCodes.js` and `events.js` from the Go enums |
 
+## Behaviour worth knowing
+
+- **Paths** (`engine/paths.go`): sources may be any folder except
+  `/proc`, `/sys`, `/dev`, `/run` and Backup's own staging/spool folders;
+  destinations and restore targets only under `/DATA`, `/mnt`, `/media`,
+  `/home`, `/root`, `/srv`, `/opt`. Resolving anything that isn't a job
+  source (phone backup folders, destination checks) keeps the write roots.
+- **Backends**: only the rclone backends NivaroOS offers are linked
+  (`local-storage/backend/supported`); a remote of another type in
+  `rclone.conf` is skipped with a log line naming it.
+- **Google Drive**: 64 MiB upload chunks and `pacer_min_sleep` 10 ms
+  (`engine/rcloneconf.go`); rclone still backs off on 403s.
+- **Encryption**: `dest.encryption` folder (rclone crypt) or archive (7z
+  AES-256, split volumes); spec "Encrypted backups" in §18.
+- **Overview speed**: `GET /jobs` and `GET /jobs/:id` answer destination
+  online state and versions from a stale-while-revalidate cache
+  (`jobs/swr.go`; 30 s / 60 s, keyed by revision and last run). Only the
+  first ask waits.
+- **Resources** (unit): `MemoryHigh=3G`, `MemoryMax=6G`, `CPUWeight=50`,
+  `IOWeight=50`; the Go heap is capped by `engine.SetMemoryLimit`.
+
 ## Frozen contracts (WP-0)
 
 Change these only additively; the tests below fail on drift.

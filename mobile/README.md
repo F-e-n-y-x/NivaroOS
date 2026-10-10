@@ -1,44 +1,55 @@
 # NivaroOS Mobile
 
-A real, native Android app for NivaroOS (built with [Flutter](https://flutter.dev),
-so the same codebase can add iOS later - `flutter create --platforms ios`,
-built on a Mac with Xcode, no code here assumes Android specifically). This
-is **not** a wrapper around the web dashboard - it's its own native UI
-talking directly to NivaroOS's REST APIs. The one deliberate exception is
-a VM's live console screen, which embeds the existing, already-working
-web console for that one specialized, protocol-heavy view - see
-`lib/screens/vm_console_screen.dart` for the reasoning.
+A native Android app for NivaroOS, built with [Flutter](https://flutter.dev)
+(iOS is possible later; nothing here is Android-only by design). It is its
+own UI talking to NivaroOS's REST APIs through the gateway, not a wrapper
+around the web dashboard. Requires Android 7.0 or newer.
 
 ## Features
 
-- **Auto-discovery**: finds NivaroOS servers on your local network via
-  mDNS/DNS-SD (the same mechanism printers and Chromecasts use to announce
-  themselves) - no typing an IP address unless your network blocks
-  multicast traffic, in which case manual entry is right there too.
-- **Native login**, talking to the real `/v1/users/login` API.
-- **Dashboard**: live CPU/memory/storage stats.
-- **Files**: browse, download, upload, delete - real native Android file
-  handling (native file picker, native "open with", proper folder
-  navigation), not an embedded file browser page.
-- **VMs**: list, start/stop, and open a live console.
-- **Settings**: change server, log out.
+- **Servers**: found on the network by mDNS (or typed in), several server
+  profiles, sign-in with the server's accounts, app lock, profile pictures.
+- **Home**: live CPU, memory, storage, network and GPU widgets (refresh down
+  to 1 s or *Real time* over the message bus), **Server health** (failed
+  apps, drives that didn't mount with *Repair drive*, **drive health** with
+  SMART verdict, history and self-tests) and a **notifications inbox**.
+- **Notifications**: the server's feed (downloads, torrents, backups, app
+  updates, drive health) as phone notifications, without Google's push
+  service - see below.
+- **Files**: tabs with a shared clipboard, transfers with resumable
+  uploads, Trash, cloud drives, paired phones, share links (one-time,
+  expiring, password, QR) and **Upload to NivaroOS** from Android's Share
+  sheet.
+- **Apps**: App Store, install/update, logs, Edit app.
+- **VMs and Host Desktop**: power, snapshots, and a native RFB console
+  (`lib/services/rfb_client.dart`) modelled on Microsoft's Windows App:
+  Touch or Mouse pointer mode, pinch zoom, Fit / Fill / 1:1 / Match this
+  phone, extra keys, clipboard, auto-reconnect.
+- **Download Station**: downloads and torrents; *Download on server* for
+  shared links and magnets; opens magnet links and `.torrent` files.
+- **Backup & Sync**: jobs, runs, restore, create/edit; **phone backup** of
+  photos, folders, contacts, calendar, SMS, call log and apps.
+- **Fans**, **terminal sessions** that survive, system updates and logs.
+- Six styles (Rack, Tonal, Console, Soft, Terminal, Bold) in light, dark
+  and true black.
+
+What changed per release: [`CHANGELOG.md`](../CHANGELOG.md). Since 1.4.11
+(next APK): the notifications inbox and phone notifications, and a Backup &
+Sync overview that opens at once and says "Can't reach the server" with
+Retry instead of spinning.
 
 ## Architecture
 
-- `lib/services/api_client.dart` - the main NivaroOS gateway API (auth,
-  dashboard, files). Auto-refreshes an expired session token once before
-  giving up, matching the web app's own retry behavior.
-- `lib/services/vm_client.dart` - the VM sidecar's own separate API (a
-  different port from the main gateway, and - as found and documented
-  during this app's own security review of NivaroOS itself - currently no
-  authentication of its own; this client reflects that reality rather than
-  pretending otherwise).
+- `lib/services/api_client.dart` - the gateway API (auth, dashboard,
+  files). Refreshes an expired session token once before giving up, like
+  the web app.
+- `lib/services/vm_client.dart` - VM Manager and Host Desktop through the
+  gateway's `/v1/vm-sidecar/*` route, with the same authentication.
 - `lib/services/discovery_service.dart` - mDNS server discovery.
-- `lib/services/storage_service.dart` - the server address + session
-  tokens, kept in the platform keystore (`flutter_secure_storage`), not
-  plain SharedPreferences.
-- `lib/screens/` - one file per screen; `home_shell.dart` is the bottom
-  tab bar shell.
+- `lib/services/storage_service.dart` - server address and session tokens
+  in the platform keystore (`flutter_secure_storage`).
+- `lib/screens/` - one file or folder per screen; `home_shell.dart` is the
+  bottom navigation shell. Shared UI: `lib/ui/`.
 
 ## Server-side requirement for auto-discovery
 
@@ -68,11 +79,16 @@ without that file `android/app/build.gradle.kts` falls back to the debug key.
 
 ## Installing the APK
 
-Download the signed stable APK (`NivaroOS.apk`) from the latest
-[GitHub release](https://github.com/F-e-n-y-x/NivaroOS/releases/latest); after
-that the app updates itself (More -> NivaroOS update). It isn't on the Play
-Store, so Android asks once to allow installs from your browser - that's
-expected for a self-hosted app like this one.
+1. Open the [latest GitHub release](https://github.com/F-e-n-y-x/NivaroOS/releases/latest)
+   on the phone and download `NivaroOS.apk`.
+2. Open it. Android asks once to allow installs from your browser or file
+   manager (it isn't on the Play Store) - allow it, then Install.
+3. The app finds NivaroOS servers on your network, or type the address.
+
+Later versions install from inside the app (More -> NivaroOS update): it
+checks the APK against the release's `SHA256SUMS` and that it is signed
+with the same key. Signing certificate SHA-256:
+`d36dcc45e03a0cd047c4b20c5f4e3f70c3d9908c8ae1954d1eeed64f73f86565`.
 
 The APK from the "Android app" GitHub Actions check is a test build signed
 with a throwaway key: it can't update an installed NivaroOS app. Use the
@@ -119,14 +135,12 @@ renders every screen and shared widget against a fake server built from
 `test/screenshots/fixtures/`. The UI rules and how to use the shared
 widgets are in `docs/specs/2026-09-25-mobile-design-system.md`.
 
-## Known limitations (v1)
+## Known limitations
 
-- File uploads are single-shot (no chunking/resume) - fine for typical
-  phone-sized files, but the web app's own chunked-upload protocol for
-  very large files isn't replicated here yet.
 - Self-signed/untrusted HTTPS certificates aren't handled specially -
-  either use plain HTTP on your LAN (cleartext traffic is allowed), or a
-  certificate a real CA (or one Android already trusts) has issued.
+  either use plain HTTP on your LAN or Tailscale (cleartext is allowed
+  there; the app refuses to send passwords over plain HTTP to an internet
+  address), or a certificate Android already trusts.
 - Background notifications arrive within about 15 minutes (Android
   batches the job); only the server the app is signed in to is checked.
 - iOS: not yet added.

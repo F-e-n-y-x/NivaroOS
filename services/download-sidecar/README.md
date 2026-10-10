@@ -90,6 +90,26 @@ no cgo, no system packages. State lives in
   filters apply to both; the shield shows each page's blocked count. In
   Lite mode only the own engine applies (scriptlets are skipped there).
 
+## Resources and notifications
+
+- Unit: `CPUWeight=50`, `IOWeight=50`, `MemoryHigh=1G`,
+  `GOMEMLIMIT=800MiB` (idle ~100 MB). `nivaroos-torrent.service` also runs
+  at half CPU/IO weight.
+- The ad-block engine (10 lists, ~150k rules, ~37 MB) is built the first
+  time the browser or the Ad Blocker panel needs it.
+- Each finished/failed download and finished torrent is published as
+  `nivaroos-download:download:notify` with the action
+  `{target: download, props: {kind, id}}`, so it lands in the message
+  bus's notification feed (web and phone) with no window open.
+- qBittorrent: `install-qbittorrent.sh` installs the official static
+  `qbittorrent-nox` (latest release, SHA-256 checked, pinned fallback) at
+  `/opt/nivaroos/qbittorrent/qbittorrent-nox`, or the distro package with
+  `--distro` (installer: `--ds-torrent-distro`). On 5.2+ the sidecar uses an API key after the
+  first login.
+- Chrome for Testing and uBO Lite are kept current by
+  `nivaroos-ds-browser-update.timer` (weekly, `install-ds-browser.sh
+  --update`; `--rollback` returns to the previous version).
+
 ## Security notes
 
 - API routes require the NivaroOS JWT (loopback exempt, like the other

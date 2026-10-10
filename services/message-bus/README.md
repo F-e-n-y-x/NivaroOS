@@ -6,6 +6,12 @@ Message bus accepts events and actions from various sources and delivers them to
 
 See [openapi.yaml](./api/message_bus/openapi.yaml) for API specification.
 
+Live events: one WebSocket per source at `/v2/message_bus/event/{source}`
+(or `/event/{source}/{name}`). The socket.io endpoint is gone (the web UI
+moved to the WebSockets; `nivaroos-cli message-bus subscribe` keeps its
+websocket subcommands). Requests from this host that succeed fast are not
+logged (shared `RequestLogger`); per-event socket lines aren't either.
+
 ## Notification feed
 
 Events are delivered live and then forgotten, so a device that wasn't
