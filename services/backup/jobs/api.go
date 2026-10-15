@@ -417,12 +417,16 @@ func (s *Service) destOnline(ctx context.Context, jobs []Job) []*bool {
 	out := make([]*bool, len(jobs))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 8)
+	// The first ask for a destination waits for it (resolveOnline gives
+	// up after 3 s); the answer is kept either way.
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
 	for i, j := range jobs {
 		wg.Add(1)
 		go func(i int, j Job) {
 			defer wg.Done()
 			key := j.ID + "|" + string(j.Dest.Kind) + "|" + j.Dest.RefID + "|" + j.Dest.SubPath
-			out[i] = s.onlineCache.get(ctx, s.ctx, &s.wg, key, onlineTTL, s.now, func(ctx context.Context) (*bool, bool) {
+			out[i], _ = s.onlineCache.get(ctx, s.ctx, &s.wg, key, onlineTTL, s.now, func(ctx context.Context) (*bool, bool) {
 				sem <- struct{}{}
 				defer func() { <-sem }()
 				return s.resolveOnline(ctx, j)
@@ -1019,20 +1023,31 @@ type versionsAnswer struct {
 
 // cachedVersions is versions through the swr cache, keyed by the job's
 // revision and its last finished run, so a new archive or a changed
-// destination is listed at once. Errors are returned but not kept.
-func (s *Service) cachedVersions(ctx context.Context, j Job, timeout time.Duration) ([]Version, error) {
+// destination is listed at once. The caller waits at most wait; the
+// listing goes on in the background (up to versionsLoadMax) and its
+// answer, an error included, serves the next ask: a slow or hanging
+// cloud costs one wait, not one per screen.
+func (s *Service) cachedVersions(ctx context.Context, j Job, wait time.Duration) ([]Version, error) {
 	key := j.ID + "|" + strconv.Itoa(j.Revision)
 	if last, err := s.store.LastRun(j.ID, nil, finalStatuses); err == nil && last != nil {
 		key += "|" + last.ID
 	}
-	a := s.versionsCache.get(ctx, s.ctx, &s.wg, key, versionsTTL, s.now, func(ctx context.Context) (versionsAnswer, bool) {
-		vctx, cancel := context.WithTimeout(ctx, timeout)
+	wctx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	a, ok := s.versionsCache.get(wctx, s.ctx, &s.wg, key, versionsTTL, s.now, func(bg context.Context) (versionsAnswer, bool) {
+		vctx, cancel := context.WithTimeout(bg, versionsLoadMax)
 		defer cancel()
 		vers, err := s.versions(vctx, j)
-		return versionsAnswer{vers, err}, err == nil
+		return versionsAnswer{vers, err}, bg.Err() == nil && engine.CodeOf(err) != ErrEngineUnavailable
 	})
+	if !ok {
+		return nil, &engine.Error{Code: engine.CodeDestOffline, Detail: "the destination is slow to answer; still listing its versions"}
+	}
 	return a.vers, a.err
 }
+
+// versionsLoadMax bounds one background versions listing.
+const versionsLoadMax = 2 * time.Minute
 
 func (s *Service) handleVersions(w http.ResponseWriter, r *http.Request) {
 	j, err := s.store.GetJob(r.PathValue("id"))

@@ -19,31 +19,28 @@ type swr[T any] struct {
 
 type swrEntry[T any] struct {
 	v       T
+	has     bool // v holds an answer
 	at      time.Time
 	loading bool
+	done    chan struct{} // closed when the first load ends
 }
 
-// get returns key's value. load's ok=false answers are not kept (the
-// engine wasn't there, the request was cancelled). bg is the context and
-// WaitGroup background refreshes run under (the service's).
-func (c *swr[T]) get(ctx, bg context.Context, wg *sync.WaitGroup, key string, ttl time.Duration, now func() time.Time, load func(ctx context.Context) (T, bool)) T {
+// get returns key's value, and false when there is none yet. Loads run
+// under bg (the service's context, tracked by wg), not the request's:
+// only the first ask waits, at most until ctx ends, and a load that takes
+// longer still fills the cache for the next ask. load's ok=false answers
+// are not kept (the engine wasn't there, the service is stopping).
+func (c *swr[T]) get(ctx, bg context.Context, wg *sync.WaitGroup, key string, ttl time.Duration, now func() time.Time, load func(ctx context.Context) (T, bool)) (T, bool) {
 	c.mu.Lock()
 	if c.m == nil {
 		c.m = map[string]*swrEntry[T]{}
 	}
 	e := c.m[key]
 	if e == nil {
-		c.mu.Unlock()
-		v, ok := load(ctx)
-		if ok {
-			c.mu.Lock()
-			c.m[key] = &swrEntry[T]{v: v, at: now()}
-			c.mu.Unlock()
-		}
-		return v
+		e = &swrEntry[T]{done: make(chan struct{})}
+		c.m[key] = e
 	}
-	v := e.v
-	if !e.loading && now().Sub(e.at) > ttl {
+	if !e.loading && (!e.has || now().Sub(e.at) > ttl) {
 		e.loading = true
 		wg.Add(1)
 		go func() {
@@ -53,10 +50,29 @@ func (c *swr[T]) get(ctx, bg context.Context, wg *sync.WaitGroup, key string, tt
 			defer c.mu.Unlock()
 			e.loading = false
 			if ok {
-				e.v, e.at = nv, now()
+				e.v, e.has, e.at = nv, true, now()
+			} else if !e.has {
+				delete(c.m, key) // the next ask tries again
+			}
+			select {
+			case <-e.done:
+			default:
+				close(e.done)
 			}
 		}()
 	}
+	if e.has {
+		v := e.v
+		c.mu.Unlock()
+		return v, true
+	}
+	done := e.done
 	c.mu.Unlock()
-	return v
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return e.v, e.has
 }
