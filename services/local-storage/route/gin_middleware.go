@@ -83,7 +83,7 @@ func ginJWT(publicKeyFunc func() (*ecdsa.PublicKey, error)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.GetHeader("Authorization")
 		if len(token) == 0 {
-			token = c.Query("token")
+			token = jwt.QueryToken(c.Request)
 		}
 
 		valid, claims, err := jwt.Validate(token, publicKeyFunc)

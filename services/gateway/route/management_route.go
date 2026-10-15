@@ -100,7 +100,7 @@ func (m *ManagementRoute) buildV1RouteGroup(v1Group *echo.Group) {
 						if len(c.Request().Header.Get(echo.HeaderAuthorization)) > 0 {
 							return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, echo_middleware.ExtractorSourceHeader, nil
 						}
-						return []string{c.QueryParam("token")}, echo_middleware.ExtractorSourceQuery, nil
+						return []string{jwt.QueryToken(c.Request())}, echo_middleware.ExtractorSourceQuery, nil
 					},
 				},
 			}))
@@ -154,7 +154,7 @@ func (m *ManagementRoute) buildV1RouteGroup(v1Group *echo.Group) {
 						if len(c.Request().Header.Get(echo.HeaderAuthorization)) > 0 {
 							return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, echo_middleware.ExtractorSourceHeader, nil
 						}
-						return []string{c.QueryParam("token")}, echo_middleware.ExtractorSourceQuery, nil
+						return []string{jwt.QueryToken(c.Request())}, echo_middleware.ExtractorSourceQuery, nil
 					},
 				},
 			}))

@@ -30,7 +30,7 @@ func requireAuth(next http.Handler, runtimePath string) http.Handler {
 		}
 		token := r.Header.Get("Authorization")
 		if token == "" {
-			token = r.URL.Query().Get("token")
+			token = jwt.QueryToken(r)
 		}
 		if valid, _, err := jwt.Validate(token, publicKeyFunc); err != nil || !valid {
 			writeJSON(w, http.StatusUnauthorized, map[string]interface{}{

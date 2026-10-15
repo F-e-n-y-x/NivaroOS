@@ -168,9 +168,10 @@ export default {
 			const index = this.itemList.findIndex((item) => item.path === this.currentItem.path)
 			this.currentItemIndex = index > -1 ? index : 0
 		},
-		setSourceImageURLs() {
-			this.currentItem = this.itemList[this.currentItemIndex]
-			this.currentItemArray = [this.getFileUrl(this.currentItem)]
+		async setSourceImageURLs() {
+			const item = (this.currentItem = this.itemList[this.currentItemIndex])
+			await this.mediaReady(item).catch(() => {})
+			if (this.currentItem === item) this.currentItemArray = [this.getFileUrl(item)]
 		},
 	},
 }

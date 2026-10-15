@@ -1,5 +1,6 @@
 import { expect, test, describe, vi, beforeEach, afterEach } from 'vitest'
 import { vmSidecar } from './vmSidecar'
+import { setIssuer, ticket } from '@/service/mediaTicket'
 
 // The client reads the auth token from localStorage, which Node doesn't
 // have (every test here failed with "localStorage is not defined").
@@ -88,6 +89,12 @@ describe('vmSidecar', () => {
 		expect(vmSidecar.consoleUrl('my-vm')).toBe('ws://localhost/v1/vm-sidecar/vms/my-vm/console?token=')
 	})
 
+	test('a VM preview carries a ticket for its own URL, not the token', async () => {
+		setIssuer(async (kind, target) => `${kind}|${target}`)
+		await ticket('url', '/v1/vm-sidecar/vms/win 11/screenshot')
+		expect(vmSidecar.screenshotUrl('win 11')).toBe(`http://localhost/v1/vm-sidecar/vms/win%2011/screenshot?mt=${encodeURIComponent('url|/v1/vm-sidecar/vms/win 11/screenshot')}`)
+	})
+
 	test('behind a tunnel over https everything stays on the page origin', () => {
 		const had = 'window' in globalThis
 		const prev = globalThis.window
@@ -95,7 +102,7 @@ describe('vmSidecar', () => {
 		try {
 			expect(vmSidecar.baseUrl).toBe('https://nivaro.example.com/v1/vm-sidecar')
 			expect(vmSidecar.consoleUrl('win 11')).toBe('wss://nivaro.example.com/v1/vm-sidecar/vms/win%2011/console?token=')
-			expect(vmSidecar.screenshotUrl('a')).toMatch(/^https:\/\/nivaro\.example\.com\/v1\/vm-sidecar\/vms\/a\/screenshot\?token=/)
+			expect(vmSidecar.screenshotUrl('a')).toBe('')
 		} finally {
 			if (had) globalThis.window = prev
 			else delete globalThis.window

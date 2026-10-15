@@ -39,7 +39,7 @@ func JWT(publicKeyFunc func() (*ecdsa.PublicKey, error)) echo.MiddlewareFunc {
 			// X-Forwarded-For/X-Real-IP headers anyone can send)
 			Skipper: middleware.LocalAutomationSkipper(),
 			ParseTokenFunc: func(c *echo.Context, token string) (interface{}, error) {
-				valid, claims, err := Validate(token, publicKeyFunc)
+				valid, claims, err := ValidateRequest(c.Request(), token, publicKeyFunc)
 				if err != nil || !valid {
 					c.JSON(http.StatusUnauthorized, UnauthorizedResult(err))
 					return nil, echo.ErrUnauthorized
@@ -53,7 +53,7 @@ func JWT(publicKeyFunc func() (*ecdsa.PublicKey, error)) echo.MiddlewareFunc {
 					if len(c.Request().Header.Get(echo.HeaderAuthorization)) > 0 {
 						return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, echo_middleware.ExtractorSourceHeader, nil
 					}
-					return []string{c.QueryParam("token")}, echo_middleware.ExtractorSourceQuery, nil
+					return []string{RequestToken(c.Request())}, echo_middleware.ExtractorSourceQuery, nil
 				},
 			},
 		},

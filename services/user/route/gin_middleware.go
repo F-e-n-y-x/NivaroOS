@@ -65,12 +65,9 @@ const ClaimsKey = v1.ClaimsKey
 
 func ginJWT(publicKeyFunc func() (*ecdsa.PublicKey, error)) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		token := c.GetHeader("Authorization")
-		if len(token) == 0 {
-			token = c.Query("token")
-		}
-
-		valid, claims, err := jwt.Validate(token, publicKeyFunc)
+		// A media ticket (?mt=) only for the URL it names (an avatar).
+		token := jwt.RequestToken(c.Request)
+		valid, claims, err := jwt.ValidateRequest(c.Request, token, publicKeyFunc)
 		if err != nil || !valid {
 			// A revoked session says why (data.reason), so the app can
 			// tell "this phone was removed" from an expired token.

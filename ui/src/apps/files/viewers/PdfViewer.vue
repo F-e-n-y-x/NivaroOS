@@ -55,8 +55,13 @@ export default {
 			src: '',
 		}
 	},
-	created() {
+	async created() {
+		await this.mediaReady(this.item).catch(() => {})
 		this.src = this.getFileUrl(this.item)
+		if (!this.src) {
+			this.isLoading = false
+			this.hasError = true
+		}
 	},
 	methods: {
 		rendered() {

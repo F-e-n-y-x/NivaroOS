@@ -46,3 +46,12 @@ func LegacyLoopbackTrust() bool {
 	_, err := os.Stat(LocalStrictPath)
 	return errors.Is(err, fs.ErrNotExist)
 }
+
+// LegacyQueryToken reports whether ?token= may still stand in for the
+// Authorization header on plain (non-WebSocket) requests - until
+// LocalStrictPath exists, like LegacyLoopbackTrust (audit L5; see
+// common/utils/jwt/ticket.go).
+func LegacyQueryToken() bool {
+	_, err := os.Stat(LocalStrictPath)
+	return errors.Is(err, fs.ErrNotExist)
+}

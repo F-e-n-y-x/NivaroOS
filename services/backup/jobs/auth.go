@@ -53,7 +53,7 @@ func (s *Service) requireAuth(next http.Handler) http.Handler {
 		}
 		token := r.Header.Get("Authorization")
 		if token == "" {
-			token = r.URL.Query().Get("token")
+			token = jwt.QueryToken(r)
 		}
 		token = strings.TrimSpace(strings.TrimPrefix(token, "Bearer "))
 		valid, claims, err := jwt.Validate(token, s.publicKey)

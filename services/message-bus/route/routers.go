@@ -41,7 +41,7 @@ func tokenFromRequest(c *echo.Context) ([]string, echo_middleware.ExtractorSourc
 	if h := c.Request().Header.Get(echo.HeaderAuthorization); h != "" {
 		return []string{strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))}, echo_middleware.ExtractorSourceHeader, nil
 	}
-	return []string{c.QueryParam("token")}, echo_middleware.ExtractorSourceQuery, nil
+	return []string{jwt.QueryToken(c.Request())}, echo_middleware.ExtractorSourceQuery, nil
 }
 
 func newAPIRouter(swagger *openapi3.T, services *service.Services, publicKeyFunc func() (*ecdsa.PublicKey, error)) (http.Handler, error) {

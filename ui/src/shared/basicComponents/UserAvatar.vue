@@ -6,7 +6,8 @@
 </template>
 
 <script>
-import { avatarUrl, initials } from '@/utils/avatar'
+import { avatarUrl, initials, AVATAR_PATH } from '@/utils/avatar'
+import { ticketNow } from '@/service/mediaTicket'
 
 // A user's picture, or their initials on the brand blue. Decorative: the
 // name is always written next to it.
@@ -26,8 +27,8 @@ export default {
 	computed: {
 		url() {
 			if (this.src) return this.src
-			const token = this.$store.state.access_token || localStorage.getItem('access_token')
-			return avatarUrl(this.username, this.version, token)
+			if (!this.username || this.version === '') return ''
+			return avatarUrl(this.username, this.version, ticketNow('url', AVATAR_PATH))
 		},
 		shownSrc() {
 			return this.url && this.url !== this.failed ? this.url : ''

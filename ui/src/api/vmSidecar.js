@@ -7,6 +7,8 @@
 // sidecar's own port (28641) directly, which none of those carry.
 // Guarded against a missing `window` (the unit tests run under vitest's
 // default "node" environment, which has no DOM globals).
+import { urlWithTicket } from '@/service/mediaTicket'
+
 export const GATEWAY_PREFIX = '/v1/vm-sidecar'
 
 function loc() {
@@ -184,6 +186,8 @@ export const vmSidecar = {
 	// auth accepts either (see vm-sidecar/auth.go).
 	consoleUrl: name => `${wsBase()}/vms/${encodeURIComponent(name)}/console?token=${encodeURIComponent(authToken())}`,
 	// A cache-busting `t` param is left for the caller to append when
-	// polling (a plain <img src> won't re-fetch an unchanged URL).
-	screenshotUrl: name => `${apiBase()}/vms/${encodeURIComponent(name)}/screenshot?token=${encodeURIComponent(authToken())}`
+	// polling (a plain <img src> won't re-fetch an unchanged URL). An <img>
+	// carries a media ticket for this one URL, not the token (audit L5);
+	// '' until it arrives (reactive).
+	screenshotUrl: name => urlWithTicket(`${apiBase()}/vms/${encodeURIComponent(name)}/screenshot`, `${GATEWAY_PREFIX}/vms/${name}/screenshot`)
 }

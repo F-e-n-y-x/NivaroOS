@@ -9,6 +9,7 @@
 import ContextMenu from './ContextMenu.vue'
 import { assetUrl as __assetUrl, currentBuiltinUrl } from '@/utils/assetUrl'
 import { getEffectiveTheme, getStoredThemeMode } from '@/utils/theme'
+import { fileMediaUrl } from '@/service/mediaTicket'
 
 const DEFAULT_LIGHT_WALLPAPER = __assetUrl('background/wallpaper01.jpg')
 const DEFAULT_DARK_WALLPAPER = __assetUrl('background/wallpaper02.jpg')
@@ -130,8 +131,8 @@ export default {
 			}
 			// Local, gallery, or mounted storage files
 			if (serverUrl.includes('/DATA/') || serverUrl.includes('/var/lib/') || serverUrl.includes('/mnt/')) {
-				const token = this.$store.state.access_token || localStorage.getItem('access_token') || ''
-				return `${this.$protocol}//${this.$baseURL}/v1/image?path=${encodeURIComponent(serverUrl)}${token ? '&token=' + token : ''}`;
+				// A media ticket, not the token (reactive: updates once it arrives).
+				return fileMediaUrl(`${this.$protocol}//${this.$baseURL}/v1/image`, { path: serverUrl });
 			}
 			// Public wallpaper endpoint with theme context
 			if (serverUrl.includes('/v1/users/wallpaper')) {

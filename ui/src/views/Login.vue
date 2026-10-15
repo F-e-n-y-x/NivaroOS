@@ -155,7 +155,7 @@ export default {
 				localStorage.setItem("user", JSON.stringify(userRes.data.data.user));
 
 				this.$store.commit("SET_USER", userRes.data.data.user);
-				syncRememberedAvatar(userRes.data.data.user, userRes.data.data.token.access_token)
+				syncRememberedAvatar(userRes.data.data.user)
 				this.$store.commit("SET_ACCESS_TOKEN", userRes.data.data.token.access_token);
 				this.$store.commit("SET_REFRESH_TOKEN", userRes.data.data.token.refresh_token);
 

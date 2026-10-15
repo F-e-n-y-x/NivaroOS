@@ -55,13 +55,16 @@ func InitV1Router() http.Handler {
 	// The landing page's Download button for one-time and password links.
 	e.POST("/v1/qs/:id", v1.PostQuickShareRedeem)
 	v1Group := e.Group("/v1")
+	localSkip := nivaroos_middleware.LocalAutomationSkipper("/v1/sys/wsterm", v1.HostTerminalBase+"/*")
 	v1Group.Use(echojwt.WithConfig(echojwt.Config{
 		// Same-host automation (direct loopback socket peer, no proxy or
 		// browser headers - see common/middleware.IsLocalAutomation) may
 		// skip the token; the interactive terminal never may.
-		Skipper: nivaroos_middleware.LocalAutomationSkipper("/v1/sys/wsterm", v1.HostTerminalBase+"/*"),
+		// A folder download's own ticket is its credential (L5).
+		Skipper: func(c *echo.Context) bool { return localSkip(c) || v1.DownloadTicketAuth(c) },
 		ParseTokenFunc: func(c *echo.Context, token string) (interface{}, error) {
-			valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(config.CommonInfo.RuntimePath) })
+			// ValidateRequest: a media link's ?mt= ticket (jwt.TicketDir) too.
+			valid, claims, err := jwt.ValidateRequest(c.Request(), token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(config.CommonInfo.RuntimePath) })
 			if err != nil || !valid {
 				if _, revoked := jwt.RevocationReason(err); revoked {
 					// The session was ended (its phone removed): say so,
@@ -80,7 +83,7 @@ func InitV1Router() http.Handler {
 				if len(ctx.Request().Header.Get(echo.HeaderAuthorization)) > 0 {
 					return []string{ctx.Request().Header.Get(echo.HeaderAuthorization)}, echo_middleware.ExtractorSourceHeader, nil
 				}
-				return []string{ctx.QueryParam("token")}, echo_middleware.ExtractorSourceQuery, nil
+				return []string{jwt.RequestToken(ctx.Request())}, echo_middleware.ExtractorSourceQuery, nil
 			},
 		},
 	}))

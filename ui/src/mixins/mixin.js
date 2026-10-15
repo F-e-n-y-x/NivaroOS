@@ -8,6 +8,7 @@ import union from 'lodash/union'
 import copy from 'clipboard-copy'
 import dayjs from 'dayjs'
 import { renderSize } from './file_utils'
+import { fileMediaUrl, fileTicket } from '@/service/mediaTicket'
 import { setLocale } from '@/plugins/i18n'
 
 const typeMap = {
@@ -264,6 +265,7 @@ export const mixin = {
 			try {
 				let url
 				if (list.length === 1 && !list[0].is_dir) {
+					await this.mediaReady(list[0])
 					url = this.getFileUrl(list[0])
 					// Cheap 1-byte check so a missing/unreadable file shows a
 					// real error here instead of a broken download.
@@ -283,7 +285,8 @@ export const mixin = {
 					// and download by ticket (no giant ?files=a,b,c URL).
 					const res = await this.$api.batch.downloadTicket(list.map((o) => o.path))
 					if (!res.data || res.data.success !== 200) throw new Error((res.data && res.data.message) || this.$t('Download failed'))
-					url = `${this.baseUrl}batch?${qs.stringify({ ticket: res.data.data, token: this.$store.state.access_token })}`
+					// The download ticket is the credential (no token in the URL).
+					url = `${this.baseUrl}batch?${qs.stringify({ ticket: res.data.data })}`
 				}
 				const a = document.createElement('a')
 				a.href = url
@@ -307,39 +310,16 @@ export const mixin = {
 			this.downloadFile(this.item)
 		},
 
-		// Get File Download URL
-		getFileUrl(items) {
-			let apiUrl = ""
-			let path = ""
-			let parameters = {
-				token: this.$store.state.access_token
-			}
-			if (items.constructor === Object) {
-				if (items.is_dir) {
-					apiUrl = `${this.baseUrl}batch`;
-					path = items.path
-					parameters.files = path
-					return apiUrl + "?" + qs.stringify(parameters)
-				} else {
-					// `/v3/file` was never actually registered on the backend
-					// (only added to the gateway's routing table, which just
-					// means it 404'd instead of being rejected) - every
-					// single-file download silently failed. `/v1/file` is the
-					// real, working handler (GetDownloadSingleFile), already
-					// used the same way by every other branch here.
-					apiUrl = `${this.baseUrl}file`;
-					parameters.path = items.path
-					return apiUrl + "?" + qs.stringify(parameters)
-				}
-			} else if (items.constructor === Array) {
-				apiUrl = `${this.baseUrl}batch`;
-				const pathArray = items.map(o => {
-					return o.path
-				})
-				path = pathArray.join(",")
-				parameters.files = path
-				return apiUrl + "?" + qs.stringify(parameters)
-			}
+		// A file's bytes (/v1/file), with its folder's media ticket - not the
+		// access token (audit L5; service/mediaTicket.js). '' until the
+		// ticket arrives: templates update by themselves, one-shot callers
+		// `await this.mediaReady(item)` first. Folders download through
+		// downloadFile().
+		getFileUrl(item) {
+			return fileMediaUrl(`${this.baseUrl}file`, { path: item.path })
+		},
+		mediaReady(item) {
+			return fileTicket(item.path)
 		},
 
 		// Same URL shape as getFileUrl(), pointed at the backend's on-the-fly
@@ -352,11 +332,7 @@ export const mixin = {
 		// non-directory use (VideoPlayer.vue's only caller) since streaming
 		// a batch or a folder through ffmpeg doesn't mean anything.
 		getStreamUrl(item) {
-			const parameters = {
-				token: this.$store.state.access_token,
-				path: item.path,
-			}
-			return `${this.baseUrl}file/stream?${qs.stringify(parameters)}`
+			return fileMediaUrl(`${this.baseUrl}file/stream`, { path: item.path })
 		},
 
 		// check if has thumb
@@ -372,13 +348,7 @@ export const mixin = {
 
 		// Get Image Thumb URL
 		getThumbUrl(item) {
-			let apiUrl = `${this.baseUrl}image?`;
-			let parameters = {
-				path: item.path,
-				token: this.$store.state.access_token,
-				type: "thumbnail"
-			}
-			return apiUrl + qs.stringify(parameters)
+			return fileMediaUrl(`${this.baseUrl}image`, { path: item.path, type: 'thumbnail' }) || undefined
 		},
 
 		// Copy Path

@@ -82,3 +82,28 @@ func DeleteUserSessions(c *gin.Context) {
 		"user_id": strconv.Itoa(user.Id),
 	}})
 }
+
+// PostUserTicket issues a media ticket for the caller's session
+// ({"kind": "dir"|"url", "target": ...}; see common/utils/jwt/ticket.go),
+// so links carry it instead of the access token.
+func PostUserTicket(c *gin.Context) {
+	var req struct {
+		Kind   string `json:"kind"`
+		Target string `json:"target"`
+	}
+	claims := requestClaims(c)
+	if claims == nil || claims.Issuer != "nivaroos" || c.ShouldBindJSON(&req) != nil {
+		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
+		return
+	}
+	privateKey, _ := service.MyService.User().GetKeyPair()
+	ticket, err := jwt.IssueTicket(privateKey, claims, req.Kind, req.Target)
+	if err != nil {
+		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})
+		return
+	}
+	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: map[string]interface{}{
+		"ticket":     ticket,
+		"expires_in": int(jwt.TicketLifetime.Seconds()),
+	}})
+}

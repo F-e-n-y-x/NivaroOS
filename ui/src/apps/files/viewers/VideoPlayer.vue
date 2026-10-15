@@ -23,7 +23,7 @@
 					<div class="audio-title">{{ audioTitle }}</div>
 					<div class="audio-artist">{{ audioArtist }}</div>
 				</div>
-				<audio :key="item.path" :src="getFileUrl(item)" :aria-label="audioTitle" controls autoplay preload="auto"></audio>
+				<audio :key="item.path" :src="getFileUrl(item) || undefined" :aria-label="audioTitle" controls autoplay preload="auto"></audio>
 			</div>
 		</div>
 	</files-viewer-chrome>
@@ -75,17 +75,19 @@ export default {
 		Object.keys(this.typeMap).forEach((_type) => {
 			if (this.typeMap[_type].indexOf(ext.toLowerCase()) > -1) this.type = _type
 		})
-		this.$nextTick(() => {
+		this.$nextTick(async () => {
 			if (this.isAudio) {
 				this.loadAudioMetadata()
 			} else {
+				await this.mediaReady(this.item).catch(() => {})
+				if (!this.$refs.artRef) return // closed meanwhile
 				const needsRemux = NEEDS_REMUX_EXTENSIONS.includes(this.getFileExt(this.item).toLowerCase())
 				this.instance = new Artplayer({
 					url: needsRemux ? this.getStreamUrl(this.item) : this.getFileUrl(this.item),
 					// Explicit, rather than left to Artplayer's own
 					// type-sniffing (which falls back to reading a
 					// "file extension" off the URL - both getFileUrl() and
-					// getStreamUrl() end in `&token=<JWT>`, and a JWT's
+					// getStreamUrl() end in `&mt=<JWT ticket>`, and a JWT's
 					// header.payload.signature shape means the URL's last
 					// "." isn't a file extension at all here, it's an
 					// arbitrary fragment of the signature). Harmless for the
@@ -153,6 +155,7 @@ export default {
 		async loadAudioMetadata() {
 			let body = null
 			try {
+				await this.mediaReady(this.item)
 				const res = await fetch(this.getFileUrl(this.item))
 				if (!res.ok || !res.body) return
 				body = res.body

@@ -39,8 +39,13 @@ export default {
 			renderKey: 0,
 		}
 	},
-	created() {
+	async created() {
+		await this.mediaReady(this.item).catch(() => {})
 		this.docx = this.getFileUrl(this.item)
+		if (!this.docx) {
+			this.isLoading = false
+			this.hasError = true
+		}
 	},
 	beforeUnmount() {
 		clearTimeout(this.resizeSettleTimer)

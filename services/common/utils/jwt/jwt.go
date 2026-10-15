@@ -22,6 +22,10 @@ type Claims struct {
 	// increments it. Tokens from before generations existed have none,
 	// which reads as 0 - every account's starting generation.
 	Generation int64 `json:"gen,omitempty"`
+	// TicketKind and TicketTarget: what a media ticket (issuer
+	// TicketIssuer, see ticket.go) is for.
+	TicketKind   string `json:"tk,omitempty"`
+	TicketTarget string `json:"tt,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -31,11 +35,11 @@ func GenerateToken(username string, privateKey *ecdsa.PrivateKey, id int, issuer
 
 func generateSessionToken(username string, privateKey *ecdsa.PrivateKey, id int, sid string, gen int64, jti string, issuer string, t time.Duration) (string, error) {
 	claims := Claims{
-		username,
-		id,
-		sid,
-		gen,
-		jwt.RegisteredClaims{
+		Username:   username,
+		ID:         id,
+		SessionID:  sid,
+		Generation: gen,
+		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(t)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),

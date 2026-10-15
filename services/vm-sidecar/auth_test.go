@@ -1,9 +1,12 @@
 package main
 
 import (
+	"crypto/ecdsa"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 )
 
 func TestIsLoopbackAutomation(t *testing.T) {
@@ -149,5 +152,31 @@ func TestSameHostOrigin_BehindReverseProxy(t *testing.T) {
 	r.Header.Set("Origin", "https://evil.example")
 	if sameHostOrigin(r) {
 		t.Fatal("another site must still be refused")
+	}
+}
+
+// L5: the VM preview <img> carries a ticket for its own screenshot URL.
+func TestRequireAuthTakesTheScreenshotTicket(t *testing.T) {
+	priv, pub, err := jwt.GenerateKeyPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := requireAuthKey(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}), func() (*ecdsa.PublicKey, error) { return pub, nil })
+	mt, err := jwt.IssueTicket(priv, &jwt.Claims{Username: "bob", ID: 1}, jwt.TicketURL, "/v1/vm-sidecar/vms/win 11/screenshot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for target, want := range map[string]int{
+		"/vms/win%2011/screenshot?mt=" + mt: http.StatusOK,
+		"/vms/other/screenshot?mt=" + mt:    http.StatusUnauthorized,
+		"/vms/win%2011?mt=" + mt:            http.StatusUnauthorized,
+	} {
+		r := httptest.NewRequest(http.MethodGet, target, nil)
+		r.RemoteAddr = "192.168.1.20:5000"
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != want {
+			t.Errorf("GET %s: %d, want %d", target, w.Code, want)
+		}
 	}
 }

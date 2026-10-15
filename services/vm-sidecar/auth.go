@@ -31,10 +31,16 @@ import (
 // web page open in a browser on this box (or a DNS-rebinding page aimed at
 // 127.0.0.1) drive the whole API with no token at all.
 func requireAuth(next http.Handler, runtimePath string) http.Handler {
-	publicKeyFunc := func() (*ecdsa.PublicKey, error) {
+	return requireAuthKey(next, func() (*ecdsa.PublicKey, error) {
 		return external.GetPublicKey(runtimePath)
-	}
+	})
+}
 
+// gatewayPrefix is where the gateway mounts this service (it strips it);
+// media tickets name URLs as the gateway sees them.
+const gatewayPrefix = "/v1/vm-sidecar"
+
+func requireAuthKey(next http.Handler, publicKeyFunc func() (*ecdsa.PublicKey, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// /host/* (the host's own desktop, its display, and installing
 		// packages as root) always needs a real token, even from loopback:
@@ -45,12 +51,10 @@ func requireAuth(next http.Handler, runtimePath string) http.Handler {
 			return
 		}
 
-		token := r.Header.Get("Authorization")
-		if token == "" {
-			token = r.URL.Query().Get("token")
-		}
-
-		valid, claims, err := jwt.Validate(token, publicKeyFunc)
+		// A VM preview <img> carries a media ticket (?mt=), not the token.
+		asSeen := r.Clone(r.Context())
+		asSeen.URL.Path = gatewayPrefix + r.URL.Path
+		valid, claims, err := jwt.ValidateRequest(asSeen, jwt.RequestToken(r), publicKeyFunc)
 		if err != nil || !valid {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)

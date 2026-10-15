@@ -218,7 +218,8 @@ export default {
 			// previewTick busts the <img> cache on each interval tick - a
 			// screenshot endpoint has no reason to be cached, and the URL
 			// must actually change for the browser to re-fetch it at all.
-			return `${vmSidecar.screenshotUrl(vm.name)}&t=${this.previewTick}`
+			const u = vmSidecar.screenshotUrl(vm.name)
+			return u ? `${u}&t=${this.previewTick}` : undefined
 		},
 		onPreviewError(vm) {
 			// A freshly-started VM has no framebuffer yet - show the

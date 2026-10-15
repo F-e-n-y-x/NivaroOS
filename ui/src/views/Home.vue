@@ -150,7 +150,7 @@ export default {
 				const me = res.data.data
 				if (res.data.success !== 200 || !me || !me.username) return
 				saveCurrentUser(this.$store, me)
-				syncRememberedAvatar(me, this.$store.state.access_token || localStorage.getItem('access_token'))
+				syncRememberedAvatar(me)
 			}).catch(() => {})
 		},
 

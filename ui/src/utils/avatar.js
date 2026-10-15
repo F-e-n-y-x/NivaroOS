@@ -23,12 +23,16 @@ export function saveCurrentUser(store, user) {
 	} catch (e) { /* storage full or blocked */ }
 }
 
+// The URL a media ticket for avatars names (service/mediaTicket.js).
+export const AVATAR_PATH = '/v1/users/avatar'
+
 // version: the user's avatar_version; '' = none, undefined = unknown (try it).
-export function avatarUrl(username, version, token) {
-	if (!username || version === '' || version === null || !token) return ''
-	const q = new URLSearchParams({ username, token })
+// mt: a media ticket for AVATAR_PATH - never the access token (audit L5).
+export function avatarUrl(username, version, mt) {
+	if (!username || version === '' || version === null || !mt) return ''
+	const q = new URLSearchParams({ username, mt })
 	if (version) q.set('v', version)
-	return `/v1/users/avatar?${q}`
+	return `${AVATAR_PATH}?${q}`
 }
 
 export function initials(name) {
@@ -104,7 +108,9 @@ export function rememberAvatar(username, src) {
 }
 
 // After sign-in / on desktop load: keep the login screen's copy current.
-export function syncRememberedAvatar(user, token) {
-	if (user && user.avatar_version) rememberAvatar(user.username, avatarUrl(user.username, user.avatar_version, token))
-	else forgetAvatar()
+export async function syncRememberedAvatar(user) {
+	if (!user || !user.avatar_version) return forgetAvatar()
+	const { ticket } = await import('@/service/mediaTicket')
+	const mt = await ticket('url', AVATAR_PATH).catch(() => '')
+	if (mt) rememberAvatar(user.username, avatarUrl(user.username, user.avatar_version, mt))
 }

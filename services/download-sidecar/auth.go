@@ -41,7 +41,7 @@ func requireAuth(next http.Handler, runtimePath string) http.Handler {
 
 		token := r.Header.Get("Authorization")
 		if token == "" {
-			token = r.URL.Query().Get("token")
+			token = jwt.QueryToken(r)
 		}
 		token = strings.TrimSpace(strings.TrimPrefix(token, "Bearer "))
 

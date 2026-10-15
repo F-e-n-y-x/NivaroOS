@@ -172,9 +172,8 @@ export default {
 		})
 		this.uploader.on('fileSuccess', (rootFile) => {
 			this.isUpLoading = false
-			const uploadPath = this.getFileUrl({ path: `${galleryPath}/${rootFile.name}`, is_dir: false })
 			this.loadGallery()
-			this.applyWallpaper(uploadPath, "Upload")
+			this.applyWallpaper(`${galleryPath}/${rootFile.name}`, "Upload")
 		})
 	},
 	computed: {
@@ -269,12 +268,12 @@ export default {
 			this.$emit('close')
 		},
 		loadGallery() {
-			this.$api.folder.getList(galleryPath).then(res => {
+			this.$api.folder.getList(galleryPath).then(async res => {
 				if (res.data.success !== 200) return
 				const content = (res.data.data && res.data.data.content) || []
-				this.galleryItems = content
-					.filter(f => !f.is_dir && imageExtensions.some(ext => f.name.toLowerCase().endsWith(ext)))
-					.map(f => ({ name: f.name, path: this.getFileUrl({ path: f.path, is_dir: false }) }))
+				const images = content.filter(f => !f.is_dir && imageExtensions.some(ext => f.name.toLowerCase().endsWith(ext)))
+				if (images.length) await this.mediaReady(images[0])
+				this.galleryItems = images.map(f => ({ name: f.name, path: this.getFileUrl(f) }))
 			}).catch(() => {
 				this.galleryItems = []
 			})
@@ -309,10 +308,6 @@ export default {
 		},
 		checkActiveFrom(from) {
 			return this.from == from
-		},
-		getTargetUrl() {
-			const accessToken = localStorage.getItem("access_token")
-			return `${this.$protocol}//${this.$baseURL}/v1/users/current/image/${wallpaperConfig}?token=${accessToken}&type=wallpaper`
 		},
 		parseUrl(serverUrl) {
 			if (!serverUrl) return ''

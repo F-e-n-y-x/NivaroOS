@@ -86,7 +86,7 @@ func InitV2Router() http.Handler {
 				if len(ctx.Request().Header.Get(echo.HeaderAuthorization)) > 0 {
 					return []string{ctx.Request().Header.Get(echo.HeaderAuthorization)}, echo_middleware.ExtractorSourceHeader, nil
 				}
-				return []string{ctx.QueryParam("token")}, echo_middleware.ExtractorSourceQuery, nil
+				return []string{jwt.QueryToken(ctx.Request())}, echo_middleware.ExtractorSourceQuery, nil
 			},
 		},
 	}))
@@ -150,7 +150,7 @@ func InitV2DocRouter(docHTML string, docYAML string) http.Handler {
 
 func InitFile() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := r.URL.Query().Get("token")
+		token := jwt.RequestToken(r)
 		if len(token) == 0 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
@@ -183,7 +183,7 @@ func InitFile() http.Handler {
 
 func InitDir() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := r.URL.Query().Get("token")
+		token := jwt.RequestToken(r)
 		if len(token) == 0 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)

@@ -18,8 +18,8 @@ describe('avatar', () => {
 	test('URL only when there may be a picture; version makes it cacheable', () => {
 		expect(avatarUrl('bob', '', 't')).toBe('')
 		expect(avatarUrl('bob', 'abc', '')).toBe('')
-		expect(avatarUrl('b&o b', 'abc', 't')).toBe('/v1/users/avatar?username=b%26o+b&token=t&v=abc')
-		expect(avatarUrl('bob', undefined, 't')).toBe('/v1/users/avatar?username=bob&token=t')
+		expect(avatarUrl('b&o b', 'abc', 't')).toBe('/v1/users/avatar?username=b%26o+b&mt=t&v=abc')
+		expect(avatarUrl('bob', undefined, 't')).toBe('/v1/users/avatar?username=bob&mt=t')
 	})
 
 	test('initials', () => {

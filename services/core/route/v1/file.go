@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"github.com/gorilla/websocket"
@@ -211,6 +212,29 @@ type downloadTicket struct {
 	files   []string
 	format  string
 	expires time.Time
+	// who made it: the ticket alone authorizes its GET for them
+	// (DownloadTicketAuth), so the link carries no access token (L5).
+	claims *jwt.Claims
+}
+
+// DownloadTicketAuth (a JWT skipper) reports whether c is the GET of a live
+// download ticket made by a user whose session is still valid.
+func DownloadTicketAuth(c *echo.Context) bool {
+	r := c.Request()
+	id := r.URL.Query().Get("ticket")
+	if r.Method != http.MethodGet || r.URL.Path != "/v1/batch" || id == "" {
+		return false
+	}
+	downloadTicketsMu.Lock()
+	tk, ok := downloadTickets[id]
+	downloadTicketsMu.Unlock()
+	if !ok || tk.claims == nil || time.Now().After(tk.expires) {
+		return false
+	}
+	if _, revoked := jwt.SessionRevoked(tk.claims.SessionID); revoked {
+		return false
+	}
+	return jwt.CheckSession(tk.claims) == nil
 }
 
 // PostDownloadTicket registers a multi-file/folder download.
@@ -230,7 +254,8 @@ func PostDownloadTicket(ctx *echo.Context) error {
 			delete(downloadTickets, k)
 		}
 	}
-	downloadTickets[id] = downloadTicket{files: req.Files, format: req.Format, expires: now.Add(10 * time.Minute)}
+	claims, _ := ctx.Get("user").(*jwt.Claims)
+	downloadTickets[id] = downloadTicket{files: req.Files, format: req.Format, expires: now.Add(10 * time.Minute), claims: claims}
 	downloadTicketsMu.Unlock()
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: id})
 }
