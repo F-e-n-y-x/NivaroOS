@@ -15,6 +15,8 @@ func (m *Manager) save() {
 	if m.opts.StatePath == "" {
 		return
 	}
+	m.saveMu.Lock() // concurrent saves shared one .tmp file
+	defer m.saveMu.Unlock()
 	jobs := m.List()
 	raw, err := json.Marshal(jobs)
 	if err != nil {

@@ -156,6 +156,10 @@ type Manager struct {
 	started time.Time
 	closed  chan struct{}
 	wg      sync.WaitGroup
+	saveMu  sync.Mutex
+
+	claimMu sync.Mutex
+	claims  map[string]int // destination names running jobs are creating
 }
 
 func NewManager(opts Options) *Manager {
@@ -171,6 +175,7 @@ func NewManager(opts Options) *Manager {
 	m := &Manager{
 		opts:    opts,
 		jobs:    map[string]*job{},
+		claims:  map[string]int{},
 		changed: make(chan bool, 1),
 		closed:  make(chan struct{}),
 		flushFS: syncFS,
@@ -248,6 +253,9 @@ func (m *Manager) Submit(spec Spec) (Job, error) {
 	m.pruneLocked()
 	m.mu.Unlock()
 	m.notify(true)
+	// On disk before it runs: if the service dies mid-job, the restart
+	// shows it as interrupted (with Retry) instead of it vanishing.
+	m.save()
 	m.schedule()
 	return snap, nil
 }
@@ -333,6 +341,7 @@ func (m *Manager) Retry(id string) (Job, error) {
 	m.removeFromOrderLocked(id)
 	m.mu.Unlock()
 	m.notify(true)
+	m.save()
 	return nj, nil
 }
 
@@ -456,7 +465,7 @@ func (m *Manager) addFailure(j *job, path string, err error) {
 	m.update(j, func(j *job) {
 		j.FilesFailed++
 		if len(j.Failures) < maxFailures {
-			j.Failures = append(j.Failures, Failure{Path: path, Error: humanError(err)})
+			j.Failures = append(j.Failures, Failure{Path: path, Error: HumanError(err)})
 		}
 	})
 }

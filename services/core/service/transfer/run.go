@@ -58,7 +58,7 @@ func (m *Manager) run(ctx context.Context, j *job) {
 			m.finishLocked(j, StateCancelled, "")
 		}
 	case err != nil:
-		m.finishLocked(j, StateFailed, humanError(err))
+		m.finishLocked(j, StateFailed, HumanError(err))
 	case j.FilesFailed > 0:
 		m.finishLocked(j, StateDoneWithErrors, "")
 	default:
@@ -114,17 +114,21 @@ func (m *Manager) runTransfer(ctx context.Context, j *job) error {
 			tops = append(tops, t)
 			continue
 		}
-		if _, err := os.Lstat(t.dst); err == nil {
+		m.claimMu.Lock()
+		if m.taken(t.dst) {
 			switch {
 			case j.Conflict == ConflictResume:
 				// Finish into the existing item.
 			case filepath.Dir(src) == dest || j.Conflict == ConflictRename:
 				// Pasting into the same folder always keeps both.
-				t.dst = uniqueName(dest, name)
+				t.dst = uniqueName(dest, name, m.taken)
 			case j.Conflict == ConflictSkip:
 				t.skip = true
 			}
 		}
+		m.claims[t.dst]++
+		m.claimMu.Unlock()
+		defer m.unclaim(t.dst)
 		m.addAffected(j, filepath.Dir(src))
 		tops = append(tops, t)
 	}
@@ -509,7 +513,7 @@ func copyEntry(ctx context.Context, e entry, syncNow bool, progress func(int64))
 	if fi, err := os.Lstat(e.dst); err == nil && fi.IsDir() {
 		return fmt.Errorf("a folder with this name already exists at the destination")
 	}
-	tmp := filepath.Join(dir, "."+filepath.Base(e.dst)+".nvtmp-"+newID())
+	tmp := filepath.Join(dir, HiddenTempName(filepath.Base(e.dst), ".nvtmp-"+newID()))
 
 	if e.link {
 		target, err := os.Readlink(e.src)
@@ -597,6 +601,17 @@ func copyEntry(ctx context.Context, e entry, syncNow bool, progress func(int64))
 	return nil
 }
 
+// HiddenTempName is "."+name+suffix, with name shortened (at a UTF-8
+// boundary) so the result fits the 255-byte name limit - a file whose own
+// name is near the limit used to fail with "name too long".
+func HiddenTempName(name, suffix string) string {
+	max := 255 - 1 - len(suffix)
+	if len(name) > max {
+		name = strings.ToValidUTF8(name[:max], "")
+	}
+	return "." + name + suffix
+}
+
 // skipExisting applies the per-file part of the conflict policy.
 func skipExisting(c Conflict, e entry) bool {
 	fi, err := os.Lstat(e.dst)
@@ -643,8 +658,24 @@ func dirMode(m fs.FileMode) fs.FileMode {
 	return p | 0o700
 }
 
-// uniqueName returns "name (2).ext", "name (3).ext", ... not present in dir.
-func uniqueName(dir, name string) string {
+// taken: the name exists, or a job running right now is about to create
+// it (two "keep both" pastes at once used to pick the same "name (2)" and
+// the second silently replaced the first). Caller holds claimMu.
+func (m *Manager) taken(p string) bool {
+	_, err := os.Lstat(p)
+	return err == nil || m.claims[p] > 0
+}
+
+func (m *Manager) unclaim(p string) {
+	m.claimMu.Lock()
+	if m.claims[p]--; m.claims[p] <= 0 {
+		delete(m.claims, p)
+	}
+	m.claimMu.Unlock()
+}
+
+// uniqueName returns "name (2).ext", "name (3).ext", ... not taken in dir.
+func uniqueName(dir, name string, taken func(string) bool) string {
 	ext := filepath.Ext(name)
 	stem := strings.TrimSuffix(name, ext)
 	if strings.HasSuffix(strings.ToLower(stem), ".tar") {
@@ -653,14 +684,14 @@ func uniqueName(dir, name string) string {
 	}
 	for i := 2; ; i++ {
 		c := filepath.Join(dir, fmt.Sprintf("%s (%d)%s", stem, i, ext))
-		if _, err := os.Lstat(c); os.IsNotExist(err) {
+		if !taken(c) {
 			return c
 		}
 	}
 }
 
-// humanError turns syscall errors into something a person can act on.
-func humanError(err error) string {
+// HumanError turns syscall errors into something a person can act on.
+func HumanError(err error) string {
 	switch {
 	case err == nil:
 		return ""

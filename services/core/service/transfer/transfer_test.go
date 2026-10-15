@@ -344,6 +344,29 @@ func TestUnfinishedJobsAreInterruptedAfterRestart(t *testing.T) {
 	}
 }
 
+// A crash (no Close, no clean save) mid-job must still leave the job on
+// disk, so the restart shows it as interrupted instead of losing it.
+func TestJobSurvivesACrash(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "jobs.json")
+	m := newTestManagerAt(t, statePath)
+	src := filepath.Join(t.TempDir(), "big.bin")
+	f, _ := os.Create(src)
+	f.Truncate(1 << 30)
+	f.Close()
+	j, _ := m.Submit(Spec{Kind: KindCopy, Sources: []string{src}, Dest: t.TempDir()})
+	m2 := NewManager(Options{StatePath: statePath}) // reads what a crash leaves
+	defer m2.Close()
+	if got, ok := m2.Get(j.ID); !ok || got.State != StateInterrupted {
+		t.Fatalf("after a crash: ok=%v state=%s", ok, got.State)
+	}
+}
+
+func newTestManagerAt(t *testing.T, statePath string) *Manager {
+	m := NewManager(Options{StatePath: statePath})
+	t.Cleanup(m.Close)
+	return m
+}
+
 func TestRetryFinishesWhatFailed(t *testing.T) {
 	m := newTestManager(t)
 	src := makeAlbum(t, t.TempDir())
@@ -498,4 +521,41 @@ func TestRetryRemovesTempFilesLeftByACrash(t *testing.T) {
 		t.Fatalf("retry: %s %+v", r.State, r.Failures)
 	}
 	assertNoTempFiles(t, dest)
+}
+
+func TestCopyNameAtTheLengthLimit(t *testing.T) {
+	m := newTestManager(t)
+	name := strings.Repeat("日", 85) // 255 bytes
+	src := filepath.Join(t.TempDir(), name)
+	writeFile(t, src, "x")
+	dest := t.TempDir()
+	j, _ := m.Submit(Spec{Kind: KindCopy, Sources: []string{src}, Dest: dest})
+	if got := waitDone(t, m, j.ID); got.State != StateDone {
+		t.Fatalf("%s %+v", got.State, got.Failures)
+	}
+	if readFile(t, filepath.Join(dest, name)) != "x" {
+		t.Fatal("content")
+	}
+}
+
+// Two "keep both" pastes running at once must not pick the same name.
+func TestConcurrentKeepBothGetDistinctNames(t *testing.T) {
+	m := newTestManager(t)
+	dest := t.TempDir()
+	var ids []string
+	for i := 0; i < 2; i++ {
+		src := filepath.Join(t.TempDir(), "T")
+		for k := 0; k < 200; k++ {
+			writeFile(t, filepath.Join(src, fmt.Sprintf("f%d", k)), fmt.Sprint(i))
+		}
+		j, _ := m.Submit(Spec{Kind: KindCopy, Sources: []string{src}, Dest: dest, Conflict: ConflictRename})
+		ids = append(ids, j.ID)
+	}
+	for _, id := range ids {
+		waitDone(t, m, id)
+	}
+	a, b := readFile(t, filepath.Join(dest, "T", "f199")), readFile(t, filepath.Join(dest, "T (2)", "f199"))
+	if a == b {
+		t.Fatalf("both pastes landed in one folder (%s, %s)", a, b)
+	}
 }
