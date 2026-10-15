@@ -3,19 +3,19 @@
 		<h2 class="section-title">{{ $t('Updates & Maintenance') }}</h2>
 
 		<!-- ==================== 1. NIVAROOS SYSTEM UPDATE ==================== -->
+		<!-- Built from GitHub master: up to date when master has nothing this build lacks (core asks GitHub). -->
 		<h3 class="setting-card-title">{{ $t('NivaroOS System Update') }}</h3>
 		<div class="setting-card">
-			<!-- Main Status Row -->
 			<div class="setting-row">
-				<b-icon class="row-icon" :icon="hasNivaroUpdate ? 'cloud-download-outline' : 'check-circle-outline'" pack="mdi" size="is-20" :class="{ 'has-text-success': !hasNivaroUpdate, 'has-text-primary': hasNivaroUpdate }"></b-icon>
+				<b-icon class="row-icon" :icon="statusIcon" pack="mdi" size="is-20" :class="{ 'has-text-success': updateState === 'up_to_date', 'has-text-primary': hasNivaroUpdate }"></b-icon>
 				<div class="row-label">
-					<div class="setting-title">
-						{{ hasNivaroUpdate ? $t('New NivaroOS update available') : $t('NivaroOS is up to date') }}
-					</div>
+					<div class="setting-title" data-test="nivaro-status">{{ statusTitle }}</div>
 					<div class="setting-desc">
-						<span>{{ $t('Installed') }}: {{ currentVersion || '—' }}</span>
-						<span class="mx-2">&middot;</span>
-						<span>{{ $t('Latest') }}: {{ latestGithubVersion || latestVersion || '—' }}</span>
+						<span data-test="nivaro-build">{{ buildLabel }}</span>
+						<template v-if="updateState === 'unknown' && update.reason">
+							<span class="mx-2">&middot;</span>
+							<span>{{ update.reason }}</span>
+						</template>
 						<template v-if="lastNivaroCheckTime">
 							<span class="mx-2">&middot;</span>
 							<span>{{ $t('Checked') }}: {{ lastNivaroCheckTime }}</span>
@@ -28,17 +28,11 @@
 							<i class="mdi mdi-refresh mr-1"></i>
 							{{ $t('Check for updates') }}
 						</b-button>
-						<!-- Only when this server can install it itself; a newer
-						     GitHub release is updated through the installer. -->
-						<b-button v-if="needUpdate" rounded size="is-small" type="is-primary" :loading="nivaroUpdating" @click="startNivaroUpdate">
+						<b-button v-if="hasNivaroUpdate" data-test="nivaro-update" rounded size="is-small" type="is-primary" :loading="nivaroUpdating" @click="startNivaroUpdate">
 							<i class="mdi mdi-download mr-1"></i>
 							{{ $t('Update NivaroOS') }}
 						</b-button>
-						<b-button v-else-if="hasNivaroUpdate" rounded size="is-small" type="is-primary" tag="a" href="https://github.com/F-e-n-y-x/NivaroOS/releases/latest" target="_blank" rel="noopener noreferrer">
-							<i class="mdi mdi-github mr-1"></i>
-							{{ $t('View release') }}
-						</b-button>
-						<span v-else class="tag is-success is-light is-rounded">
+						<span v-else-if="updateState === 'up_to_date'" class="tag is-success is-light is-rounded">
 							<i class="mdi mdi-check mr-1"></i>
 							{{ $t('Up to date') }}
 						</span>
@@ -46,40 +40,48 @@
 				</div>
 			</div>
 
-			<!-- GitHub Master Commit Details (if available) -->
-			<div v-if="latestCommit" class="update-inset-box">
+			<!-- The newest change on master this build doesn't have -->
+			<div v-if="hasNivaroUpdate && update.latest_message" class="update-inset-box">
 				<div class="is-flex is-align-items-center is-justify-content-between mb-1">
-					<span class="commit-label is-flex is-align-items-center">
+					<a class="commit-label is-flex is-align-items-center" :href="compareUrl" target="_blank" rel="noopener noreferrer">
 						<i class="mdi mdi-github mr-1"></i>
-						{{ $t('GitHub Master Branch') }} (<code>{{ latestCommit.sha.substring(0, 7) }}</code>)
-					</span>
-					<span class="commit-time">{{ formatDate(latestCommit.commit.author.date) }}</span>
-				</div>
-				<div class="commit-msg">{{ latestCommit.commit.message }}</div>
-			</div>
-
-			<!-- Release Notes Accordion -->
-			<div v-if="githubReleaseNotes" class="update-inset-box mt-0">
-				<div class="release-notes-head is-flex is-align-items-center is-justify-content-between" @click="showChangelog = !showChangelog">
-					<span class="is-size-7 text-muted">{{ $t('Release Highlights & Changelog') }}</span>
-					<i :class="showChangelog ? 'mdi mdi-chevron-up' : 'mdi mdi-chevron-down'"></i>
-				</div>
-				<div v-if="showChangelog" class="release-notes-body">
-					<pre class="notes-pre">{{ githubReleaseNotes }}</pre>
-				</div>
-			</div>
-
-			<!-- Footer Row: GitHub link -->
-			<div class="setting-row sub-row">
-				<b-icon class="row-icon" icon="github" pack="mdi" size="is-20"></b-icon>
-				<div class="row-label">
-					<a href="https://github.com/F-e-n-y-x/NivaroOS/releases" target="_blank" rel="noopener noreferrer" class="github-link is-flex is-align-items-center">
-						{{ $t('View releases and changelog on GitHub') }}
-						<b-icon icon="open-in-new" pack="mdi" size="is-14" class="ml-1"></b-icon>
+						{{ $t('Latest on GitHub') }} (<code>{{ (update.latest_commit || '').substring(0, 7) }}</code>)
 					</a>
+					<span class="commit-time">{{ formatDate(update.latest_date) }}</span>
 				</div>
+				<div class="commit-msg" data-test="nivaro-latest">{{ update.latest_message }}</div>
 			</div>
 		</div>
+
+		<!-- ==================== ANDROID APP (GitHub releases) ==================== -->
+		<!-- GitHub releases are the Android app's, never the server's version. -->
+		<template v-if="androidRelease">
+			<h3 class="setting-card-title">{{ $t('Android app') }}</h3>
+			<div class="setting-card">
+				<div class="setting-row">
+					<b-icon class="row-icon" icon="android" pack="mdi" size="is-20"></b-icon>
+					<div class="row-label">
+						<div class="setting-title" data-test="android-release">{{ $t('Android app') }} {{ androidRelease.version }}</div>
+						<div class="setting-desc">{{ $t('Latest release of the NivaroOS phone app') }}</div>
+					</div>
+					<div class="row-control">
+						<b-button rounded size="is-small" tag="a" :href="androidRelease.url" target="_blank" rel="noopener noreferrer">
+							<i class="mdi mdi-download mr-1"></i>
+							{{ $t('Download APK') }}
+						</b-button>
+					</div>
+				</div>
+				<div v-if="androidRelease.notes" class="update-inset-box mt-0">
+					<div class="release-notes-head is-flex is-align-items-center is-justify-content-between" @click="showChangelog = !showChangelog">
+						<span class="is-size-7 text-muted">{{ $t('Release Highlights & Changelog') }}</span>
+						<i :class="showChangelog ? 'mdi mdi-chevron-up' : 'mdi mdi-chevron-down'"></i>
+					</div>
+					<div v-if="showChangelog" class="release-notes-body">
+						<pre class="notes-pre">{{ androidRelease.notes }}</pre>
+					</div>
+				</div>
+			</div>
+		</template>
 
 		<!-- ==================== 2. LINUX SYSTEM PACKAGES (APT) ==================== -->
 		<h3 class="setting-card-title">{{ $t('Linux System Packages (APT)') }}</h3>
@@ -192,23 +194,13 @@
 
 <script>
 import { apiError } from '@/utils/apiError'
-// "v1.2.1" vs "1.10.0": numeric, part by part; a leading v is ignored.
-function compareVersions(a, b) {
-	const parts = (v) => String(v).trim().replace(/^v/i, '').split(/[.+-]/).map((x) => parseInt(x, 10) || 0)
-	const pa = parts(a)
-	const pb = parts(b)
-	for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-		const d = (pa[i] || 0) - (pb[i] || 0)
-		if (d) return d > 0 ? 1 : -1
-	}
-	return 0
-}
 import axios from 'axios'
 
 // Search index: labels are the titles this section renders (the search
 // jumps to them); keywords are other words people type for them.
 export const ROWS = [
-	{ label: 'NivaroOS System Update', keywords: 'nivaroos version update' },
+	{ label: 'NivaroOS System Update', keywords: 'nivaroos version update build commit' },
+	{ label: 'Android app', keywords: 'apk phone mobile release download' },
 	{ label: 'Linux System Packages (APT)', keywords: 'apt upgrade packages security' }
 ]
 
@@ -216,12 +208,9 @@ export default {
 	name: 'updates-section',
 	data() {
 		return {
-			currentVersion: '',
-			needUpdate: false,
-			latestVersion: '',
-			latestGithubVersion: '',
-			latestCommit: null,
-			githubReleaseNotes: '',
+			build: {},
+			update: {},
+			androidRelease: null,
 			showChangelog: false,
 			checkingNivaro: false,
 			lastNivaroCheckTime: '',
@@ -241,11 +230,36 @@ export default {
 		}
 	},
 	computed: {
-		// Newer = numerically greater (it compared strings: "v1.2.1" !==
-		// "1.0.0" and even "v1.0.0" !== "1.0.0" meant "update available").
+		// Only core's own answer: master is ahead of this build.
+		updateState() {
+			return this.update.state || ''
+		},
 		hasNivaroUpdate() {
-			if (this.needUpdate) return true
-			return !!(this.latestGithubVersion && this.currentVersion && compareVersions(this.latestGithubVersion, this.currentVersion) > 0)
+			return this.updateState === 'behind'
+		},
+		statusIcon() {
+			return { behind: 'cloud-download-outline', up_to_date: 'check-circle-outline', unknown: 'help-circle-outline' }[this.updateState] || 'help-circle-outline'
+		},
+		statusTitle() {
+			if (this.hasNivaroUpdate) {
+				const n = this.update.ahead_by
+				return `${n} ${n === 1 ? this.$t('new change on GitHub since your build') : this.$t('new changes on GitHub since your build')}`
+			}
+			if (this.updateState === 'up_to_date') return this.$t('NivaroOS is up to date')
+			if (this.updateState === 'unknown') return this.$t("Couldn't check for NivaroOS updates")
+			return this.$t('Checking for NivaroOS updates...')
+		},
+		buildLabel() {
+			const b = this.build
+			if (!b.short) return this.$t('Build') + ': ' + (b.version || '—')
+			let d = ''
+			try {
+				if (b.date) d = ', ' + new Date(b.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+			} catch { /* bad date: no date */ }
+			return `${this.$t('Build')} ${b.short}${d}`
+		},
+		compareUrl() {
+			return `https://github.com/F-e-n-y-x/NivaroOS/compare/${this.build.commit}...master`
 		},
 		filteredPackages() {
 			if (!this.pkgSearch.trim()) return this.packages
@@ -255,7 +269,7 @@ export default {
 	},
 	created() {
 		this.loadNivaroVersion()
-		this.checkGithubUpdates()
+		this.loadAndroidRelease()
 		this.loadAptPackages()
 		this.checkUpgradeStatus()
 	},
@@ -271,43 +285,38 @@ export default {
 				return d
 			}
 		},
-		loadNivaroVersion() {
-			this.$api.sys.getVersion().then(res => {
+		loadNivaroVersion(refresh = false) {
+			this.checkingNivaro = true
+			return this.$api.sys.getVersion(refresh).then(res => {
 				if (res.data.success === 200) {
 					const data = res.data.data
-					this.currentVersion = data.current_version || ''
-					this.needUpdate = !!data.need_update
-					this.latestVersion = data.version && data.version.version ? data.version.version : ''
+					this.build = data.build || {}
+					this.update = data.update || { state: 'unknown' }
 				}
-			}).catch(() => {})
-		},
-		async checkGithubUpdates() {
-			this.checkingNivaro = true
-			try {
-				const commitRes = await axios.get('https://api.github.com/repos/F-e-n-y-x/NivaroOS/commits/master')
-				if (commitRes.data) {
-					this.latestCommit = commitRes.data
-				}
-			} catch (e) {
-				console.warn('GitHub commits check:', e.message)
-			}
-
-			try {
-				const releaseRes = await axios.get('https://api.github.com/repos/F-e-n-y-x/NivaroOS/releases/latest')
-				if (releaseRes.data) {
-					this.latestGithubVersion = releaseRes.data.tag_name || releaseRes.data.name
-					this.githubReleaseNotes = releaseRes.data.body || ''
-				}
-			} catch (e) {
-				// No releases created yet on GitHub or rate-limited
-			} finally {
+			}).catch(() => {
+				this.update = { state: 'unknown', reason: this.$t('the server did not answer') }
+			}).finally(() => {
 				this.checkingNivaro = false
 				this.lastNivaroCheckTime = new Date().toLocaleTimeString()
+			})
+		},
+		// The Android app's latest GitHub release: only shown, never compared
+		// with the server.
+		async loadAndroidRelease() {
+			try {
+				const { data } = await axios.get('https://api.github.com/repos/F-e-n-y-x/NivaroOS/releases/latest')
+				const apk = (data.assets || []).find(a => /\.apk$/i.test(a.name || ''))
+				this.androidRelease = {
+					version: String(data.tag_name || data.name || '').replace(/^v/i, ''),
+					url: apk ? apk.browser_download_url : data.html_url,
+					notes: data.body || ''
+				}
+			} catch {
+				// No release yet, offline or rate limited: no card.
 			}
 		},
 		checkNivaroUpdates() {
-			this.loadNivaroVersion()
-			this.checkGithubUpdates()
+			this.loadNivaroVersion(true)
 			this.$buefy.toast.open({
 				message: this.$t('Checking for latest NivaroOS updates...'),
 				type: 'is-info',

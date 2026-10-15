@@ -15,8 +15,9 @@ const sys = {
 	},
 
 	// check system version
-	getVersion() {
-		return api.get(`${PREFIX}/version`);
+	// refresh: ask GitHub again instead of core's cached answer.
+	getVersion(refresh = false) {
+		return api.get(`${PREFIX}/version`, refresh ? { params: { refresh: 1 } } : undefined);
 	},
 
 	// Hardware Info
