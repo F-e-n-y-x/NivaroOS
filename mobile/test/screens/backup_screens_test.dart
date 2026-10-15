@@ -234,6 +234,16 @@ void main() {
       expect(_posted(sent, 'POST /v1/backup/runs/run_docs_2/cancel'), isTrue);
     });
 
+    testWidgets("the job and its history show without waiting for a slow destination's versions", (tester) async {
+      await _run(tester, const BackupJobScreen(jobId: 'bk_photos'), () async {
+        expect(find.text('Back up now'), findsOneWidget);
+        await tester.scrollUntilVisible(find.text('History'), 300, scrollable: find.byType(Scrollable).first);
+        expect(find.text('Succeeded · Backup'), findsWidgets);
+        await tester.pump(const Duration(seconds: 31));
+        await _settle(tester);
+      }, delay: (r) => r == 'GET /v1/backup/jobs/bk_photos/versions' ? const Duration(seconds: 30) : Duration.zero);
+    });
+
     testWidgets('history: the runs with status, duration and data', (tester) async {
       await _run(tester, const BackupJobScreen(jobId: 'bk_photos'), () async {
         await tester.scrollUntilVisible(find.text('History'), 300, scrollable: find.byType(Scrollable).first);

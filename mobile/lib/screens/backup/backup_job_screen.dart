@@ -74,12 +74,11 @@ class _BackupJobScreenState extends State<BackupJobScreen> with WidgetsBindingOb
           prev.lastRun?.id != job.lastRun?.id ||
           prev.activeRun?.id != job.activeRun?.id ||
           prev.activeRun?.status != job.activeRun?.status;
-      final results = await Future.wait<Object?>([
-        Future.value(job),
-        if (changed) _api.runs(jobId: widget.jobId, limit: _page) else Future.value(null),
-        if (changed || _versions == null) _api.versions(widget.jobId).then<Object?>((v) => v, onError: (_) => null) else Future.value(_versions),
-      ]);
-      final runs = results[1] as RunList?;
+      // Versions come from the destination, which can be slow (a cloud
+      // busy with an upload): they fill in on their own, never holding
+      // up the job, its progress and its history.
+      if (changed || _versions == null) unawaited(_loadVersions());
+      final runs = changed ? await _api.runs(jobId: widget.jobId, limit: _page) : null;
       LiveStats? live;
       if (job.activeRun?.status == 'running') {
         try {
@@ -97,7 +96,6 @@ class _BackupJobScreenState extends State<BackupJobScreen> with WidgetsBindingOb
           _runs = [...runs.runs, ...older];
           if (older.isEmpty) _nextBefore = runs.nextBefore;
         }
-        _versions = results[2] as List<BackupVersion>? ?? _versions;
         _live = live;
         _error = null;
       });
@@ -105,6 +103,21 @@ class _BackupJobScreenState extends State<BackupJobScreen> with WidgetsBindingOb
       if (mounted) setState(() => _error = e);
     } finally {
       _loading = false;
+    }
+  }
+
+  bool _versionsLoading = false;
+
+  Future<void> _loadVersions() async {
+    if (_versionsLoading) return;
+    _versionsLoading = true;
+    try {
+      final v = await _api.versions(widget.jobId);
+      if (mounted) setState(() => _versions = v);
+    } catch (_) {
+      // Shown as no versions yet; the next poll asks again.
+    } finally {
+      _versionsLoading = false;
     }
   }
 
