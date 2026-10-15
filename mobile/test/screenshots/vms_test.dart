@@ -104,6 +104,9 @@ RemoteClipboardHistory _history() {
 }
 
 Future<void> _tapTooltip(WidgetTester tester, String tooltip) async {
+  // The toolbar's middle scrolls on a narrow screen.
+  await tester.ensureVisible(find.byTooltip(tooltip).first);
+  await tester.pump();
   await tester.tap(find.byTooltip(tooltip).first);
   for (var i = 0; i < 6; i++) {
     await tester.pump(const Duration(milliseconds: 100));

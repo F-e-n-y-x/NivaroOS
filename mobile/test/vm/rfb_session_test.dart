@@ -246,6 +246,33 @@ void main() {
       expect(await StorageService.instance.getConsolePref('bar@vm'), 'shown');
     });
 
+    testWidgets('Pin toolbar keeps it up, on reconnect and next time, until unpinned', (tester) async {
+      final c = await frame(tester);
+      await tester.tap(find.byTooltip('Pin toolbar'));
+      await tester.pumpAndSettle();
+      expect(await StorageService.instance.getConsolePref('bar@vm'), 'pinned');
+      await tester.pump(RemoteConsoleFrameState.toolbarHideAfter * 2);
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Show keyboard'), findsOneWidget);
+      c.status.value = RfbStatus.connecting;
+      await tester.pump();
+      c.status.value = RfbStatus.connected;
+      await tester.pump(RemoteConsoleFrameState.toolbarHideAfter * 2);
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Show keyboard'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      await frame(tester);
+      await tester.pump(RemoteConsoleFrameState.toolbarHideAfter * 2);
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Show keyboard'), findsOneWidget);
+      // Unpinning brings the auto-hide back.
+      await tester.tap(find.byTooltip('Unpin toolbar'));
+      await tester.pump(RemoteConsoleFrameState.toolbarHideAfter + const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Show keyboard'), findsNothing);
+      expect(await StorageService.instance.getConsolePref('bar@vm'), 'shown');
+    });
+
     testWidgets('the tab slides along the top edge, inside the safe area, and keeps its place', (tester) async {
       tester.view.padding = const FakeViewPadding(left: 40, right: 40);
       await frame(tester);

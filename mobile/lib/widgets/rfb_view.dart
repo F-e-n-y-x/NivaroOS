@@ -866,10 +866,11 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
 
   // The toolbar: shown, where along the top edge (-1 left .. 1 right),
   // and when it hides. Hidden with its button, it stays hidden (on
-  // connect too, and next time) until its tab is tapped; that and where
-  // it sits are remembered per console type, host or VM.
+  // connect too, and next time) until its tab is tapped; pinned, it never
+  // hides. That and where it sits are remembered per console type, host or VM.
   bool _toolbarShown = true;
   bool _barHidden = false;
+  bool _barPinned = false;
   double _toolbarX = 0;
   int _menusOpen = 0;
   Timer? _hideTimer;
@@ -978,17 +979,21 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
     final fit = RfbFit.values.asNameMap()[await _pref('fit@$target')];
     final quality = RfbQuality.values.asNameMap()[await _pref('quality@$target')];
     final landscape = await _pref('landscape') == 'true';
-    final barHidden = await _pref('bar@$_kind') == 'hidden';
+    final bar = await _pref('bar@$_kind');
+    final barHidden = bar == 'hidden';
     final barX = double.tryParse(await _pref('barx@$_kind') ?? '');
     if (!mounted) return;
     setState(() {
       _barHidden = barHidden;
+      _barPinned = bar == 'pinned';
       if (barHidden) _toolbarShown = false;
       if (barX != null && barX.isFinite) _toolbarX = barX.clamp(-1.0, 1.0);
       _inputMode = input ?? _inputMode;
       _fit = fit ?? _fit;
       _quality = quality ?? _quality;
     });
+    // The timer started before the choice loaded.
+    if (_barPinned) _hideTimer?.cancel();
     _client.maxFps = _quality.fps;
     _client.jpegQuality = _quality.jpeg;
     if (landscape) _setLandscape(true, save: false);
@@ -1047,6 +1052,7 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
     if (_barHidden) return;
     _hideTimer?.cancel();
     if (!_toolbarShown) setState(() => _toolbarShown = true);
+    if (_barPinned) return;
     _hideTimer = Timer(toolbarHideAfter, () {
       if (!mounted || _menusOpen > 0 || MediaQuery.maybeAccessibleNavigationOf(context) == true) return;
       setState(() => _toolbarShown = false);
@@ -1077,10 +1083,19 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
     _hideTimer?.cancel();
     setState(() {
       _barHidden = hidden;
+      _barPinned = false;
       _toolbarShown = !hidden;
     });
     _savePref('bar@$_kind', hidden ? 'hidden' : 'shown');
     if (!hidden) _poke();
+  }
+
+  /// The toolbar's Pin button: it stays up until unpinned.
+  void _setBarPinned(bool pinned) {
+    HapticFeedback.selectionClick();
+    setState(() => _barPinned = pinned);
+    _savePref('bar@$_kind', pinned ? 'pinned' : 'shown');
+    _poke();
   }
 
   // --- keyboard ---
@@ -1445,6 +1460,13 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
                         scrollDirection: Axis.horizontal,
                         child: Row(mainAxisSize: MainAxisSize.min, children: _toolbarButtons(context)),
                       ),
+                    ),
+                    IconButton(
+                      tooltip: _barPinned ? 'Unpin toolbar' : 'Pin toolbar',
+                      isSelected: _barPinned,
+                      icon: const Icon(Icons.push_pin_outlined),
+                      selectedIcon: const Icon(Icons.push_pin),
+                      onPressed: () => _setBarPinned(!_barPinned),
                     ),
                     IconButton(
                       tooltip: 'Hide toolbar',
