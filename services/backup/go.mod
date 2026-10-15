@@ -130,7 +130,7 @@ require (
 	golang.org/x/text v0.42.0 // indirect
 	google.golang.org/api v0.279.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260715232425-e75dac1f907d // indirect
-	google.golang.org/grpc v1.84.0-dev.0.20260723093437-b6eac429d7b6 // indirect
+	google.golang.org/grpc v1.84.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	moul.io/http2curl/v2 v2.3.0 // indirect
