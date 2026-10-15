@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/rclone/rclone/fs"
+	"github.com/rclone/rclone/fs/accounting"
 	"github.com/rclone/rclone/fs/config"
 	"github.com/rclone/rclone/fs/config/configfile"
 	rlog "github.com/rclone/rclone/fs/log"
@@ -132,6 +133,17 @@ func New(cfg Config) (*Engine, error) {
 	cfg.setDefaults()
 	rcloneInit.Do(func() {
 		configfile.Install()
+		// What the rclone command does at start and a library user must
+		// do itself: RCLONE_* environment variables set the global
+		// options (RCLONE_BWLIMIT in a unit drop-in), and accounting
+		// starts. Without accounting.Start fs.CountError counts nothing,
+		// so a run's live error count stayed 0 and rclone's sync never
+		// saw its own errors - it deleted at the destination after
+		// failed copies ("not deleting files as there were IO errors").
+		if err := fs.GlobalOptionsInit(); err != nil {
+			log.Printf("engine: rclone options from the environment: %v", err)
+		}
+		accounting.Start(context.Background())
 		// rclone logs a NOTICE per file in a dry run and INFO per
 		// transfer; the run log has those as structured lines, so the
 		// journal only gets warnings and errors.
