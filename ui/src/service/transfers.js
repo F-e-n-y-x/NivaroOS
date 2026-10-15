@@ -86,6 +86,10 @@ function upsert(raw) {
 	const job = normalize(raw)
 	if (!job) return
 	const prev = state.jobs[job.id]
+	// A finished job never runs again (Retry is a new job). An older
+	// snapshot arriving late (a live event racing a resync) used to put a
+	// done job back to "in progress".
+	if (prev && isTerminal(prev) && !isTerminal(job)) return
 	if (!prev) {
 		state.order.push(job.id)
 		// First time this page sees a job that already finished (history

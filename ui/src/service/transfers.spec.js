@@ -41,3 +41,14 @@ describe('transfers: a dismissed job never comes back', () => {
 		expect(t.default.visibleJobs()).toHaveLength(0)
 	})
 })
+
+describe('transfers: a finished job stays finished', () => {
+	test('a late, older snapshot does not make it "in progress" again', async () => {
+		vi.resetModules()
+		globalThis.localStorage = storage()
+		const t = await import('./transfers.js')
+		t.track({ id: 'j', kind: 'copy', state: 'done', finished_at: new Date().toISOString() })
+		t.track({ id: 'j', kind: 'copy', state: 'running', bytes_done: 10, bytes_total: 20 })
+		expect(t.default.state.jobs.j.state).toBe('done')
+	})
+})
