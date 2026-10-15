@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -172,8 +173,11 @@ func TestInstallHostPackagesPerDistroOneAtATime(t *testing.T) {
 			if pkg == "xorg-xrefresh" {
 				return errors.New("target not found")
 			}
-			bin := map[string]string{"x11vnc": "x11vnc", "xdotool": "xdotool", "xorg-xrandr": "xrandr", "xorg-xset": "xset", "xorg-xdpyinfo": "xdpyinfo"}[pkg]
-			present[bin] = true
+			for _, bin := range map[string][]string{"x11vnc": {"x11vnc"}, "xdotool": {"xdotool"}, "xorg-xrandr": {"xrandr"}, "xorg-xset": {"xset"}, "xorg-xdpyinfo": {"xdpyinfo"},
+				"gstreamer": {"gst-launch-1.0", "gst-inspect-1.0"}, "gst-plugins-base": {"libgstvideoconvert*.so"}, "gst-plugins-good": {"libgstximagesrc.so"},
+				"gst-plugins-bad": {"libgstnvcodec.so"}, "gst-plugins-ugly": {"libgstx264.so"}}[pkg] {
+				present[bin] = true
+			}
 		}
 		return nil
 	})
@@ -188,35 +192,42 @@ func TestInstallHostPackagesPerDistroOneAtATime(t *testing.T) {
 	if len(warnings) != 1 || !strings.Contains(warnings[0], "xrefresh") {
 		t.Fatalf("want one xrefresh warning, got %v", warnings)
 	}
-	if strings.Join(installs, ",") != "x11vnc,xdotool,xorg-xrandr,xorg-xset,xorg-xrefresh,xorg-xdpyinfo" {
+	if strings.Join(installs, ",") != "x11vnc,xdotool,xorg-xrandr,xorg-xset,xorg-xrefresh,xorg-xdpyinfo,gstreamer,gst-plugins-base,gst-plugins-good,gst-plugins-bad,gst-plugins-ugly" {
 		t.Fatalf("unexpected install sequence %v", installs)
 	}
 }
 
-func TestInstallHostPackagesWaylandExtras(t *testing.T) {
+// X11 hosts get the GStreamer set the WebRTC Smooth lane needs; Wayland
+// adds PipeWire capture, wlroots adds wayvnc/wlr-randr.
+func TestInstallHostPackagesSmoothAndWaylandExtras(t *testing.T) {
 	present := map[string]bool{"apt-get": true, "x11vnc": true, "xdotool": true, "xrandr": true, "xset": true, "xrefresh": true, "xdpyinfo": true}
 	var installs []string
 	withFakeHost(t, present, true, func(name string, args []string) error {
 		if name == "apt-get" && args[0] == "install" {
 			pkg := args[len(args)-1]
 			installs = append(installs, pkg)
-			for k, v := range map[string]string{"gstreamer1.0-tools": "gst-launch-1.0", "gstreamer1.0-pipewire": "libgstpipewire.so", "gstreamer1.0-plugins-base": "libgstvideoconvert*.so", "wayvnc": "wayvnc", "wlr-randr": "wlr-randr"} {
-				if pkg == k {
-					present[v] = true
-				}
+			for _, v := range map[string][]string{"gstreamer1.0-tools": {"gst-launch-1.0", "gst-inspect-1.0"}, "gstreamer1.0-pipewire": {"libgstpipewire.so"},
+				"gstreamer1.0-plugins-base": {"libgstvideoconvert*.so"}, "gstreamer1.0-plugins-good": {"libgstximagesrc.so"},
+				"gstreamer1.0-plugins-bad": {"libgstva.so"}, "gstreamer1.0-plugins-ugly": {"libgstx264.so"}, "wayvnc": {"wayvnc"}, "wlr-randr": {"wlr-randr"}}[pkg] {
+				present[v] = true
 			}
 		}
 		return nil
 	})
 	pm, _ := detectHostPkgManager()
-	if w, err := installHostPackages(context.Background(), pm, io.Discard, false, false); err != nil || len(w) != 0 || len(installs) != 0 {
-		t.Fatalf("X11-only host must install nothing more: %v %v %v", w, err, installs)
+	if w, err := installHostPackages(context.Background(), pm, io.Discard, false, false); err != nil || len(w) != 0 {
+		t.Fatalf("X11 install: %v %v", w, err)
 	}
+	// plugins-bad counts as present with only VA (no nvcodec on this GPU).
+	if strings.Join(installs, ",") != "gstreamer1.0-tools,gstreamer1.0-plugins-base,gstreamer1.0-plugins-good,gstreamer1.0-plugins-bad,gstreamer1.0-plugins-ugly" {
+		t.Fatalf("X11: unexpected install sequence %v", installs)
+	}
+	installs = nil
 	if w, err := installHostPackages(context.Background(), pm, io.Discard, true, true); err != nil || len(w) != 0 {
 		t.Fatalf("wayland install: %v %v", w, err)
 	}
-	if strings.Join(installs, ",") != "gstreamer1.0-tools,gstreamer1.0-pipewire,gstreamer1.0-plugins-base,wayvnc,wlr-randr" {
-		t.Fatalf("unexpected install sequence %v", installs)
+	if strings.Join(installs, ",") != "gstreamer1.0-pipewire,wayvnc,wlr-randr" {
+		t.Fatalf("wayland: unexpected install sequence %v", installs)
 	}
 }
 
@@ -260,7 +271,8 @@ func TestNearestDisplayMode(t *testing.T) {
 
 func TestInstallHostPackagesWlrootsOnlyWhenNeeded(t *testing.T) {
 	present := map[string]bool{"apt-get": true, "x11vnc": true, "xdotool": true, "xrandr": true, "xset": true, "xrefresh": true, "xdpyinfo": true,
-		"gst-launch-1.0": true, "libgstpipewire.so": true, "libgstvideoconvert*.so": true}
+		"gst-launch-1.0": true, "gst-inspect-1.0": true, "libgstpipewire.so": true, "libgstvideoconvert*.so": true,
+		"libgstximagesrc.so": true, "libgstnvcodec.so": true, "libgstx264.so": true}
 	var installs []string
 	withFakeHost(t, present, true, func(name string, args []string) error {
 		if name == "apt-get" && args[0] == "install" {
@@ -299,6 +311,13 @@ func TestAutoWaylandInstallSkipsPacmanAndRunsOnce(t *testing.T) {
 	autoInstallWaylandPackages() // failed before: not again on every start
 	if len(runs) != n {
 		t.Fatalf("retried: %v", runs[n:])
+	}
+	// An install marked before the Smooth lane's packages existed tries
+	// once more (upgrades pick them up on the next sidecar start).
+	_ = os.WriteFile(hostWaylandAutoMarker, []byte("apt wayland wlroots=false\n"), 0o644)
+	autoInstallWaylandPackages()
+	if len(runs) == n {
+		t.Fatal("old marker: expected one more install attempt")
 	}
 }
 

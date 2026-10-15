@@ -119,14 +119,28 @@ var hostDesktopPackages = []hostPkgReq{
 		"apt": {"x11-xserver-utils"}, "dnf": {"xrefresh", "xorg-x11-server-utils"}, "pacman": {"xorg-xrefresh"}, "zypper": {"xrefresh"}}},
 	{Binary: "xdpyinfo", Why: "display/Wayland detection", Candidates: map[string][]string{
 		"apt": {"x11-utils"}, "dnf": {"xdpyinfo", "xorg-x11-utils"}, "pacman": {"xorg-xdpyinfo"}, "zypper": {"xdpyinfo"}}},
-	{Binary: "gst-launch-1.0", Wayland: true, Why: "Wayland screen capture (GNOME, KDE)", Candidates: map[string][]string{
+	// GStreamer: Wayland capture and the WebRTC "Smooth (beta)" lane
+	// (hoststream_webrtc.go) on X11 too. On dnf/zypper x264 lives in RPM
+	// Fusion/Packman; without it the lane uses a GPU encoder or VNC.
+	{Binary: "gst-launch-1.0", Why: "screen capture/encoding (GStreamer)", Candidates: map[string][]string{
 		"apt": {"gstreamer1.0-tools"}, "dnf": {"gstreamer1"}, "pacman": {"gstreamer"}, "zypper": {"gstreamer-utils"}}},
+	{Binary: "gst-inspect-1.0", Why: "Smooth stream encoder detection", Candidates: map[string][]string{
+		"apt": {"gstreamer1.0-tools"}, "dnf": {"gstreamer1"}, "pacman": {"gstreamer"}, "zypper": {"gstreamer"}}},
 	{Binary: "pipewiresrc", Wayland: true, Why: "Wayland screen capture (GStreamer PipeWire plugin)",
 		Globs: gstPluginGlobs("libgstpipewire.so"), Candidates: map[string][]string{
 			"apt": {"gstreamer1.0-pipewire"}, "dnf": {"pipewire-gstreamer"}, "pacman": {"gst-plugin-pipewire"}, "zypper": {"gstreamer-plugin-pipewire"}}},
-	{Binary: "videoconvert", Wayland: true, Why: "Wayland screen capture (GStreamer base plugins)",
+	{Binary: "videoconvert", Why: "screen capture (GStreamer base plugins)",
 		Globs: gstPluginGlobs("libgstvideoconvert*.so"), Candidates: map[string][]string{
 			"apt": {"gstreamer1.0-plugins-base"}, "dnf": {"gstreamer1-plugins-base"}, "pacman": {"gst-plugins-base"}, "zypper": {"gstreamer-plugins-base"}}},
+	{Binary: "ximagesrc", Why: "Smooth stream X11 capture, RTP and UDP (GStreamer good plugins)",
+		Globs: gstPluginGlobs("libgstximagesrc.so"), Candidates: map[string][]string{
+			"apt": {"gstreamer1.0-plugins-good"}, "dnf": {"gstreamer1-plugins-good"}, "pacman": {"gst-plugins-good"}, "zypper": {"gstreamer-plugins-good"}}},
+	{Binary: "nvh264enc/vah264enc", Why: "Smooth stream GPU encoders (GStreamer bad plugins)",
+		Globs: append(gstPluginGlobs("libgstnvcodec.so"), gstPluginGlobs("libgstva.so")...), Candidates: map[string][]string{
+			"apt": {"gstreamer1.0-plugins-bad"}, "dnf": {"gstreamer1-plugins-bad-free"}, "pacman": {"gst-plugins-bad", "gst-plugin-va"}, "zypper": {"gstreamer-plugins-bad"}}},
+	{Binary: "x264enc", Why: "Smooth stream CPU encoder (GStreamer ugly plugins)",
+		Globs: gstPluginGlobs("libgstx264.so"), Candidates: map[string][]string{
+			"apt": {"gstreamer1.0-plugins-ugly"}, "dnf": {"gstreamer1-plugins-ugly"}, "pacman": {"gst-plugins-ugly"}, "zypper": {"gstreamer-plugins-ugly"}}},
 	{Binary: "wayvnc", Wayland: true, Wlroots: true, Why: "Wayland streaming on wlroots compositors (sway, Hyprland, labwc...)", Candidates: map[string][]string{
 		"apt": {"wayvnc"}, "dnf": {"wayvnc"}, "pacman": {"wayvnc"}, "zypper": {"wayvnc"}}},
 	{Binary: "wlr-randr", Wayland: true, Wlroots: true, Why: "resolution changes on wlroots compositors", Candidates: map[string][]string{
@@ -476,14 +490,18 @@ func InstallHostDesktop(ctx context.Context, progress io.Writer) (HostDesktopIns
 	return finish(nil)
 }
 
-// hostWaylandAutoMarker records which Wayland packages were already tried
+// hostWaylandAutoMarker records which package set was already tried
 // automatically, so a failing install isn't retried on every start.
 var hostWaylandAutoMarker = "/var/lib/nivaroos/host-desktop-wayland-packages"
 
-// autoInstallWaylandPackages: installs from before Wayland support never
-// got its packages. Adds what this machine's Wayland desktops need, once
-// per set of needs - at sidecar start on a Wayland session, and when the
-// wrapper reports them missing (a Wayland login after start). Never on pacman: installing
+// hostPkgSetVersion: bump when hostDesktopPackages gains entries, so
+// existing installs pick them up once on the next sidecar start.
+const hostPkgSetVersion = 2 // 2: GStreamer for the WebRTC Smooth lane
+
+// autoInstallWaylandPackages: older installs never got packages added
+// later (Wayland support, the Smooth lane's GStreamer). Adds what this
+// machine needs, once per set of needs - at sidecar start, and when the
+// wrapper reports Wayland ones missing (a Wayland login after start). Never on pacman: installing
 // single packages after a bare -Sy is a partial upgrade on Arch; there the
 // wrapper's message points at Reinstall instead.
 func autoInstallWaylandPackages() {
@@ -491,8 +509,9 @@ func autoInstallWaylandPackages() {
 	if err != nil || pm.Name == "pacman" {
 		return
 	}
-	wlroots := hostHasWlrootsSessions()
-	want := fmt.Sprintf("%s wayland wlroots=%v\n", pm.Name, wlroots)
+	wayland := activeSeatSession().Type == "wayland"
+	wlroots := wayland && hostHasWlrootsSessions()
+	want := fmt.Sprintf("%s set=%d wayland=%v wlroots=%v\n", pm.Name, hostPkgSetVersion, wayland, wlroots)
 	if b, _ := os.ReadFile(hostWaylandAutoMarker); string(b) == want {
 		return
 	}
@@ -502,8 +521,8 @@ func autoInstallWaylandPackages() {
 	defer hostDesktopInstallMu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), hostDesktopInstallTimeout)
 	defer cancel()
-	if w, err := installHostPackages(ctx, pm, io.Discard, true, wlroots); err != nil || len(w) > 0 {
-		log.Printf("host desktop: Wayland packages: %v %v", err, w)
+	if w, err := installHostPackages(ctx, pm, io.Discard, wayland, wlroots); err != nil || len(w) > 0 {
+		log.Printf("host desktop: packages: %v %v", err, w)
 	}
 	_ = os.MkdirAll(filepath.Dir(hostWaylandAutoMarker), 0o755)
 	_ = os.WriteFile(hostWaylandAutoMarker, []byte(want), 0o644)
@@ -532,9 +551,7 @@ func syncHostDesktopFiles() {
 		return
 	}
 	killLegacyWebsockify()
-	if activeSeatSession().Type == "wayland" {
-		autoInstallWaylandPackages()
-	}
+	autoInstallWaylandPackages()
 	if _, err := os.Stat(hostUnlockedPath); err == nil {
 		scheduleRelock() // unlocked before a sidecar restart
 	}
