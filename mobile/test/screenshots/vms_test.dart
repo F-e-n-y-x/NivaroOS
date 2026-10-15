@@ -78,10 +78,22 @@ final _snapshots = [
 
 late Uint8List _png;
 
-RfbClient _rfb(String? vm, {bool extended = true}) => RfbClient(
-      vmName: vm,
-      channelFactory: FakeRfbServer(width: 1280, height: 720, extendedClipboard: extended).factory,
-    );
+RfbClient _rfb(String? vm, {bool extended = true}) {
+  final c = RfbClient(vmName: vm, channelFactory: FakeRfbServer(width: 1280, height: 720, extendedClipboard: extended).factory);
+  _open.add(c);
+  return c;
+}
+
+/// The screens leave a client they were given open; its dead-link watch
+/// is a timer, which must be gone before the test ends.
+final _open = <RfbClient>[];
+Future<void> _closeClients(WidgetTester tester) async {
+  for (final c in _open) {
+    c.close();
+  }
+  _open.clear();
+  await tester.pump();
+}
 
 RemoteClipboardHistory _history() {
   final h = RemoteClipboardHistory();
@@ -263,6 +275,7 @@ void main() {
               pushed: true,
               before: before,
             );
+            await _closeClients(tester);
             // Back to the default for the next shot.
             await StorageService.instance.setConsolePref('input', 'touch');
             await StorageService.instance.setConsolePref('bar@host', 'shown');
@@ -273,7 +286,8 @@ void main() {
   }
 
   for (final MapEntry(key: name, value: s) in _shots.entries) {
-    Future<void> shot(WidgetTester tester, Brightness b, {Size size = phone, double textScale = 1}) => shoot(
+    Future<void> shot(WidgetTester tester, Brightness b, {Size size = phone, double textScale = 1}) async {
+      await shoot(
           tester,
           name: name,
           dir: 'vms',
@@ -289,6 +303,8 @@ void main() {
           // so in the file name.
           themeName: s.dark ? null : (name.startsWith('vm_console') || name.startsWith('host_desktop') ? 'fixed_dark' : null),
         );
+      await _closeClients(tester);
+    }
 
     for (final b in [Brightness.light, if (s.dark) Brightness.dark]) {
       testWidgets('$name ${b.name}', (tester) => shot(tester, b));
