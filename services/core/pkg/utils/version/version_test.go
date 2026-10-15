@@ -3,6 +3,7 @@ package version
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"runtime/debug"
 	"testing"
 )
@@ -80,5 +81,59 @@ func TestCompareFailures(t *testing.T) {
 	}
 	if s := Compare(""); s.State != StateUnknown {
 		t.Errorf("no commit: %+v", s)
+	}
+}
+
+func TestReleaseFile(t *testing.T) {
+	old := ReleaseFile
+	t.Cleanup(func() { ReleaseFile = old })
+	ReleaseFile = t.TempDir() + "/release.json"
+	if b := Info(); b.Release {
+		t.Fatalf("no file: %+v", b)
+	}
+	os.WriteFile(ReleaseFile, []byte(`{"version":"1.5.0","channel":"beta","commit":"abcdef0123","built":"2026-10-20T00:00:00Z"}`), 0o644)
+	if b := Info(); !b.Release || b.Version != "1.5.0" || b.Channel != "beta" || b.Short != "abcdef0" || b.Date != "2026-10-20T00:00:00Z" {
+		t.Fatalf("release.json: %+v", b)
+	}
+}
+
+func TestLatestRelease(t *testing.T) {
+	rels := `[
+		{"tag_name":"v1.4.16","body":"android"},
+		{"tag_name":"mobile-v9.0.0"},
+		{"tag_name":"server-v1.6.0-beta.1","prerelease":true,"body":"beta"},
+		{"tag_name":"server-v1.5.1","body":"fixes"},
+		{"tag_name":"server-v1.5.0"},
+		{"tag_name":"server-v2.0.0","draft":true}
+	]`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(rels)) }))
+	t.Cleanup(srv.Close)
+	old := GitHubAPI
+	GitHubAPI = srv.URL
+	t.Cleanup(func() { GitHubAPI = old })
+
+	if s, found := LatestRelease("1.5.0", false); !found || s.State != StateBehind || s.LatestVersion != "1.5.1" || s.LatestMessage != "fixes" {
+		t.Fatalf("stable: %+v", s)
+	}
+	if s, _ := LatestRelease("1.5.1", false); s.State != StateUpToDate {
+		t.Fatalf("current: %+v", s)
+	}
+	if s, _ := LatestRelease("1.5.1", true); s.State != StateBehind || s.LatestVersion != "1.6.0-beta.1" {
+		t.Fatalf("beta: %+v", s)
+	}
+	rels = `[{"tag_name":"v1.4.16"}]` // only Android releases: not found, the caller compares commits
+	if _, found := LatestRelease("1.5.0", false); found {
+		t.Fatal("android release taken for a server release")
+	}
+}
+
+func TestNewer(t *testing.T) {
+	for _, c := range []struct {
+		a, b string
+		want bool
+	}{{"1.5.1", "1.5.0", true}, {"1.10.0", "1.9.9", true}, {"1.5.0", "1.5.0", false}, {"1.6.0", "1.6.0-beta.1", true}, {"1.6.0-beta.1", "1.6.0", false}, {"1.6.0-beta.2", "1.6.0-beta.1", true}, {"1.4.0", "1.5.0", false}} {
+		if got := newer(c.a, c.b); got != c.want {
+			t.Errorf("newer(%s, %s) = %v", c.a, c.b, got)
+		}
 	}
 }

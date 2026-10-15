@@ -12,10 +12,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"runtime/debug"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
+
+// A release bundle's identity: the source of truth when present (see the
+// self-updater design, section 3 item 7).
+var ReleaseFile = "/usr/share/nivaroos/release.json"
 
 // Set at build time (installer/install.sh):
 //
@@ -35,13 +42,24 @@ type Build struct {
 	Short    string `json:"short"`
 	Date     string `json:"date"` // commit date, RFC 3339
 	Version  string `json:"version"`
+	Channel  string `json:"channel,omitempty"`  // release.json only: stable / beta
+	Release  bool   `json:"release"`            // installed from a server-vX.Y.Z bundle
 	Modified bool   `json:"modified,omitempty"` // built from a dirty tree
 }
 
-// Info is this binary's build identity.
+// Info is this binary's build identity: release.json, else -ldflags, else
+// Go's embedded VCS info, else "dev".
 func Info() Build {
 	bi, ok := debug.ReadBuildInfo()
-	return info(Commit, Date, Version, bi, ok)
+	b := info(Commit, Date, Version, bi, ok)
+	if raw, err := os.ReadFile(ReleaseFile); err == nil {
+		var r struct{ Version, Channel, Commit, Built string }
+		if json.Unmarshal(raw, &r) == nil && r.Version != "" {
+			b = info(r.Commit, r.Built, strings.TrimPrefix(r.Version, "v"), nil, false)
+			b.Channel, b.Release = r.Channel, true
+		}
+	}
+	return b
 }
 
 func info(commit, date, ver string, bi *debug.BuildInfo, ok bool) Build {
@@ -83,7 +101,8 @@ const (
 
 type Status struct {
 	State         string    `json:"state"`
-	AheadBy       int       `json:"ahead_by"` // commits on master this build doesn't have
+	AheadBy       int       `json:"ahead_by"`                 // commits on master this build doesn't have
+	LatestVersion string    `json:"latest_version,omitempty"` // newer server-vX.Y.Z release, release installs only
 	LatestCommit  string    `json:"latest_commit,omitempty"`
 	LatestMessage string    `json:"latest_message,omitempty"`
 	LatestDate    string    `json:"latest_date,omitempty"`
@@ -168,11 +187,95 @@ func Check(refresh bool) Status {
 	if now.Before(until) && !(refresh && now.Sub(cached.CheckedAt) > time.Minute) {
 		return cached
 	}
-	cached = Compare(Info().Commit)
+	cached = check(Info())
 	ttl := 30 * time.Minute
 	if cached.State == StateUnknown {
 		ttl = 5 * time.Minute
 	}
 	until = now.Add(ttl)
 	return cached
+}
+
+// check: a release install looks for a newer server-vX.Y.Z release (betas
+// only on the beta channel); a build from master, or a release install
+// before any server release exists, compares commits with master.
+func check(b Build) Status {
+	if b.Release {
+		if s, found := LatestRelease(b.Version, b.Channel == "beta"); found {
+			return s
+		}
+	}
+	return Compare(b.Commit)
+}
+
+// LatestRelease reads GitHub's releases and keeps only server-v tags (the
+// others are the Android app's). found is false when there is none yet.
+func LatestRelease(current string, beta bool) (s Status, found bool) {
+	s = Status{State: StateUnknown, CheckedAt: time.Now()}
+	req, _ := http.NewRequest(http.MethodGet, GitHubAPI+"/releases?per_page=50", nil)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	res, err := client.Do(req)
+	if err != nil {
+		s.Reason = "GitHub is unreachable"
+		return s, true
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		s.Reason = fmt.Sprintf("GitHub answered %d", res.StatusCode)
+		if res.StatusCode == http.StatusForbidden || res.StatusCode == http.StatusTooManyRequests {
+			s.Reason = "GitHub rate limit, try again later"
+		}
+		return s, true
+	}
+	var rels []struct {
+		Tag         string `json:"tag_name"`
+		Draft       bool   `json:"draft"`
+		Prerelease  bool   `json:"prerelease"`
+		Body        string `json:"body"`
+		PublishedAt string `json:"published_at"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&rels); err != nil {
+		s.Reason = "unexpected answer from GitHub"
+		return s, true
+	}
+	best := ""
+	for _, r := range rels {
+		v, ok := strings.CutPrefix(r.Tag, "server-v")
+		if !ok || r.Draft || (r.Prerelease && !beta) {
+			continue
+		}
+		found = true
+		if newer(v, current) && (best == "" || newer(v, best)) {
+			best = v
+			s.LatestMessage, s.LatestDate = r.Body, r.PublishedAt
+		}
+	}
+	s.State = StateUpToDate
+	if best != "" {
+		s.State, s.LatestVersion = StateBehind, best
+	}
+	return s, found
+}
+
+// newer: semver a > b ("1.6.0-beta.1" < "1.6.0"); unparsable parts count 0.
+func newer(a, b string) bool {
+	split := func(v string) ([3]int, string) {
+		v, pre, _ := strings.Cut(strings.TrimPrefix(v, "v"), "-")
+		var n [3]int
+		for i, p := range strings.SplitN(v, ".", 3) {
+			n[i], _ = strconv.Atoi(p)
+		}
+		return n, pre
+	}
+	na, pa := split(a)
+	nb, pb := split(b)
+	if na != nb {
+		for i := range na {
+			if na[i] != nb[i] {
+				return na[i] > nb[i]
+			}
+		}
+	}
+	// ponytail: pre-release tags compared as strings ("beta.10" < "beta.9"), fine below 10 betas.
+	return pa != pb && (pa == "" || (pb != "" && pa > pb))
 }

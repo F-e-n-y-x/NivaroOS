@@ -2,6 +2,7 @@ package v1
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,7 +47,7 @@ func GetSystemCheckVersion(ctx *echo.Context) error {
 		"current_version": build.Version,
 		// Older clients: need_update + version.version/change_log.
 		"need_update": update.State == version.StateBehind,
-		"version":     model.Version{Version: shortSHA(update.LatestCommit), ChangeLog: update.LatestMessage},
+		"version":     model.Version{Version: cmp.Or(update.LatestVersion, shortSHA(update.LatestCommit)), ChangeLog: update.LatestMessage},
 	}
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: data})
 }
