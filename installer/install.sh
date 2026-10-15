@@ -14,7 +14,9 @@
 #
 #  Safe to re-run: every step is idempotent, so a failed or interrupted run
 #  is resumed by running the same command again, and an update is the same
-#  command too. Everything is defined first and only `main` at the very end
+#  command too. The services are built by installer/build-bundle.sh and
+#  installed by the bundle's apply.sh - the same bundle and apply step a
+#  server release uses (`nivaroos update`), so only what changed restarts. Everything is defined first and only `main` at the very end
 #  runs, so a truncated download never runs half a script.
 # ==============================================================================
 
@@ -1096,40 +1098,7 @@ clone_or_update_repo() {
 # Microservices Compilation & Installation
 # ------------------------------------------------------------------------------
 install_core_services() {
-	run_step "Compiling & Installing NivaroOS Microservices" "
-		cd \"$SRC_DIR\"
-		export PATH=\"/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:\$PATH\"
-
-		# Safety net (see install_safety_net): keep the build that is running
-		# now as <binary>.prev before anything is replaced, so a bad update can
-		# be undone with nivaroos-rollback - or is undone by the watchdog when
-		# a service keeps failing right after it. The watchdog stays out of
-		# the way while binaries are being replaced (the pause expires on its
-		# own if the installer dies).
-		mkdir -p /run/nivaroos
-		echo \$(( \$(date +%s) + 7200 )) > /run/nivaroos/watchdog.pause
-		for b in /usr/bin/nivaroos /usr/bin/nivaroos-*; do
-			[ -f \"\$b\" ] || continue
-			case \"\$b\" in *.prev|*.bad.*|*.new|*.new.*|*.bak|*.tmp|*.tmp.*|*/nivaroos-uninstall) continue ;; esac
-			if [ ! -f \"\$b.prev\" ] || ! cmp -s \"\$b\" \"\$b.prev\"; then
-				cp -p \"\$b\" \"\$b.prev.tmp\" && mv -f \"\$b.prev.tmp\" \"\$b.prev\" || true
-			fi
-		done
-
-		# Stop existing background services before replacing binaries if upgrading
-		active_units=(
-			nivaroos.service
-			nivaroos-gateway.service
-			nivaroos-message-bus.service
-			nivaroos-app-management.service
-			nivaroos-local-storage.service
-			nivaroos-user-service.service
-			nivaroos-gpu-sidecar.service
-		)
-		for u in \"\${active_units[@]}\"; do
-			systemctl stop \"\$u\" >/dev/null 2>&1 || true
-		done
-
+	run_step "Preparing NivaroOS Folders & Settings" "
 		# /DATA/Gallery/Wallpaper specifically - not just /DATA/Gallery - since
 		# ui/src/shell/wallpaper/WallpaperModal.vue uploads directly into that
 		# subdirectory and the upload handler doesn't create it on the fly;
@@ -1139,151 +1108,16 @@ install_core_services() {
 		chmod 777 /DATA/VMs/share 2>/dev/null || true
 		touch \"$MANIFEST_FILE\"
 
-		# 1. Compile Core Engine
-		cd \"${SRC_DIR}/services/core\"
-		go build -o /usr/bin/nivaroos .
-		echo '/usr/bin/nivaroos' >> \"$MANIFEST_FILE\"
-
-		# 2. Compile Gateway
-		cd \"${SRC_DIR}/services/gateway\"
-		go build -o /usr/bin/nivaroos-gateway .
-		echo '/usr/bin/nivaroos-gateway' >> \"$MANIFEST_FILE\"
-
-		# 3. Compile Message Bus
-		cd \"${SRC_DIR}/services/message-bus\"
-		go build -o /usr/bin/nivaroos-message-bus .
-		echo '/usr/bin/nivaroos-message-bus' >> \"$MANIFEST_FILE\"
-
-		# 4. Compile App Management
-		cd \"${SRC_DIR}/services/app-management\"
-		go build -o /usr/bin/nivaroos-app-management .
-		echo '/usr/bin/nivaroos-app-management' >> \"$MANIFEST_FILE\"
-
-		# 5. Compile Local Storage
-		cd \"${SRC_DIR}/services/local-storage\"
-		go build -o /usr/bin/nivaroos-local-storage .
-		echo '/usr/bin/nivaroos-local-storage' >> \"$MANIFEST_FILE\"
-
-		# 6. Compile User Service
-		# Binary is named 'nivaroos-user' (no '-service' suffix) to match
-		# what nivaroos-user-service.service's ExecStart actually invokes,
-		# and what uninstall.sh already expects to remove - the '-service'
-		# suffix belongs to the systemd UNIT name, not the binary.
-		cd \"${SRC_DIR}/services/user\"
-		go build -o /usr/bin/nivaroos-user .
-		echo '/usr/bin/nivaroos-user' >> \"$MANIFEST_FILE\"
-
-		# 7. Compile GPU Sidecar
-		cd \"${SRC_DIR}/services/gpu-sidecar\"
-		go build -o /usr/bin/nivaroos-gpu-sidecar .
-		echo '/usr/bin/nivaroos-gpu-sidecar' >> \"$MANIFEST_FILE\"
-
-		# 8. Compile Unified Management CLI
-		cd \"${SRC_DIR}/cli\"
-		go build -o /usr/bin/nivaroos-cli .
-		echo '/usr/bin/nivaroos-cli' >> \"$MANIFEST_FILE\"
-		ln -sf /usr/bin/nivaroos-cli /usr/local/bin/nivaroos 2>/dev/null || true
-		ln -sf /usr/bin/nivaroos-cli /usr/bin/casaos-cli 2>/dev/null || true
-
-		# 9. Install systemd service units from repository
-		mkdir -p /usr/lib/systemd/system
-		service_mappings=(
-			\"${SRC_DIR}/services/core/build/sysroot/usr/lib/systemd/system/nivaroos.service:/usr/lib/systemd/system/nivaroos.service\"
-			\"${SRC_DIR}/services/core/build/sysroot/usr/share/nivaroos/shell/usb-mount@.service:/usr/lib/systemd/system/usb-mount@.service\"
-			\"${SRC_DIR}/services/gateway/build/sysroot/usr/lib/systemd/system/nivaroos-gateway.service:/usr/lib/systemd/system/nivaroos-gateway.service\"
-			\"${SRC_DIR}/services/message-bus/build/sysroot/usr/lib/systemd/system/nivaroos-message-bus.service:/usr/lib/systemd/system/nivaroos-message-bus.service\"
-			\"${SRC_DIR}/services/app-management/build/sysroot/usr/lib/systemd/system/nivaroos-app-management.service:/usr/lib/systemd/system/nivaroos-app-management.service\"
-			\"${SRC_DIR}/services/local-storage/build/sysroot/usr/lib/systemd/system/nivaroos-local-storage.service:/usr/lib/systemd/system/nivaroos-local-storage.service\"
-			\"${SRC_DIR}/services/user/build/sysroot/usr/lib/systemd/system/nivaroos-user-service.service:/usr/lib/systemd/system/nivaroos-user-service.service\"
-		)
-
-		for m in \"\${service_mappings[@]}\"; do
-			src=\"\${m%%:*}\"
-			dst=\"\${m##*:}\"
-			if [ -f \"\$src\" ]; then
-				cp -f \"\$src\" \"\$dst\"
-				echo \"\$dst\" >> \"$MANIFEST_FILE\"
-			fi
-		done
-
-		# Write GPU Sidecar service unit. This whole step is one double-quoted
-		# run_step string: no backticks, \$(...) or bare double quotes in the
-		# unit text below - they run or end the string before the quoted
-		# heredoc ever sees them (a backticked nvidia-smi once pasted its
-		# output table into the unit).
-		cat > /usr/lib/systemd/system/nivaroos-gpu-sidecar.service <<'GPUEOF'
-[Unit]
-Description=NivaroOS GPU Sidecar
-After=network.target
-
-[Service]
-ExecStart=/usr/bin/nivaroos-gpu-sidecar
-Restart=always
-# ProtectSystem=full (read-only /usr, /boot, /etc) was fine when this
-# service only ever ran nvidia-smi - it now also runs
-# gpu-driver-install.sh on request, which does a real apt-get install of a
-# driver package and so unavoidably writes new files under /usr, like any
-# package install does. Read-only /usr made every such install fail
-# silently (permission/read-only-filesystem errors from inside apt),
-# which is exactly what made the GPU widget's Install Driver button not
-# work.
-# NoNewPrivileges/ProtectHome stay - neither blocks a package install and
-# both are still free hardening for the far more common nvidia-smi-only
-# code path.
-NoNewPrivileges=true
-# read-only, not true: Host Desktop's xrandr/xset calls need to read the
-# desktop session's X cookie (/run/user/<uid>/gdm/Xauthority, ~/.Xauthority),
-# which ProtectHome=true hides entirely.
-ProtectHome=read-only
-
-[Install]
-WantedBy=multi-user.target
-GPUEOF
-		echo '/usr/lib/systemd/system/nivaroos-gpu-sidecar.service' >> \"$MANIFEST_FILE\"
-
-		# 10. Install default service configuration templates if not already present
-		config_mappings=(
-			\"${SRC_DIR}/services/core/build/sysroot/etc/nivaroos/casaos.conf.sample:/etc/nivaroos/casaos.conf\"
-			\"${SRC_DIR}/services/gateway/build/sysroot/etc/nivaroos/gateway.ini.sample:/etc/nivaroos/gateway.ini\"
-			\"${SRC_DIR}/services/message-bus/build/sysroot/etc/nivaroos/message-bus.conf.sample:/etc/nivaroos/message-bus.conf\"
-			\"${SRC_DIR}/services/app-management/build/sysroot/etc/nivaroos/app-management.conf.sample:/etc/nivaroos/app-management.conf\"
-			\"${SRC_DIR}/services/local-storage/build/sysroot/etc/nivaroos/local-storage.conf.sample:/etc/nivaroos/local-storage.conf\"
-			\"${SRC_DIR}/services/user/build/sysroot/etc/nivaroos/user-service.conf.sample:/etc/nivaroos/user-service.conf\"
-		)
-		for cm in \"\${config_mappings[@]}\"; do
-			csrc=\"\${cm%%:*}\"
-			cdst=\"\${cm##*:}\"
-			if [ -f \"\$csrc\" ]; then
-				cp -f \"\$csrc\" \"\${cdst}.sample\" 2>/dev/null || true
-				if [ ! -f \"\$cdst\" ]; then
-					cp -f \"\$csrc\" \"\$cdst\"
-					echo \"\$cdst\" >> \"$MANIFEST_FILE\"
-				fi
-			fi
-		done
-
 		# Leftovers from CasaOS's UI analytics (removed): nothing runs
 		# start.d any more, so upgraded installs just lose the dead files.
 		rm -f /etc/nivaroos/start.d/register-ui-events.sh /var/lib/nivaroos/ui-message-bus.json
 		rmdir /etc/nivaroos/start.d 2>/dev/null || true
-
-		# 11. Install the services' shell helpers. Only usb-mount.sh used to
-		# be installed, but core sources helper.sh (device tree, network
-		# cards, time zone, Samba reload) and local-storage sources
-		# local-storage-helper.sh (disk and USB mounting) - on a fresh
-		# install those calls all failed.
-		mkdir -p /usr/share/nivaroos/shell
 		# Upstream CasaOS's update.sh piped a third party's script into
 		# bash as root; nothing called it. Gone from older installs too.
 		rm -f /usr/share/nivaroos/shell/update.sh
-		for sh in \"${SRC_DIR}\"/services/core/build/sysroot/usr/share/nivaroos/shell/*.sh \"${SRC_DIR}\"/services/local-storage/build/sysroot/usr/share/nivaroos/shell/*.sh; do
-			[ -f \"\$sh\" ] || continue
-			cp -f \"\$sh\" /usr/share/nivaroos/shell/
-			chmod 755 \"/usr/share/nivaroos/shell/\$(basename \"\$sh\")\"
-			echo \"/usr/share/nivaroos/shell/\$(basename \"\$sh\")\" >> \"$MANIFEST_FILE\"
-		done
 
-		# Save custom port configuration if specified
+		# Save custom port configuration if specified (before the bundle is
+		# applied: it creates gateway.ini from the sample only when missing).
 		if [ -n \"$DETECTED_PORT\" ] && [ \"$DETECTED_PORT\" != \"80\" ]; then
 			mkdir -p /etc/nivaroos
 			cat > /etc/nivaroos/gateway.ini <<GWCONF
@@ -1292,49 +1126,55 @@ port = ${DETECTED_PORT}
 GWCONF
 			echo '/etc/nivaroos/gateway.ini' >> \"$MANIFEST_FILE\"
 		fi
-
-		sort -u -o \"$MANIFEST_FILE\" \"$MANIFEST_FILE\" 2>/dev/null || true
 	"
 }
 
 # ------------------------------------------------------------------------------
-# Fan control (services/fans, nivaroos-fans.service - every install). Built
-# with cgo so NVIDIA fans work through NVML (the library is loaded at run
-# time; a box without the driver just lists no NVIDIA fans); without a C
-# compiler it falls back to a pure-Go build (motherboard/AMD fans only).
-# `detect-modules` finds the motherboard fan controller driver (the kernel
-# drivers probe the super-I/O chip themselves) and persists it in
-# /etc/modules-load.d/nivaroos-fans.conf. Stopping the service hands every
-# fan back to the BIOS, so an upgrade never leaves a fan at a fixed speed.
+# Build & apply: one path for installs and updates (self-updater design
+# section 3.1). installer/build-bundle.sh builds every component into a
+# bundle - the same one a server-vX.Y.Z release ships - and the bundle's
+# apply.sh installs it: only what changed is replaced (the running build
+# kept as <binary>.prev, www.prev and a snapshot, so `nivaroos update
+# rollback` undoes the whole set), and only changed services restart.
 # ------------------------------------------------------------------------------
-install_fan_control() {
-	run_step "Installing Fan Control" "
+BUNDLE_DIR="/var/lib/nivaroos/update/build"
+
+# bundle_without - add-ons this box neither chose nor has: not built (the
+# VM sidecar needs libvirt's headers, installed with VM Manager).
+bundle_without() {
+	local w=""
+	if [ "$WITH_VM" != "yes" ] && [ ! -x /usr/bin/nivaroos-vm-sidecar ]; then w="$w,vm"; fi
+	if [ "$WITH_DOWNLOAD_STATION" != "yes" ] && [ ! -x /usr/bin/nivaroos-download-sidecar ]; then w="$w,download-station"; fi
+	if [ "$WITH_BACKUP" != "yes" ] && [ ! -x /usr/bin/nivaroos-backup ]; then w="$w,backup"; fi
+	echo "${w#,}"
+}
+
+# bundle_with - the add-ons chosen in this run (apply.sh also updates the
+# ones already installed).
+bundle_with() {
+	local w=""
+	if [ "$WITH_VM" = "yes" ]; then w="$w,vm"; fi
+	if [ "$WITH_DOWNLOAD_STATION" = "yes" ]; then w="$w,download-station"; fi
+	if [ "$WITH_BACKUP" = "yes" ]; then w="$w,backup"; fi
+	echo "${w#,}"
+}
+
+build_bundle() {
+	run_step "Building NivaroOS (services & web dashboard)" "
 		export PATH=\"/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:\$PATH\"
-		systemctl stop nivaroos-fans.service >/dev/null 2>&1 || true
-		cd \"${SRC_DIR}/services/fans\"
-		export GOWORK=off
-		if ! CGO_ENABLED=1 go build -o /usr/bin/nivaroos-fans.new . ; then
-			echo 'Fan control: cgo build failed - building without NVIDIA support.' >&2
-			if ! CGO_ENABLED=0 go build -o /usr/bin/nivaroos-fans.new . ; then
-				rm -f /usr/bin/nivaroos-fans.new
-				echo 'Fan control failed to build (see the log above). The previous version, if any, is kept.' >&2
-				systemctl start nivaroos-fans.service >/dev/null 2>&1 || true
-				exit 0
-			fi
-		fi
-		mv -f /usr/bin/nivaroos-fans.new /usr/bin/nivaroos-fans
-		echo '/usr/bin/nivaroos-fans' >> \"$MANIFEST_FILE\"
-
-		mkdir -p /etc/modules-load.d /var/lib/nivaroos/fans /run/nivaroos
-		chmod 700 /var/lib/nivaroos/fans
-		/usr/bin/nivaroos-fans detect-modules || echo 'Fan driver detection failed - motherboard fans stay under BIOS control.' >&2
-
-		cp -f \"${SRC_DIR}/services/fans/build/sysroot/usr/lib/systemd/system/nivaroos-fans.service\" /usr/lib/systemd/system/nivaroos-fans.service
-		echo '/usr/lib/systemd/system/nivaroos-fans.service' >> \"$MANIFEST_FILE\"
-		systemctl daemon-reload >/dev/null 2>&1 || true
-		systemctl enable --now nivaroos-fans >/dev/null 2>&1 || true
+		ensure_node_toolchain
+		command -v pnpm >/dev/null 2>&1 || { echo 'pnpm is not available - cannot build the web dashboard.' >&2; exit 1; }
+		bash \"${SRC_DIR}/installer/build-bundle.sh\" --src \"${SRC_DIR}\" --out \"${BUNDLE_DIR}\" --without \"\$(bundle_without)\"
 	"
 }
+
+apply_bundle() {
+	run_step "Installing NivaroOS (only what changed)" "
+		bash \"${BUNDLE_DIR}/apply.sh\" install --with \"\$(bundle_with)\"
+		rm -rf \"${BUNDLE_DIR}\"
+	"
+}
+
 
 # ------------------------------------------------------------------------------
 # VM Manager Installation (Optional Add-on)
@@ -1368,35 +1208,7 @@ install_vm_manager() {
 			exit 1
 		fi
 
-		cd \"${SRC_DIR}/services/vm-sidecar\"
-		export GOWORK=off
-		go build -o /usr/bin/nivaroos-vm-sidecar .
-		echo '/usr/bin/nivaroos-vm-sidecar' >> \"$MANIFEST_FILE\"
 
-		cat > /usr/lib/systemd/system/nivaroos-vm-sidecar.service <<'VMEOF'
-[Unit]
-Description=NivaroOS VM Sidecar
-After=network.target nivaroos-message-bus.service libvirtd.service
-
-[Service]
-ExecStart=/usr/bin/nivaroos-vm-sidecar
-Restart=always
-# Conservative hardening only - this service genuinely needs root (it
-# bind-mounts host directories for shared folders, and talks to libvirtd
-# for USB/PCI passthrough), so this stops short of ProtectSystem=strict or
-# a narrow ReadWritePaths allowlist that risks blocking a real write path
-# (/DATA, libvirt's own state dirs, etc.) this installer can't fully
-# enumerate ahead of time.
-NoNewPrivileges=true
-# read-only, not true: Host Desktop's xrandr/xset calls need to read the
-# desktop session's X cookie (/run/user/<uid>/gdm/Xauthority, ~/.Xauthority),
-# which ProtectHome=true hides entirely.
-ProtectHome=read-only
-
-[Install]
-WantedBy=multi-user.target
-VMEOF
-		echo '/usr/lib/systemd/system/nivaroos-vm-sidecar.service' >> \"$MANIFEST_FILE\"
 
 		# One layout, matching vm-sidecar: ISOs in /DATA/VMs/ISOs, the one
 		# shared folder VMs can reach in /DATA/VMs/share, and each VM's own
@@ -1423,16 +1235,10 @@ VMEOF
 
 		systemctl daemon-reload >/dev/null 2>&1 || true
 		systemctl enable --now libvirtd >/dev/null 2>&1 || true
-		systemctl enable --now nivaroos-vm-sidecar >/dev/null 2>&1 || true
-
-		# CLI-only on purpose - see nivaroos-bridge.sh's own header comment
-		# for why bridge networking (which can cut off the very session
-		# managing it) is never exposed as a WebUI button.
-		if [ -f \"${SRC_DIR}/installer/nivaroos-bridge.sh\" ]; then
-			cp -f \"${SRC_DIR}/installer/nivaroos-bridge.sh\" /usr/local/bin/nivaroos-bridge
-			chmod 755 /usr/local/bin/nivaroos-bridge
-			echo '/usr/local/bin/nivaroos-bridge' >> \"$MANIFEST_FILE\"
-		fi
+		# The sidecar itself, its unit and nivaroos-bridge come with the
+		# bundle (apply_bundle). nivaroos-bridge is CLI-only on purpose - see
+		# its own header comment for why bridge networking (which can cut
+		# off the very session managing it) is never a WebUI button.
 	"
 }
 
@@ -1446,21 +1252,13 @@ VMEOF
 install_download_station() {
 	run_step "Installing Download Station (Downloader, Browser & Ad Blocker)" "
 		export PATH=\"/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:\$PATH\"
-		systemctl stop nivaroos-download-sidecar.service >/dev/null 2>&1 || true
-
-		cd \"${SRC_DIR}/services/download-sidecar\"
-		export GOWORK=off
-		go build -o /usr/bin/nivaroos-download-sidecar .
-		echo '/usr/bin/nivaroos-download-sidecar' >> \"$MANIFEST_FILE\"
-
 		mkdir -p /DATA/Downloads /var/lib/nivaroos/download-station
 		chmod 700 /var/lib/nivaroos/download-station
 
 		# The full browser (a sandboxed Chromium in its own unit and user,
 		# plus uBlock Origin Lite). Same script on install and update, so an
 		# existing box gains it when it updates; it never fails the install -
-		# without it Download Station keeps its Lite browser. Runs before the
-		# sidecar starts: the sidecar's unit needs the staging folder to exist.
+		# without it Download Station keeps its Lite browser.
 		if [ \"${WITH_DS_BROWSER}\" != \"no\" ]; then
 			bash \"${SRC_DIR}/services/download-sidecar/build/scripts/install-ds-browser.sh\" --src \"${SRC_DIR}\" --manifest \"$MANIFEST_FILE\" || echo 'The Download Station browser could not be set up - its Lite browser is used instead.'
 		fi
@@ -1471,15 +1269,10 @@ install_download_station() {
 		# build by default (distros lag behind its security fixes), the
 		# distro package with --ds-torrent-distro or when the static build
 		# can't be had. Never fails the install: without either Download
-		# Station uses its built-in engine. Its profile folder must exist
-		# before the sidecar starts (the sidecar's unit lists it as writable).
+		# Station uses its built-in engine. Its unit came with the bundle.
 		mkdir -p /var/lib/nivaroos/torrent
 		chmod 700 /var/lib/nivaroos/torrent
 		if [ \"${WITH_DS_TORRENT}\" != \"no\" ]; then
-			# The unit first: the script restarts a running engine on the new binary.
-			cp -f \"${SRC_DIR}/services/download-sidecar/build/sysroot/usr/lib/systemd/system/nivaroos-torrent.service\" /usr/lib/systemd/system/nivaroos-torrent.service
-			echo '/usr/lib/systemd/system/nivaroos-torrent.service' >> \"$MANIFEST_FILE\"
-			systemctl daemon-reload >/dev/null 2>&1 || true
 			qbt_script=\"${SRC_DIR}/services/download-sidecar/build/scripts/install-qbittorrent.sh\"
 			if [ \"${DS_TORRENT_BUILD}\" != \"static\" ] || ! bash \"\$qbt_script\" --manifest \"$MANIFEST_FILE\"; then
 				if ! command -v qbittorrent-nox >/dev/null 2>&1; then
@@ -1491,14 +1284,6 @@ install_download_station() {
 				bash \"\$qbt_script\" --distro --manifest \"$MANIFEST_FILE\" || echo 'qbittorrent-nox is not available for this system - torrents use the built-in engine.'
 			fi
 		fi
-
-		# The unit lives in the project (hardened: read-only system, writable
-		# storage roots only) - one copy, updated with every install.
-		cp -f \"${SRC_DIR}/services/download-sidecar/build/sysroot/usr/lib/systemd/system/nivaroos-download-sidecar.service\" /usr/lib/systemd/system/nivaroos-download-sidecar.service
-		echo '/usr/lib/systemd/system/nivaroos-download-sidecar.service' >> \"$MANIFEST_FILE\"
-
-		systemctl daemon-reload >/dev/null 2>&1 || true
-		systemctl enable --now nivaroos-download-sidecar >/dev/null 2>&1 || true
 	"
 }
 
@@ -1513,23 +1298,7 @@ install_download_station() {
 # retried until core answers) - no installer step for that.
 # ------------------------------------------------------------------------------
 install_backup() {
-	run_step "Installing Backup & Sync (Scheduled Backups, Sync & Archives)" "
-		export PATH=\"/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:\$PATH\"
-		# Stopping it now is safe: the update check (check_running_backups)
-		# already waited for or cancelled running jobs, and a run cut off
-		# here is replayed and retried at the next start.
-		systemctl stop nivaroos-backup.service >/dev/null 2>&1 || true
-
-		cd \"${SRC_DIR}/services/backup\"
-		export GOWORK=off
-		if ! go build -o /usr/bin/nivaroos-backup.new .; then
-			rm -f /usr/bin/nivaroos-backup.new
-			echo 'Backup & Sync failed to build (see the log above). The previous version, if any, is kept.' >&2
-			exit 1
-		fi
-		mv -f /usr/bin/nivaroos-backup.new /usr/bin/nivaroos-backup
-		echo '/usr/bin/nivaroos-backup' >> \"$MANIFEST_FILE\"
-
+	run_step "Preparing Backup & Sync" "
 		# The service creates what it needs itself (StateDirectory= and at
 		# start); creating the folders here too keeps the modes right on a
 		# box where an older run left them 0755.
@@ -1540,13 +1309,8 @@ install_backup() {
 		# started would stay read-only to it until a restart.
 		[ -d /root/.config/rclone ] || install -d -m 700 /root/.config/rclone
 
-		# The unit lives in the project (hardened: read-only system, writable
-		# storage roots, own state and rclone's config folder only) - one
-		# copy, updated with every install.
-		cp -f \"${SRC_DIR}/services/backup/build/sysroot/usr/lib/systemd/system/nivaroos-backup.service\" /usr/lib/systemd/system/nivaroos-backup.service
-		echo '/usr/lib/systemd/system/nivaroos-backup.service' >> \"$MANIFEST_FILE\"
-
-		# Memory ceiling sized to this box (see backup_memory_dropin).
+		# Memory ceiling sized to this box (see backup_memory_dropin), in
+		# place before apply_bundle starts the service.
 		mem_dropin=/etc/systemd/system/nivaroos-backup.service.d/20-nivaroos-memory.conf
 		mem_conf=\"\$(backup_memory_dropin)\"
 		if [ -n \"\$mem_conf\" ]; then
@@ -1555,12 +1319,9 @@ install_backup() {
 		else
 			rm -f \"\$mem_dropin\"
 		fi
-
 		systemctl daemon-reload >/dev/null 2>&1 || true
-		systemctl enable --now nivaroos-backup >/dev/null 2>&1 || true
 	"
 }
-
 # ------------------------------------------------------------------------------
 # Update deferral (spec docs/specs/2026-09-24-backup-sync-app.md §8.4). An
 # upgrade restarts every service; a backup cut off mid-transfer is retried
@@ -1759,20 +1520,11 @@ install_host_desktop() {
 # ------------------------------------------------------------------------------
 install_host_firewall() {
 	run_step "Installing Host Desktop firewall rules" "
+		# The script and its unit come with the bundle; apply_bundle enables
+		# and (re)starts it, which applies the rules.
 		command -v nft >/dev/null 2>&1 || pkg_install_each nftables
-		mkdir -p /usr/local/lib/nivaroos
-		install -m 755 \"${SRC_DIR}/installer/nivaroos-host-firewall.sh\" /usr/local/lib/nivaroos/nivaroos-host-firewall
-		install -m 644 \"${SRC_DIR}/installer/systemd/nivaroos-host-firewall.service\" /usr/lib/systemd/system/nivaroos-host-firewall.service
-		for f in /usr/local/lib/nivaroos/nivaroos-host-firewall /usr/lib/systemd/system/nivaroos-host-firewall.service; do
-			grep -qxF \"\$f\" \"$MANIFEST_FILE\" 2>/dev/null || echo \"\$f\" >> \"$MANIFEST_FILE\"
-		done
-		systemctl daemon-reload
-		systemctl enable nivaroos-host-firewall.service >/dev/null 2>&1 || true
-		# restart = apply now (oneshot + RemainAfterExit); never fails the install.
-		systemctl restart nivaroos-host-firewall.service || /usr/local/lib/nivaroos/nivaroos-host-firewall apply
 	"
 }
-
 # ------------------------------------------------------------------------------
 # Samba Network File Sharing (Core - always installed, not a selectable
 # add-on, since Network Shares is a core dashboard feature)
@@ -1878,80 +1630,6 @@ ensure_node_toolchain() {
 	fi
 }
 
-install_ui() {
-	run_step "Deploying Web Dashboard & Frontend Assets" "
-		mkdir -p /var/lib/nivaroos/www
-
-		ui_source_dir=\"\"
-		if [ -d \"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\" ] && [ -f \"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www/index.html\" ]; then
-			ui_source_dir=\"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\"
-		elif [ -d \"${SRC_DIR}/ui/build/sysroot/var/lib/nivaroos/www\" ] && [ -f \"${SRC_DIR}/ui/build/sysroot/var/lib/nivaroos/www/index.html\" ]; then
-			ui_source_dir=\"${SRC_DIR}/ui/build/sysroot/var/lib/nivaroos/www\"
-		elif [ -d \"${SRC_DIR}/ui/dist\" ] && [ -f \"${SRC_DIR}/ui/dist/index.html\" ]; then
-			ui_source_dir=\"${SRC_DIR}/ui/dist\"
-		elif [ -d \"${SRC_DIR}/build/sysroot/var/lib/casaos/www\" ] && [ -f \"${SRC_DIR}/build/sysroot/var/lib/casaos/www/index.html\" ]; then
-			ui_source_dir=\"${SRC_DIR}/build/sysroot/var/lib/casaos/www\"
-		fi
-
-		# If prebuilt output is not found, install Node.js/pnpm (if not
-		# already present) and build from source.
-		if [ -z \"\$ui_source_dir\" ]; then
-			ensure_node_toolchain
-		fi
-		if [ -z \"\$ui_source_dir\" ] && command -v pnpm >/dev/null 2>&1; then
-			echo 'Building frontend from source with pnpm...'
-			( cd \"${SRC_DIR}/ui\" && pnpm install --prefer-offline 2>/dev/null || pnpm install ) && \
-			( cd \"${SRC_DIR}/ui\" && pnpm run build )
-			if [ -d \"${SRC_DIR}/ui/build/sysroot/var/lib/nivaroos/www\" ]; then
-				ui_source_dir=\"${SRC_DIR}/ui/build/sysroot/var/lib/nivaroos/www\"
-			elif [ -d \"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\" ]; then
-				ui_source_dir=\"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\"
-			fi
-		fi
-
-		if [ -n \"\$ui_source_dir\" ]; then
-			# Keep the dashboard being replaced (nivaroos-rollback www).
-			if [ -f /var/lib/nivaroos/www/index.html ]; then
-				rm -rf /var/lib/nivaroos/www.prev.tmp
-				cp -a /var/lib/nivaroos/www /var/lib/nivaroos/www.prev.tmp && rm -rf /var/lib/nivaroos/www.prev && mv /var/lib/nivaroos/www.prev.tmp /var/lib/nivaroos/www.prev || true
-			fi
-			# Replaced as a whole (as nivaroos-deploy --www does): copying over
-			# the old one kept every earlier build's hashed files.
-			rm -rf /var/lib/nivaroos/www.new
-			cp -a \"\$ui_source_dir\" /var/lib/nivaroos/www.new || exit 1
-			rm -rf /var/lib/nivaroos/www && mv /var/lib/nivaroos/www.new /var/lib/nivaroos/www || exit 1
-		elif [ -f /var/lib/nivaroos/www/index.html ]; then
-			echo 'Preserving existing installed web dashboard in /var/lib/nivaroos/www.'
-		else
-			echo 'Could not find or build the web dashboard (no prebuilt www files found). The rest of NivaroOS will run, but the dashboard will be empty until you build ui/ manually.' >&2
-			exit 1
-		fi
-	"
-}
-
-# ------------------------------------------------------------------------------
-# Service Activation
-# ------------------------------------------------------------------------------
-start_core_services() {
-	run_step "Reloading System Daemons & Starting Services" "
-		systemctl daemon-reload
-		services=(
-			nivaroos-gateway
-			nivaroos-message-bus
-			nivaroos-user-service
-			nivaroos-local-storage
-			nivaroos-app-management
-			nivaroos-gpu-sidecar
-			nivaroos-fans
-			nivaroos
-		)
-
-		for svc in \"\${services[@]}\"; do
-			systemctl enable --now \"\$svc\" >/dev/null 2>&1 || true
-		done
-	"
-}
-
 # ------------------------------------------------------------------------------
 # Health Verification
 # ------------------------------------------------------------------------------
@@ -2027,42 +1705,16 @@ MDNSEOF
 }
 
 # ------------------------------------------------------------------------------
-# Safety Net: restart limits, watchdog, rollback & recovery tools
+# Safety Net: journal cap and remote access
 # ------------------------------------------------------------------------------
-# For a box that is looked after remotely (Tailscale/SSH) or not at all:
-#  - every nivaroos*.service gets a drop-in with sane restart limits;
-#  - nivaroos-watchdog.timer (every 2 min) restarts failed units, rolls a
-#    binary that keeps failing right after an update back to <binary>.prev,
-#    keeps tailscaled/sshd up and probes the gateway over HTTP;
-#  - nivaroos-rollback / nivaroos-deploy / nivaroos-recover for a shell.
+# For a box that is looked after remotely (Tailscale/SSH) or not at all. The
+# rest of the safety net comes with the bundle (apply_bundle): restart-limit
+# drop-ins for every nivaroos*.service, nivaroos-watchdog.timer (restarts
+# failed units, rolls back a binary that keeps failing, keeps tailscaled/sshd
+# up, probes the gateway), nivaroos-rollback / -deploy / -recover, and the
+# self-updater's units (nivaroos update).
 install_safety_net() {
-	run_step "Installing Safety Net (watchdog, rollback & recovery tools)" "
-		mkdir -p /usr/local/lib/nivaroos /usr/local/bin /var/lib/nivaroos/watchdog /var/log/nivaroos
-		install -m 644 \"${SRC_DIR}/installer/nivaroos-safety-lib.sh\" /usr/local/lib/nivaroos/safety-lib.sh
-		install -m 755 \"${SRC_DIR}/installer/nivaroos-watchdog.sh\" /usr/local/lib/nivaroos/nivaroos-watchdog
-		install -m 755 \"${SRC_DIR}/installer/nivaroos-rollback.sh\" /usr/local/bin/nivaroos-rollback
-		install -m 755 \"${SRC_DIR}/installer/nivaroos-deploy.sh\" /usr/local/bin/nivaroos-deploy
-		install -m 755 \"${SRC_DIR}/installer/nivaroos-recover.sh\" /usr/local/bin/nivaroos-recover
-		install -m 644 \"${SRC_DIR}/installer/systemd/nivaroos-watchdog.service\" /usr/lib/systemd/system/nivaroos-watchdog.service
-		install -m 644 \"${SRC_DIR}/installer/systemd/nivaroos-watchdog.timer\" /usr/lib/systemd/system/nivaroos-watchdog.timer
-		for f in /usr/local/lib/nivaroos /usr/local/bin/nivaroos-rollback /usr/local/bin/nivaroos-deploy /usr/local/bin/nivaroos-recover \\
-			/usr/lib/systemd/system/nivaroos-watchdog.service /usr/lib/systemd/system/nivaroos-watchdog.timer /var/lib/nivaroos/watchdog /var/log/nivaroos/watchdog.log; do
-			grep -qxF \"\$f\" \"$MANIFEST_FILE\" 2>/dev/null || echo \"\$f\" >> \"$MANIFEST_FILE\"
-		done
-
-		# Restart limits for every NivaroOS service unit, whichever step
-		# installed it (explicit per-unit drop-ins: prefix drop-ins need a
-		# newer systemd than some supported distros ship).
-		for unit_file in /usr/lib/systemd/system/nivaroos*.service /etc/systemd/system/nivaroos*.service; do
-			[ -f \"\$unit_file\" ] || continue
-			unit=\$(basename \"\$unit_file\")
-			case \"\$unit\" in nivaroos-watchdog.service) continue ;; esac
-			mkdir -p \"/etc/systemd/system/\$unit.d\"
-			install -m 644 \"${SRC_DIR}/installer/systemd/10-nivaroos-resilience.conf\" \"/etc/systemd/system/\$unit.d/10-nivaroos-resilience.conf\"
-		done
-		systemctl daemon-reload
-		systemctl enable --now nivaroos-watchdog.timer >/dev/null 2>&1 || true
-
+	run_step "Journal Size Cap & Remote Access" "
 		# Journal size cap (journald's default is 10% of the disk, up to 4 GB),
 		# unless the admin set their own or the disk is small enough that the
 		# default is lower (journald_cap_wanted); then ours goes.
@@ -2084,33 +1736,6 @@ install_safety_net() {
 		# sure it comes back after a reboot.
 		if systemctl list-unit-files tailscaled.service >/dev/null 2>&1 && [ -x \"\$(command -v tailscaled 2>/dev/null)\" ]; then
 			systemctl enable tailscaled >/dev/null 2>&1 || true
-		fi
-
-		# Installation is over: the watchdog may act again.
-		rm -f /run/nivaroos/watchdog.pause
-	"
-}
-
-# ------------------------------------------------------------------------------
-# Uninstall Wrapper Installation
-# ------------------------------------------------------------------------------
-install_uninstall_wrapper() {
-	run_step "Installing Dedicated Uninstaller Script" "
-		mkdir -p /usr/local/bin /usr/bin
-		if [ -f \"${SRC_DIR}/installer/uninstall.sh\" ]; then
-			cp -f \"${SRC_DIR}/installer/uninstall.sh\" /usr/bin/nivaroos-uninstall
-			chmod 755 /usr/bin/nivaroos-uninstall
-			ln -sf /usr/bin/nivaroos-uninstall /usr/local/bin/nivaroos-uninstall 2>/dev/null || true
-			echo '/usr/bin/nivaroos-uninstall' >> \"$MANIFEST_FILE\"
-		fi
-
-		# nivaroos-gpu-sidecar shells out to this exact path when the
-		# dashboard's GPU widget suggests installing a driver - see
-		# services/gpu-sidecar/main.go.
-		if [ -f \"${SRC_DIR}/installer/gpu-driver-install.sh\" ]; then
-			cp -f \"${SRC_DIR}/installer/gpu-driver-install.sh\" /usr/local/bin/nivaroos-gpu-driver-install.sh
-			chmod 755 /usr/local/bin/nivaroos-gpu-driver-install.sh
-			echo '/usr/local/bin/nivaroos-gpu-driver-install.sh' >> \"$MANIFEST_FILE\"
 		fi
 	"
 }
@@ -2196,7 +1821,7 @@ print_summary() {
 	ui_kv "manage" "nivaroos-cli --help"
 	ui_kv "status" "sudo nivaroos-recover status"
 	ui_kv "undo" "sudo nivaroos-rollback      (the previous build is kept)"
-	ui_kv "update" "run the install command again"
+	ui_kv "update" "sudo nivaroos update   (or run the install command again)"
 	ui_kv "remove" "sudo nivaroos-uninstall"
 	ui_kv "log" "$INSTALL_LOG"
 	printf '\n'
@@ -2236,12 +1861,15 @@ remove_leftovers() {
 # plan_steps prints the step functions this run will call, in order. The
 # step count shown as [n/total] is this list's length.
 plan_steps() {
-	echo install_core_dependencies tune_system_limits check_docker clone_or_update_repo install_core_services install_fan_control install_samba
+	echo install_core_dependencies tune_system_limits check_docker install_samba
+	# VM Manager's packages first: the sidecar builds against libvirt.
 	[ "$WITH_VM" = "yes" ] && echo install_vm_manager
+	echo clone_or_update_repo install_core_services
+	[ "$WITH_BACKUP" = "yes" ] && echo install_backup
+	echo install_host_firewall build_bundle apply_bundle
 	[ "$WITH_HOST_DESKTOP" = "yes" ] && echo install_host_desktop
 	[ "$WITH_DOWNLOAD_STATION" = "yes" ] && echo install_download_station
-	[ "$WITH_BACKUP" = "yes" ] && echo install_backup
-	echo install_host_firewall install_ui start_core_services verify_health install_uninstall_wrapper install_safety_net install_mdns_advertisement remove_leftovers
+	echo verify_health install_safety_net install_mdns_advertisement remove_leftovers
 }
 
 main() {

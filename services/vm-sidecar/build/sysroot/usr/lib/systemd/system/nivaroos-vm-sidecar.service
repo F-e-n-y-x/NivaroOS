@@ -1,0 +1,21 @@
+[Unit]
+Description=NivaroOS VM Sidecar
+After=network.target nivaroos-message-bus.service libvirtd.service
+
+[Service]
+ExecStart=/usr/bin/nivaroos-vm-sidecar
+Restart=always
+# Conservative hardening only - this service genuinely needs root (it
+# bind-mounts host directories for shared folders, and talks to libvirtd
+# for USB/PCI passthrough), so this stops short of ProtectSystem=strict or
+# a narrow ReadWritePaths allowlist that risks blocking a real write path
+# (/DATA, libvirt's own state dirs, etc.) this installer can't fully
+# enumerate ahead of time.
+NoNewPrivileges=true
+# read-only, not true: Host Desktop's xrandr/xset calls need to read the
+# desktop session's X cookie (/run/user/<uid>/gdm/Xauthority, ~/.Xauthority),
+# which ProtectHome=true hides entirely.
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

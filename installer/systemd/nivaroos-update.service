@@ -1,0 +1,16 @@
+[Unit]
+Description=NivaroOS server update (check, download, verify, install)
+Documentation=https://github.com/F-e-n-y-x/NivaroOS/blob/master/docs/server-updates.md
+After=network-online.target nivaroos-gateway.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Its own unit (and cgroup): restarting core or the gateway during an
+# update can't kill it. Runs what core asked for in
+# /var/lib/nivaroos/update/request.json, or the nightly check when started
+# by nivaroos-update-check.timer.
+ExecStart=/usr/bin/nivaroos-cli update run
+# Waiting for running backups ("Update when they finish") can take hours.
+TimeoutStartSec=12h
+Nice=5

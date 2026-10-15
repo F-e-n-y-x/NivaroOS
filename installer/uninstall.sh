@@ -21,7 +21,7 @@ fi
 
 set -Eeuo pipefail
 
-ALL_UNITS="nivaroos-watchdog.timer nivaroos-watchdog.service nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-fans.service nivaroos-vm-sidecar.service nivaroos-download-sidecar.service nivaroos-torrent.service nivaroos-ds-browser.socket nivaroos-ds-browser.service nivaroos-ds-browser-install.service nivaroos-backup.service nivaroos-host-desktop.service nivaroos-host-firewall.service rclone.service"
+ALL_UNITS="nivaroos-watchdog.timer nivaroos-watchdog.service nivaroos-update-check.timer nivaroos-update.service nivaroos-update-resume.service nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-fans.service nivaroos-vm-sidecar.service nivaroos-download-sidecar.service nivaroos-torrent.service nivaroos-ds-browser.socket nivaroos-ds-browser.service nivaroos-ds-browser-install.service nivaroos-backup.service nivaroos-host-desktop.service nivaroos-host-firewall.service rclone.service"
 MANIFEST_FILE="/var/lib/nivaroos/manifest"
 DESKTOP_PROVISION_MARKER="/var/lib/nivaroos/provisioned-desktop"
 GDM_WAYLAND_MARKER="/var/lib/nivaroos/host-desktop-gdm-wayland"

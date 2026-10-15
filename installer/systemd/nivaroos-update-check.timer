@@ -1,0 +1,14 @@
+[Unit]
+Description=Check for NivaroOS server updates every night (and install them at about 04:00 if Settings say so)
+
+[Timer]
+Unit=nivaroos-update.service
+OnCalendar=*-*-* 04:00:00
+RandomizedDelaySec=20min
+# A box that was off at 04:00 checks once after boot; it only installs
+# inside the night window (nivaroos update run decides), so never by day.
+OnBootSec=20min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

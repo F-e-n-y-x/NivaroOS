@@ -147,7 +147,7 @@ check '! fw bogus' "unknown command fails"
 
 # The unit runs apply and is installed/removed by the scripts.
 check 'grep -q "^ExecStart=/usr/local/lib/nivaroos/nivaroos-host-firewall apply$" "$d/systemd/nivaroos-host-firewall.service"' "unit runs apply"
-check 'grep -q "install_host_firewall install_ui" "$d/install.sh"' "install.sh always runs the firewall step"
+check 'grep -q "install_host_firewall build_bundle apply_bundle" "$d/install.sh"' "install.sh always runs the firewall step"
 check 'grep -q "nivaroos-host-firewall remove" "$d/uninstall.sh"' "uninstall.sh removes the rules"
 
 echo "passed: $PASS  failed: $FAIL"

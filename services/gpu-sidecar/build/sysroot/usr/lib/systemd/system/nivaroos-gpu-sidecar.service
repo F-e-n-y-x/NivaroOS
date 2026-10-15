@@ -1,0 +1,26 @@
+[Unit]
+Description=NivaroOS GPU Sidecar
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/nivaroos-gpu-sidecar
+Restart=always
+# ProtectSystem=full (read-only /usr, /boot, /etc) was fine when this
+# service only ever ran nvidia-smi - it now also runs
+# gpu-driver-install.sh on request, which does a real apt-get install of a
+# driver package and so unavoidably writes new files under /usr, like any
+# package install does. Read-only /usr made every such install fail
+# silently (permission/read-only-filesystem errors from inside apt),
+# which is exactly what made the GPU widget's Install Driver button not
+# work.
+# NoNewPrivileges/ProtectHome stay - neither blocks a package install and
+# both are still free hardening for the far more common nvidia-smi-only
+# code path.
+NoNewPrivileges=true
+# read-only, not true: Host Desktop's xrandr/xset calls need to read the
+# desktop session's X cookie (/run/user/<uid>/gdm/Xauthority, ~/.Xauthority),
+# which ProtectHome=true hides entirely.
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

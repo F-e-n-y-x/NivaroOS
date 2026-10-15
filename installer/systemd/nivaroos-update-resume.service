@@ -1,0 +1,14 @@
+[Unit]
+Description=Finish or undo a NivaroOS update cut off by a reboot
+After=nivaroos-gateway.service nivaroos.service
+ConditionPathExists=/var/lib/nivaroos/update/state.json
+
+[Service]
+Type=oneshot
+# applying/health -> whole-set rollback; probation -> watched again;
+# downloading/verifying/staged -> back to available (nothing changed yet).
+ExecStart=/usr/bin/nivaroos-cli update resume
+TimeoutStartSec=30min
+
+[Install]
+WantedBy=multi-user.target
