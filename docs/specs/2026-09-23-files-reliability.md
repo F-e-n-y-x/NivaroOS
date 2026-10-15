@@ -218,15 +218,15 @@ Bugs it found (all fixed, tests kept):
 
 | Bug | Commit |
 |---|---|
-| A copy/move job running when the service died vanished (saved only when finished) instead of showing interrupted + Retry | 0b281b1 |
-| Two "keep both" pastes at once picked the same `name (2)`; the second replaced the first | 0b281b1 |
-| Names near 255 bytes failed to copy/upload (temp name too long) | 0b281b1, be6dac8 |
-| Upload interrupted by a service restart: browser showed Done, file never assembled (chunk state was memory-only) | be6dac8 |
-| Upload hitting a full disk: the retried chunk started a fresh upload, so the file could "finish" without existing; temp file kept the disk full for 6 h | be6dac8 |
-| File downloads were gzipped: no size/progress in the browser, no resume, resumed Range came back compressed | 793deb7 |
-| Rename failure showed "Fail"; renaming onto a dangling symlink replaced it | d52bb0b |
-| Uploading the same file again (or same-size non-ASCII names) was silently ignored until the window closed | 13e5f73 |
-| A late event could put a finished transfer back to "in progress" | 670809e |
+| A copy/move job running when the service died vanished (saved only when finished) instead of showing interrupted + Retry | 2cda5c7 |
+| Two "keep both" pastes at once picked the same `name (2)`; the second replaced the first | 2cda5c7 |
+| Names near 255 bytes failed to copy/upload (temp name too long) | 2cda5c7, dc51d17 |
+| Upload interrupted by a service restart: browser showed Done, file never assembled (chunk state was memory-only) | dc51d17 |
+| Upload hitting a full disk: the retried chunk started a fresh upload, so the file could "finish" without existing; temp file kept the disk full for 6 h | dc51d17 |
+| File downloads were gzipped: no size/progress in the browser, no resume, resumed Range came back compressed | 04a83be |
+| Rename failure showed "Fail"; renaming onto a dangling symlink replaced it | 098fca0 |
+| Uploading the same file again (or same-size non-ASCII names) was silently ignored until the window closed | 03b7bfe |
+| A late event could put a finished transfer back to "in progress" | aaa4d86 |
 
 Not covered (needs hardware/accounts): companion devices, cloud (rclone)
 and SMB destinations, real power loss. Known limits: a cancelled upload's
