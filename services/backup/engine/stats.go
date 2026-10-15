@@ -10,11 +10,13 @@ import (
 
 	"github.com/rclone/rclone/fs/accounting"
 	rlog "github.com/rclone/rclone/fs/log"
-	"github.com/rclone/rclone/fs/rc"
 )
 
 // liveStats builds a job's Stats from rclone's accounting group
 // "bk_<run_id>" (spec §10.2) and the job's own progress counters.
+//
+// Only rclone's locked getters are used: RemoteStats reads errors and
+// lastError outside its lock, a data race with every failed transfer.
 func (e *Engine) liveStats(j *job) Stats {
 	j.mu.Lock()
 	p := j.progress
@@ -22,62 +24,45 @@ func (e *Engine) liveStats(j *job) Stats {
 	state := j.state
 	j.mu.Unlock()
 	st := Stats{Step: step, TotalBytes: p.totalBytes, TotalFiles: p.totalFiles, CurrentFile: p.current}
-	if state == JobQueued {
+	if state == JobQueued || state == JobDone || state == JobError {
+		// Done jobs have their group deleted; StatsGroup would recreate it.
 		return st
 	}
 	statsMu.Lock()
 	sg := accounting.StatsGroup(context.Background(), j.group)
-	out, err := sg.RemoteStats(false)
-	statsMu.Unlock()
-	if err == nil {
-		st.Bytes = asInt64(out["bytes"])
-		st.Files = asInt64(out["transfers"])
-		st.Errors = asInt64(out["errors"])
-		st.SpeedBps = asInt64(out["speed"])
-		if tb := asInt64(out["totalBytes"]); tb > st.TotalBytes {
-			st.TotalBytes = tb
-		}
-		if tf := asInt64(out["totalTransfers"]); tf > st.TotalFiles {
-			st.TotalFiles = tf
-		}
-		if eta, ok := out["eta"].(float64); ok {
-			v := int64(eta)
-			st.ETASec = &v
-		}
-		if tr, ok := out["transferring"].([]rc.Params); ok && len(tr) > 0 {
-			if name, ok := tr[0]["name"].(string); ok {
-				st.CurrentFile = name
-			}
-		}
+	st.Bytes, st.Files, st.Errors = sg.GetBytes(), sg.GetTransfers(), sg.GetErrors()
+	if done := sg.Transferred(); len(done) > 0 {
+		st.CurrentFile = done[len(done)-1].Name
 	}
+	statsMu.Unlock()
 	if p.own {
 		// Archive and extract stream through the engine itself.
 		st.Bytes, st.Files = p.bytes, p.files
 		st.CurrentFile = p.current
-		if el := time.Since(p.ownStart).Seconds(); el > 0 {
-			st.SpeedBps = int64(float64(p.bytes) / el)
-		}
-		st.ETASec = nil
-		if st.SpeedBps > 0 && st.TotalBytes > st.Bytes {
-			v := (st.TotalBytes - st.Bytes) / st.SpeedBps
-			st.ETASec = &v
-		}
+	}
+
+	// Average speed since the first byte moved.
+	// ponytail: whole-run average, not rclone's moving one; add a window if
+	// a slow start skews the ETA.
+	j.mu.Lock()
+	if j.rateStart.IsZero() && st.Bytes > 0 {
+		j.rateStart, j.rateBytes = time.Now(), st.Bytes
+	}
+	start, base := j.rateStart, j.rateBytes
+	j.mu.Unlock()
+	if p.own {
+		start, base = p.ownStart, 0
+	}
+	if el := time.Since(start).Seconds(); !start.IsZero() && el >= 1 {
+		st.SpeedBps = int64(float64(st.Bytes-base) / el)
+	}
+	st.TotalBytes = max(st.TotalBytes, st.Bytes)
+	st.TotalFiles = max(st.TotalFiles, st.Files)
+	if st.SpeedBps > 0 && st.TotalBytes > st.Bytes {
+		v := (st.TotalBytes - st.Bytes) / st.SpeedBps
+		st.ETASec = &v
 	}
 	return st
-}
-
-func asInt64(v interface{}) int64 {
-	switch x := v.(type) {
-	case int64:
-		return x
-	case int:
-		return int64(x)
-	case float64:
-		return int64(x)
-	case int32:
-		return int64(x)
-	}
-	return 0
 }
 
 func fmtAny(v interface{}) string { return fmt.Sprint(v) }

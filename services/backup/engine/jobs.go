@@ -31,6 +31,9 @@ type job struct {
 	result   *Result
 	final    Stats // stats frozen at the end
 	progress progress
+	// rateStart/rateBytes: when liveStats first saw bytes move, for speed.
+	rateStart time.Time
+	rateBytes int64
 	// watched are the mounts this job reads or writes; if one leaves the
 	// table the job is cancelled with cancelled_unmounted.
 	watched map[int]string
@@ -346,9 +349,8 @@ func (m *jobManager) finish(j *job, res Result, err error) {
 	m.e.subs.emit(Event{Type: EventJobDone, Time: now, JobID: j.id, RunID: j.req.RunID, State: state})
 }
 
-// statsMu serialises reading a stats group with deleting one: rclone's
-// RemoteStats reads errors/lastError outside its lock while stats-delete
-// resets them, a race that can end in a nil lastError.Error() panic.
+// statsMu serialises reading a stats group with deleting one, so a read
+// never recreates a group that is being deleted.
 var statsMu sync.Mutex
 
 // deleteStatsGroup frees rclone's accounting for a finished job.
