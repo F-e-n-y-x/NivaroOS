@@ -15,14 +15,18 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -52,21 +56,23 @@ func gstRunning(display string) bool {
 	return len(bytes.TrimSpace(out)) > 0
 }
 
-func TestIntegrationWebRTCOfferStreamsAndInjects(t *testing.T) {
+// testDesktop: a throwaway Xvfb + x11vnc on a private socket wired into
+// the lane; onDisp runs an X client against that display only.
+func testDesktop(t *testing.T) (enc, disp string, onDisp func(string, ...string) *exec.Cmd) {
 	for _, b := range []string{"Xvfb", "x11vnc", "xdotool", "xprop", gstLaunch} {
 		if _, err := exec.LookPath(b); err != nil {
 			t.Skipf("%s not found", b)
 		}
 	}
-	enc := os.Getenv("WEBRTC_IT_ENCODER")
+	enc = os.Getenv("WEBRTC_IT_ENCODER")
 	if enc == "" {
 		enc = "x264enc"
 	}
-	disp := freeDisplay(t)
+	disp = freeDisplay(t)
 	startBG(t, "Xvfb", disp, "-screen", "0", "1280x720x24", "-nolisten", "tcp")
 	waitFor(t, "Xvfb", func() bool { return displaySocketExists(disp) })
 	// X clients of the test only ever see the throwaway display.
-	onDisp := func(name string, args ...string) *exec.Cmd {
+	onDisp = func(name string, args ...string) *exec.Cmd {
 		c := exec.Command(name, args...)
 		c.Env = append(os.Environ(), "DISPLAY="+disp, "XAUTHORITY=/dev/null")
 		return c
@@ -87,7 +93,11 @@ func TestIntegrationWebRTCOfferStreamsAndInjects(t *testing.T) {
 		"videoscale": true, "videoconvert": true, "rtph264pay": true, "udpsink": true}
 	gstProbe.Unlock()
 	t.Cleanup(func() { gstProbe.Lock(); gstProbe.have = nil; gstProbe.Unlock() })
+	return enc, disp, onDisp
+}
 
+func TestIntegrationWebRTCOfferStreamsAndInjects(t *testing.T) {
+	enc, disp, onDisp := testDesktop(t)
 	mux := http.NewServeMux()
 	RegisterHostStreamRoutes(mux)
 	srv := httptest.NewServer(mux)
@@ -234,4 +244,145 @@ func TestIntegrationWebRTCOfferStreamsAndInjects(t *testing.T) {
 	webrtcState.Unlock()
 	cur.close()
 	waitForLong("encoder exit", 5*time.Second, func() bool { return !gstRunning(disp) })
+}
+
+// TestIntegrationWebViewerInChrome runs the real web viewer
+// (ui/src/shell/desktop/HostDesktopWebRTC.vue) in headless Chrome against
+// the lane. WEBRTC_IT_UI is a Vite dev server of ui/ (pnpm exec vite --port
+// 18093) with two scratch files in ui/ (not committed):
+//
+//	webrtc-harness.html: <div id="app"></div><script type="module" src="/webrtc-harness.js"></script>
+//	webrtc-harness.js:
+//	  import { createApp, h } from 'vue'
+//	  import Viewer from '@/shell/desktop/HostDesktopWebRTC.vue'
+//	  window.__states = []
+//	  localStorage.setItem('access_token', 'test')
+//	  createApp({ render: () => h('div', { style: 'position:fixed;inset:0' }, [h(Viewer, {
+//	    fallback: false, fps: 30, maxKbps: 4000,
+//	    onState: (s) => window.__states.push(s.state + ':' + s.reason),
+//	    onSize: (s) => (window.__size = s), onStats: (s) => (window.__stats = s) })]) }).mount('#app')
+func TestIntegrationWebViewerInChrome(t *testing.T) {
+	ui := os.Getenv("WEBRTC_IT_UI")
+	if ui == "" {
+		t.Skip("WEBRTC_IT_UI not set")
+	}
+	chrome, err := exec.LookPath("google-chrome")
+	if err != nil {
+		t.Skip("no google-chrome")
+	}
+	_, _, onDisp := testDesktop(t)
+	api := http.NewServeMux()
+	RegisterHostStreamRoutes(api)
+	target, _ := url.Parse(ui)
+	front := http.NewServeMux()
+	front.Handle("/v1/vm-sidecar/", http.StripPrefix("/v1/vm-sidecar", api))
+	front.Handle("/", httputil.NewSingleHostReverseProxy(target))
+	srv := httptest.NewServer(front)
+	defer srv.Close()
+
+	prof := t.TempDir()
+	cmd := exec.Command(chrome, "--headless=new", "--no-sandbox", "--no-first-run", "--user-data-dir="+prof,
+		"--remote-debugging-port=0", "--window-size=1280,720", "--autoplay-policy=no-user-gesture-required",
+		srv.URL+"/webrtc-harness.html")
+	// Headless: no X at all, and certainly not the host's display.
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "DISPLAY=") && !strings.HasPrefix(e, "WAYLAND_DISPLAY=") && !strings.HasPrefix(e, "XAUTHORITY=") {
+			cmd.Env = append(cmd.Env, e)
+		}
+	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); _ = cmd.Wait() })
+
+	var port string
+	waitFor(t, "DevToolsActivePort", func() bool {
+		b, err := os.ReadFile(prof + "/DevToolsActivePort")
+		port, _, _ = strings.Cut(string(b), "\n")
+		return err == nil && port != ""
+	})
+	var pages []struct{ Type, URL, WebSocketDebuggerURL string }
+	waitFor(t, "page target", func() bool {
+		resp, err := http.Get("http://127.0.0.1:" + port + "/json")
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		_ = json.NewDecoder(resp.Body).Decode(&pages)
+		for _, p := range pages {
+			if p.Type == "page" && strings.Contains(p.URL, "webrtc-harness") {
+				return true
+			}
+		}
+		return false
+	})
+	var wsURL string
+	for _, p := range pages {
+		if p.Type == "page" && strings.Contains(p.URL, "webrtc-harness") {
+			wsURL = p.WebSocketDebuggerURL
+		}
+	}
+	cdp, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cdp.Close()
+	id := 0
+	call := func(method string, params any) json.RawMessage {
+		id++
+		_ = cdp.WriteJSON(map[string]any{"id": id, "method": method, "params": params})
+		for {
+			var m struct {
+				ID     int             `json:"id"`
+				Result json.RawMessage `json:"result"`
+			}
+			if err := cdp.ReadJSON(&m); err != nil {
+				t.Fatal(err)
+			}
+			if m.ID == id {
+				return m.Result
+			}
+		}
+	}
+	eval := func(expr string) string {
+		var r struct {
+			Result struct {
+				Value any `json:"value"`
+			} `json:"result"`
+		}
+		_ = json.Unmarshal(call("Runtime.evaluate", map[string]any{"expression": "JSON.stringify(" + expr + ")", "returnByValue": true}), &r)
+		s, _ := r.Result.Value.(string)
+		return s
+	}
+	live := false
+	for end := time.Now().Add(20 * time.Second); time.Now().Before(end) && !live; time.Sleep(200 * time.Millisecond) {
+		live = strings.Contains(eval("window.__states"), `"live:`)
+	}
+	if !live {
+		t.Fatalf("viewer never went live: states %s", eval("window.__states"))
+	}
+	if sz := eval("window.__size"); sz != `{"w":1280,"h":720}` {
+		t.Errorf("size message: %s", sz)
+	}
+	// The middle of the (letterboxed) video is the middle of the desktop.
+	var vh float64
+	_ = json.Unmarshal([]byte(eval("document.querySelector('video').getBoundingClientRect().height")), &vh)
+	eval(`(() => { window.__sent = []; const o = RTCDataChannel.prototype.send; RTCDataChannel.prototype.send = function (d) { window.__sent.push(d); return o.call(this, d) }; return 1 })()`)
+	var where string
+	for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(100 * time.Millisecond) {
+		call("Input.dispatchMouseEvent", map[string]any{"type": "mouseMoved", "x": 640, "y": vh / 2})
+		out, _ := onDisp("xdotool", "getmouselocation").Output()
+		if where = string(out); strings.HasPrefix(where, "x:640 y:360") {
+			break
+		}
+	}
+	if !strings.HasPrefix(where, "x:640 y:360") {
+		t.Fatalf("pointer at %q; page sent %s; rect %s", where, eval("window.__sent"), eval("document.querySelector('video').getBoundingClientRect()"))
+	}
+	time.Sleep(1500 * time.Millisecond)
+	t.Logf("states %s, stats %s", eval("window.__states"), eval("window.__stats"))
+	if !strings.Contains(eval("window.__stats"), `"fps":`) {
+		t.Errorf("no stats")
+	}
 }
