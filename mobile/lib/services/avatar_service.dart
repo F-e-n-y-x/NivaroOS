@@ -31,6 +31,10 @@ class AvatarService {
     current.value = null;
   }
 
+  /// Tests: a picture this phone kept for [username] on [server].
+  @visibleForTesting
+  Future<void> debugRemember(String server, String username, Uint8List bytes) => _store(server, username, bytes);
+
   static String _key(String server, String username) =>
       sha1.convert(utf8.encode('${ApiClient.normalizeServerUrl(server)}\n$username')).toString().substring(0, 20);
 
@@ -55,6 +59,20 @@ class AvatarService {
     final f = await _file(key);
     final bytes = f != null && await f.exists() ? await f.readAsBytes() : null;
     return _memory[key] = bytes;
+  }
+
+  /// The sign-in screen's picture for [username] on the current server:
+  /// the server's (`GET /v1/users/login-avatar`, public and rate-limited),
+  /// or this phone's copy when the server can't be asked. null = unknown
+  /// name or no picture (the placeholder).
+  Future<Uint8List?> loginPicture(String username) async {
+    if (username.isEmpty) return null;
+    try {
+      final res = await ApiClient.instance.getRaw('/v1/users/login-avatar', query: {'username': username});
+      if (res.statusCode == 200) return res.bodyBytes;
+      if (res.statusCode == 404) return null;
+    } catch (_) {} // offline: the copy below
+    return cachedFor(ApiClient.instance.baseUrl, username);
   }
 
   Future<void> _store(String server, String username, Uint8List? bytes) async {

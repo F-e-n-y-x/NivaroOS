@@ -95,6 +95,8 @@ void main() {
     'more': (() => const MoreScreen(), tab: true, pushed: false, setup: null, before: null),
     'server_profiles': (() => const ServerProfilesScreen(), tab: false, pushed: true, setup: _cachePicture, before: null),
     'login': (() => const LoginScreen(isReauth: true, initialUsername: 'alex'), tab: false, pushed: true, setup: _cachePicture, before: null),
+    // Nothing kept on this phone: the server's login picture for the typed name.
+    'login_from_server': (() => const LoginScreen(isReauth: true, initialUsername: 'alex'), tab: false, pushed: true, setup: null, before: _settle),
     'change_sheet': (() => const SettingsScreen(), tab: false, pushed: true, setup: null, before: (tester) async {
       await tester.tap(find.text('alex'));
       await tester.pump();

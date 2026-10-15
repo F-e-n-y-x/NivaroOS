@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -44,9 +46,11 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _error;
   String? _errorDetails;
 
-  /// The picture last seen on this phone for the typed account on this
-  /// server (the server shows none before sign-in).
+  /// The typed account's picture: this phone's copy at once, then the
+  /// server's a moment after typing stops. null = the placeholder icon.
   Uint8List? _picture;
+  String _pictureFor = '';
+  Timer? _pictureTimer;
 
   /// This phone was removed from the server (see [ApiClient.sessionEndReason]).
   bool _removed = false;
@@ -71,14 +75,28 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _lookUpPicture() async {
+  void _lookUpPicture() {
     final name = _usernameController.text.trim();
-    final pic = await AvatarService.instance.cachedFor(ApiClient.instance.baseUrl, name);
-    if (mounted && name == _usernameController.text.trim() && pic != _picture) setState(() => _picture = pic);
+    if (name == _pictureFor) return; // the listener also fires for the cursor
+    _pictureFor = name;
+    _pictureTimer?.cancel();
+    if (name.isEmpty) {
+      setState(() => _picture = null);
+      return;
+    }
+    bool current() => mounted && name == _usernameController.text.trim();
+    AvatarService.instance.cachedFor(ApiClient.instance.baseUrl, name).then((pic) {
+      if (pic != null && current()) setState(() => _picture = pic);
+    });
+    _pictureTimer = Timer(const Duration(milliseconds: 300), () async {
+      final pic = await AvatarService.instance.loginPicture(name);
+      if (current()) setState(() => _picture = pic);
+    });
   }
 
   @override
   void dispose() {
+    _pictureTimer?.cancel();
     _usernameController.dispose();
     _passwordController.dispose();
     _passwordFocus.dispose();
@@ -285,12 +303,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     },
                     decoration: InputDecoration(
                       labelText: 'Username',
-                      prefixIcon: _picture == null
-                          ? const Icon(Icons.person_outline)
-                          : Padding(
-                              padding: const EdgeInsets.all(Space.md),
-                              child: UserAvatar(username: _usernameController.text, picture: _picture, radius: 12),
-                            ),
+                      // Same 24 px either way: the photo fades in, nothing moves.
+                      prefixIcon: AnimatedSwitcher(
+                        duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 250),
+                        child: _picture == null
+                            ? const Icon(Icons.person_outline, key: ValueKey('placeholder'))
+                            : Padding(
+                                key: ObjectKey(_picture),
+                                padding: const EdgeInsets.all(Space.md),
+                                child: UserAvatar(username: _usernameController.text, picture: _picture, radius: 12),
+                              ),
+                      ),
                       errorText: _usernameError,
                     ),
                   ),
