@@ -67,13 +67,14 @@ func shortSHA(s string) string {
 // @Success 200 {string} string "ok"
 // @Router /sys/update [post]
 func SystemUpdate(ctx *echo.Context) error {
-	if version.Check(false).State != version.StateBehind || config.ServerInfo.UpdateUrl == "" {
-		// Nothing to install, or no update source configured - this used
-		// to answer "success", and the UI showed a finished update.
-		return ctx.JSON(http.StatusConflict, model.Result{Success: http.StatusConflict, Message: "no update is available to install from here - run the NivaroOS installer to update"})
+	// A release install takes the newest server release through the
+	// self-updater (nivaroos-update.service); a box built from source
+	// updates with the installer. The CasaOS `curl UpdateUrl | bash` path
+	// (a remote shell for whoever controlled that URL) is gone.
+	if !version.Info().Release {
+		return ctx.JSON(http.StatusConflict, model.Result{Success: http.StatusConflict, Message: "this server is built from source - run the NivaroOS installer to update it"})
 	}
-	service.MyService.System().UpdateSystemVersion("")
-	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
+	return PostServerUpdateApply(ctx)
 }
 
 // @Summary  get logs

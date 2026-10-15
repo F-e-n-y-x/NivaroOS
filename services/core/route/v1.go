@@ -98,6 +98,13 @@ func InitV1Router() http.Handler {
 			v1SysGroup.GET("/version", v1.GetSystemCheckVersion) // version/check
 
 			v1SysGroup.POST("/update", v1.SystemUpdate)
+			// Server releases: core reads the self-updater's state and asks
+			// nivaroos-update.service to act (docs/guides/server-updates.md).
+			v1SysGroup.GET("/update/status", v1.GetServerUpdate)
+			v1SysGroup.POST("/update/check", v1.PostServerUpdateCheck)
+			v1SysGroup.POST("/update/apply", v1.PostServerUpdateApply)
+			v1SysGroup.POST("/update/rollback", v1.PostServerUpdateRollback)
+			v1SysGroup.PUT("/update/settings", v1.PutServerUpdateSettings)
 			v1SysGroup.GET("/packages/check", v1.GetSystemPackageUpdates)
 			v1SysGroup.GET("/packages/upgrades", v1.GetSystemPackageUpdates)
 			v1SysGroup.POST("/packages/refresh", v1.PostRefreshPackageUpdates)

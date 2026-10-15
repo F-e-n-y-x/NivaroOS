@@ -37,7 +37,6 @@ import (
 )
 
 type SystemService interface {
-	UpdateSystemVersion(version string)
 	GetSystemConfigDebug() []string
 	GetNivaroOSLogs(lineNumber int) string
 	UpdateAssist()
@@ -478,23 +477,6 @@ func (c *systemService) GetNet(physics bool) []string {
 	} else {
 		return strings.Split(output, "\n")
 	}
-}
-
-func (s *systemService) UpdateSystemVersion(version string) {
-	keyName := "casa_version"
-	Cache.Delete(keyName)
-	if file.Exists(config.AppInfo.LogPath + "/upgrade.log") {
-		os.Remove(config.AppInfo.LogPath + "/upgrade.log")
-	}
-	file.CreateFile(config.AppInfo.LogPath + "/upgrade.log")
-	if len(config.ServerInfo.UpdateUrl) > 0 {
-		go command.OnlyExec("curl -fsSL " + config.ServerInfo.UpdateUrl + " | bash")
-	} else {
-		logger.Info("no default update URL configured; skipping self-update")
-	}
-
-	// s.log.Error(config.AppInfo.ProjectPath + "/shell/tool.sh -r " + version)
-	// s.log.Error(command2.ExecResultStr(config.AppInfo.ProjectPath + "/shell/tool.sh -r " + version))
 }
 
 func (s *systemService) UpdateAssist() {

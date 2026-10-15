@@ -34,7 +34,6 @@ type ServerModel struct {
 	LockAccount  bool
 	Token        string
 	USBAutoMount string
-	UpdateUrl    string
 }
 
 // 服务配置
