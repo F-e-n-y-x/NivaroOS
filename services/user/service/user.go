@@ -9,9 +9,12 @@
 package service
 
 import (
+	"sync"
+
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
+	uuid "github.com/satori/go.uuid"
 	"io"
 	"mime/multipart"
 	"os"
@@ -62,7 +65,49 @@ type UserService interface {
 	RotateRefresh(sid string, userID int, presented string) (next string, reused bool, err error)
 }
 
-var UserRegisterHash = make(map[string]string)
+// RegisterKeys are the one-time keys that allow creating an account
+// (handed out before the first account exists, or by a signed-in user).
+// They were a plain map with no lock - concurrent requests crashed the
+// service ("concurrent map writes") - and never expired.
+var RegisterKeys = &registerKeys{ttl: 15 * time.Minute, m: map[string]time.Time{}}
+
+type registerKeys struct {
+	mu  sync.Mutex
+	ttl time.Duration
+	m   map[string]time.Time // key -> expiry
+}
+
+// New mints a key, good once, for ttl.
+func (r *registerKeys) New() string {
+	key := uuid.NewV4().String()
+	now := time.Now()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for k, exp := range r.m {
+		if now.After(exp) {
+			delete(r.m, k)
+		}
+	}
+	r.m[key] = now.Add(r.ttl)
+	return key
+}
+
+// Valid reports whether key could be used now (without using it up).
+func (r *registerKeys) Valid(key string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	exp, ok := r.m[key]
+	return ok && time.Now().Before(exp)
+}
+
+// Take uses up key: true only once, and only before it expires.
+func (r *registerKeys) Take(key string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	exp, ok := r.m[key]
+	delete(r.m, key)
+	return ok && time.Now().Before(exp)
+}
 
 type userService struct {
 	privateKey *ecdsa.PrivateKey // keep this private - NEVER expose it!!!

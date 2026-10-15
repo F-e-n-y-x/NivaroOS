@@ -26,7 +26,6 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/config"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/utils/file"
 	model2 "github.com/F-e-n-y-x/NivaroOS/services/user/service/model"
-	uuid "github.com/satori/go.uuid"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 
@@ -64,7 +63,9 @@ func PostUserRegister(c *gin.Context) {
 	username := json["username"]
 	pwd := json["password"]
 	key := json["key"]
-	if _, ok := service.UserRegisterHash[key]; !ok {
+	// Checked first (no key, no answer about which names exist), used up
+	// below.
+	if !service.RegisterKeys.Valid(key) {
 		c.JSON(common_err.CLIENT_ERROR,
 			model.Result{Success: common_err.KEY_NOT_EXIST, Message: common_err.GetMsg(common_err.KEY_NOT_EXIST)})
 		return
@@ -91,6 +92,15 @@ func PostUserRegister(c *gin.Context) {
 		return
 	}
 
+	// Used up after the checks a typo fails (so the form can be sent
+	// again) and before the account exists: two requests racing with one
+	// key make one account, not two.
+	if !service.RegisterKeys.Take(key) {
+		c.JSON(common_err.CLIENT_ERROR,
+			model.Result{Success: common_err.KEY_NOT_EXIST, Message: common_err.GetMsg(common_err.KEY_NOT_EXIST)})
+		return
+	}
+
 	user := model2.UserDBModel{}
 	user.Username = username
 	user.Password = hashPassword(pwd)
@@ -102,7 +112,6 @@ func PostUserRegister(c *gin.Context) {
 		return
 	}
 	file.MkDir(config.AppInfo.UserDataPath + "/" + strconv.Itoa(user.Id))
-	delete(service.UserRegisterHash, key)
 	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
 }
 
@@ -113,8 +122,7 @@ func PostUserRegister(c *gin.Context) {
 // safe to allow minting new keys any time to support adding more
 // NivaroOS-level users later.
 func PostGenerateRegisterKey(c *gin.Context) {
-	key := uuid.NewV4().String()
-	service.UserRegisterHash[key] = key
+	key := service.RegisterKeys.New()
 	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: key})
 }
 
@@ -726,7 +734,8 @@ func DeleteUserImage(c *gin.Context) {
 		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.FILE_DOES_NOT_EXIST, Message: common_err.GetMsg(common_err.FILE_DOES_NOT_EXIST)})
 		return
 	}
-	if !strings.Contains(path, config.AppInfo.UserDataPath+"/"+strconv.Itoa(user.Id)) {
+	// Inside the caller's own folder ("contains" let ../ delete any file).
+	if !strings.HasPrefix(filepath.Clean(path), filepath.Join(config.AppInfo.UserDataPath, strconv.Itoa(user.Id))+"/") {
 		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.INSUFFICIENT_PERMISSIONS, Message: common_err.GetMsg(common_err.INSUFFICIENT_PERMISSIONS)})
 		return
 	}
@@ -875,8 +884,10 @@ func GetPublicWallpaper(c *gin.Context) {
 						}
 					}
 
-					// If it points to a local file on disk
-					if file.Exists(wpPath) {
+					// A picture on disk. Pictures only: this answers anyone, and
+					// the path is whatever a signed-in user stored (it served
+					// jwt_key.pem as well as a JPEG).
+					if file.Exists(wpPath) && isImageFile(wpPath) {
 						c.Header("Cache-Control", "no-cache")
 						c.File(wpPath)
 						return
@@ -950,9 +961,7 @@ func GetUserStatus(c *gin.Context) {
 		data["initialized"] = true
 		data["key"] = ""
 	} else {
-		key := uuid.NewV4().String()
-		service.UserRegisterHash[key] = key
-		data["key"] = key
+		data["key"] = service.RegisterKeys.New()
 		data["initialized"] = false
 	}
 	gpus, err := external.NvidiaGPUInfoList()
