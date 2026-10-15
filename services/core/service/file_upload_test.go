@@ -168,3 +168,40 @@ func assertNoUploadTemp(t *testing.T, dir string) {
 		return nil
 	})
 }
+
+// The browser never resends a chunk it got a 200 for. After a service
+// restart the server must still know those chunks, or the file is never
+// assembled while the browser shows "Done".
+func TestUploadResumesAfterRestart(t *testing.T) {
+	dest := t.TempDir()
+	data := randomData(4 * 1024)
+	s1 := NewFileUploadService()
+	for _, n := range []int64{1, 3} {
+		if _, err := s1.Upload(chunkReq(dest, "r.bin", "id", n, 1024, 4*1024, data)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s1.Close()
+
+	s2 := NewFileUploadService() // restarted service
+	defer s2.Close()
+	probe := UploadChunk{Path: dest, RelativePath: "r.bin", Identifier: "id", TotalSize: 4 * 1024, TotalChunks: 4, ChunkNumber: 3}
+	if !s2.HasChunk(probe) {
+		t.Fatal("chunk received before the restart reported missing")
+	}
+	var res UploadResult
+	for _, n := range []int64{2, 4} {
+		var err error
+		if res, err = s2.Upload(chunkReq(dest, "r.bin", "id", n, 1024, 4*1024, data)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !res.Complete {
+		t.Fatal("upload never completed after the restart")
+	}
+	got, _ := os.ReadFile(filepath.Join(dest, "r.bin"))
+	if !bytes.Equal(got, data) {
+		t.Fatal("content differs")
+	}
+	assertNoUploadTemp(t, dest)
+}

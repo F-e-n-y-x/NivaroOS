@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service/transfer"
 )
 
 // FileUploadService assembles chunked uploads (simple-uploader.js, see
@@ -42,13 +44,19 @@ type upload struct {
 	key      string
 	dest     string // final path
 	tmp      string
+	parts    string // received chunk numbers, one per line (survives a restart)
 	f        *os.File
 	received []bool
 	count    int64
 	size     int64
 	done     bool
 	err      error
-	last     time.Time
+	// failed: the upload hit a disk error (full, read-only, I/O) and its
+	// temp file is gone. Every further chunk of this attempt gets the error
+	// - starting a fresh upload over the lost part would let the browser
+	// count the file as done when it never arrived.
+	failed error
+	last   time.Time
 	// staged uploads go somewhere else when complete (companion devices)
 	deliver func(tmp string) error
 	cleanup string // directory to remove after delivery
@@ -97,6 +105,7 @@ var Uploads = NewFileUploadService()
 var (
 	errBadUploadPath = errors.New("invalid file path")
 	errBadChunk      = errors.New("invalid chunk")
+	errUploadDisk    = errors.New("saving upload")
 )
 
 // resolveUploadDest validates relativePath and returns the final absolute
@@ -154,6 +163,12 @@ func (s *FileUploadService) Upload(c UploadChunk) (UploadResult, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.last = time.Now()
+	if int64(len(u.received)) != c.TotalChunks {
+		return UploadResult{}, errBadChunk
+	}
+	if u.failed != nil {
+		return UploadResult{}, u.failed
+	}
 	if u.done {
 		// A retried chunk after completion (lost response): report success.
 		return UploadResult{Complete: true, Path: dest}, u.err
@@ -164,13 +179,23 @@ func (s *FileUploadService) Upload(c UploadChunk) (UploadResult, error) {
 		offset = 0
 	}
 	n, err := copyAt(u.f, c.Data, offset)
+	if errors.Is(err, errUploadDisk) {
+		return UploadResult{}, s.fail(u, err)
+	}
 	if err != nil {
-		return UploadResult{}, fmt.Errorf("writing upload: %w", err)
+		return UploadResult{}, fmt.Errorf("receiving chunk %d: %w", c.ChunkNumber, err)
 	}
 	if n != c.CurrentChunkSize {
 		return UploadResult{}, fmt.Errorf("chunk %d arrived incomplete (%d of %d bytes) - it will be retried", c.ChunkNumber, n, c.CurrentChunkSize)
 	}
 	if !u.received[c.ChunkNumber-1] {
+		// Recorded on disk before it's acknowledged: the browser never
+		// sends an acknowledged chunk again, so a restart must not forget it.
+		// ponytail: no fsync per chunk (page cache survives a service
+		// restart, not a power cut); finalize fsyncs the whole file.
+		if err := appendLine(u.parts, c.ChunkNumber); err != nil {
+			return UploadResult{}, s.fail(u, fmt.Errorf("%w: %w", errUploadDisk, err))
+		}
 		u.received[c.ChunkNumber-1] = true
 		u.count++
 	}
@@ -179,12 +204,58 @@ func (s *FileUploadService) Upload(c UploadChunk) (UploadResult, error) {
 	}
 
 	// Last chunk: make it durable, verify, then publish.
+	if err := s.finalize(u); err != nil {
+		return UploadResult{}, s.fail(u, err)
+	}
 	u.done = true
-	u.err = s.finalize(u)
+	_ = os.Remove(u.parts)
 	s.mu.Lock()
 	delete(s.uploads, u.key)
 	s.mu.Unlock()
-	return UploadResult{Complete: true, Path: dest}, u.err
+	return UploadResult{Complete: true, Path: dest}, nil
+}
+
+// fail ends an upload attempt for good: frees its disk space and keeps
+// the error for the chunks still on their way (see upload.failed). The
+// browser's next attempt starts with a chunk check, which clears it.
+func (s *FileUploadService) fail(u *upload, err error) error {
+	u.f.Close()
+	_ = os.Remove(u.tmp)
+	_ = os.Remove(u.parts)
+	if u.cleanup != "" {
+		_ = os.RemoveAll(u.cleanup)
+	}
+	u.failed = fmt.Errorf("upload failed: %s", transfer.HumanError(err))
+	return u.failed
+}
+
+func appendLine(p string, n int64) error {
+	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(f, n); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+// loadParts reads which chunks an earlier run of the service received.
+func loadParts(p string, received []bool) int64 {
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		return 0
+	}
+	var count int64
+	for _, line := range strings.Fields(string(raw)) {
+		var n int64
+		if _, err := fmt.Sscan(line, &n); err == nil && n >= 1 && n <= int64(len(received)) && !received[n-1] {
+			received[n-1] = true
+			count++
+		}
+	}
+	return count
 }
 
 // HasChunk backs the uploader's test-chunk request (resume support).
@@ -193,10 +264,26 @@ func (s *FileUploadService) HasChunk(c UploadChunk) bool {
 	u, ok := s.uploads[uploadKey(c)]
 	s.mu.Unlock()
 	if !ok {
-		return false
+		// Not in memory: after a restart, the chunk record on disk knows.
+		dest, err := resolveUploadDest(c.Path, c.RelativePath)
+		if err != nil || c.TotalSize <= 0 || c.TotalChunks < 1 {
+			return false
+		}
+		if u, err = s.get(c, dest); err != nil {
+			return false
+		}
 	}
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	if u.failed != nil {
+		// A new attempt is starting (the browser checks chunks first).
+		s.mu.Lock()
+		if s.uploads[u.key] == u {
+			delete(s.uploads, u.key)
+		}
+		s.mu.Unlock()
+		return false
+	}
 	i := c.ChunkNumber - 1
 	return i >= 0 && i < int64(len(u.received)) && u.received[i]
 }
@@ -217,6 +304,7 @@ func (s *FileUploadService) get(c UploadChunk, dest string) (*upload, error) {
 			return nil, err
 		}
 		u.tmp = filepath.Join(dir, filepath.Base(dest))
+		u.parts = filepath.Join(dir, ".parts")
 		u.cleanup = dir
 		destDir := filepath.Dir(dest)
 		u.deliver = func(tmp string) error {
@@ -233,7 +321,13 @@ func (s *FileUploadService) get(c UploadChunk, dest string) (*upload, error) {
 		}
 		// Next to the destination: same filesystem, so publishing is an
 		// atomic rename. Hidden, and filtered from listings.
-		u.tmp = filepath.Join(filepath.Dir(dest), "."+filepath.Base(dest)+".nvupload-"+key[:12])
+		u.tmp = filepath.Join(filepath.Dir(dest), transfer.HiddenTempName(filepath.Base(dest), ".nvupload-"+key[:12]))
+		u.parts = filepath.Join(filepath.Dir(dest), transfer.HiddenTempName(filepath.Base(dest), ".nvupload-"+key[:12]+"p"))
+	}
+	if st, err := os.Stat(u.tmp); err == nil && st.Size() == c.TotalSize {
+		u.count = loadParts(u.parts, u.received)
+	} else {
+		_ = os.Remove(u.parts)
 	}
 	f, err := os.OpenFile(u.tmp, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
@@ -249,27 +343,21 @@ func (s *FileUploadService) get(c UploadChunk, dest string) (*upload, error) {
 	return u, nil
 }
 
+// finalize publishes a fully received upload; on error the caller's
+// fail() cleans up.
 func (s *FileUploadService) finalize(u *upload) error {
-	fail := func(err error) error {
-		u.f.Close()
-		_ = os.Remove(u.tmp)
-		if u.cleanup != "" {
-			_ = os.RemoveAll(u.cleanup)
-		}
-		return err
-	}
 	if err := u.f.Sync(); err != nil {
-		return fail(fmt.Errorf("saving upload: %w", err))
+		return fmt.Errorf("saving upload: %w", err)
 	}
 	if err := u.f.Close(); err != nil {
-		return fail(fmt.Errorf("saving upload: %w", err))
+		return fmt.Errorf("saving upload: %w", err)
 	}
 	st, err := os.Stat(u.tmp)
 	if err != nil {
-		return fail(err)
+		return err
 	}
 	if st.Size() != u.size {
-		return fail(fmt.Errorf("upload verification failed: %d of %d bytes", st.Size(), u.size))
+		return fmt.Errorf("upload verification failed: %d of %d bytes", st.Size(), u.size)
 	}
 	if u.deliver != nil {
 		err := u.deliver(u.tmp)
@@ -280,7 +368,7 @@ func (s *FileUploadService) finalize(u *upload) error {
 		return nil
 	}
 	if err := os.Rename(u.tmp, u.dest); err != nil {
-		return fail(err)
+		return err
 	}
 	return nil
 }
@@ -292,7 +380,7 @@ func copyAt(f *os.File, r io.Reader, offset int64) (int64, error) {
 		m, err := r.Read(buf)
 		if m > 0 {
 			if _, werr := f.WriteAt(buf[:m], offset+n); werr != nil {
-				return n, werr
+				return n, fmt.Errorf("%w: %w", errUploadDisk, werr)
 			}
 			n += int64(m)
 		}
@@ -323,6 +411,7 @@ func (s *FileUploadService) janitor() {
 			if u.last.Before(cutoff) {
 				u.f.Close()
 				_ = os.Remove(u.tmp)
+				_ = os.Remove(u.parts)
 				if u.cleanup != "" {
 					_ = os.RemoveAll(u.cleanup)
 				}

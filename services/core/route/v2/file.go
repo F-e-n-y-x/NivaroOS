@@ -25,6 +25,7 @@ func (c *NivaroOS) CheckUploadChunk(ctx *echo.Context, params codegen.CheckUploa
 		return ctx.NoContent(http.StatusBadRequest)
 	}
 	totalSize, _ := strconv.ParseInt(ctx.QueryParam("totalSize"), 10, 64)
+	totalChunks, _ := strconv.ParseInt(ctx.QueryParam("totalChunks"), 10, 64)
 	// 200 = the chunk is already here (the uploader skips it: resume);
 	// 204 = send it.
 	if c.fileUploadService.HasChunk(service.UploadChunk{
@@ -32,6 +33,7 @@ func (c *NivaroOS) CheckUploadChunk(ctx *echo.Context, params codegen.CheckUploa
 		RelativePath: uploadRelativePath(ctx.QueryParam("relativePath"), ctx.QueryParam("filename")),
 		Identifier:   ctx.QueryParam("identifier"),
 		ChunkNumber:  chunkNumber,
+		TotalChunks:  totalChunks,
 		TotalSize:    totalSize,
 	}) {
 		return ctx.NoContent(http.StatusOK)
