@@ -219,7 +219,7 @@ func runHostVNCWayland(args []string) int {
 	}
 	defer conn.Close()
 
-	start := func() (*wlSession, error) { return startMutterSession(conn) }
+	start := func() (*wlSession, error) { return startMutterSession(conn, 1) }
 	if backend != "mutter" {
 		tokenFile := filepath.Join(u.HomeDir, ".local/state/nivaroos/host-desktop-restore-token")
 		start = func() (*wlSession, error) {
@@ -455,7 +455,8 @@ func (m mutterInput) Button(b int32, down bool)    { m.call("NotifyPointerButton
 func (m mutterInput) Scroll(axis uint32, n int32)  { m.call("NotifyPointerAxisDiscrete", axis, n) }
 func (m mutterInput) Key(keysym uint32, down bool) { m.call("NotifyKeyboardKeysym", keysym, down) }
 
-func startMutterSession(conn *dbus.Conn) (*wlSession, error) {
+// cursorMode: 0 hidden (WebRTC: the viewer draws its own), 1 drawn into the frames.
+func startMutterSession(conn *dbus.Conn, cursorMode uint32) (*wlSession, error) {
 	var rdPath dbus.ObjectPath
 	if err := conn.Object(mutterRD, "/org/gnome/Mutter/RemoteDesktop").Call(mutterRD+".CreateSession", 0).Store(&rdPath); err != nil {
 		return nil, fmt.Errorf("RemoteDesktop.CreateSession: %w", err)
@@ -471,9 +472,9 @@ func startMutterSession(conn *dbus.Conn) (*wlSession, error) {
 		return nil, fmt.Errorf("ScreenCast.CreateSession: %w", err)
 	}
 	var streamPath dbus.ObjectPath
-	// "" = the primary monitor; cursor-mode 1 = drawn into the frames.
+	// "" = the primary monitor.
 	if err := conn.Object(mutterSC, scPath).Call(mutterSC+".Session.RecordMonitor", 0, "",
-		map[string]dbus.Variant{"cursor-mode": dbus.MakeVariant(uint32(1))}).Store(&streamPath); err != nil {
+		map[string]dbus.Variant{"cursor-mode": dbus.MakeVariant(cursorMode)}).Store(&streamPath); err != nil {
 		return nil, fmt.Errorf("RecordMonitor: %w", err)
 	}
 	_ = conn.AddMatchSignal(dbus.WithMatchObjectPath(streamPath), dbus.WithMatchInterface(mutterSC+".Stream"), dbus.WithMatchMember("PipeWireStreamAdded"))

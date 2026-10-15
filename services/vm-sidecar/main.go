@@ -38,6 +38,7 @@ func main() {
 	RegisterScreenshotRoutes(mux, store)
 	RegisterHostRoutes(mux)
 	RegisterHostDesktopInstallRoutes(mux)
+	RegisterHostStreamRoutes(mux)
 	StartHostCapsLockWatcher()
 
 	srv := &http.Server{

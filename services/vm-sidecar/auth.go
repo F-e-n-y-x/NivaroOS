@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"encoding/json"
 	"net/http"
@@ -49,7 +50,7 @@ func requireAuth(next http.Handler, runtimePath string) http.Handler {
 			token = r.URL.Query().Get("token")
 		}
 
-		valid, _, err := jwt.Validate(token, publicKeyFunc)
+		valid, claims, err := jwt.Validate(token, publicKeyFunc)
 		if err != nil || !valid {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
@@ -59,8 +60,17 @@ func requireAuth(next http.Handler, runtimePath string) http.Handler {
 			})
 			return
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), claimsKey{}, claims)))
 	})
+}
+
+// claimsKey: the validated token's claims in a request's context (what a
+// long-lived stream re-checks for revocation).
+type claimsKey struct{}
+
+func requestClaims(r *http.Request) *jwt.Claims {
+	c, _ := r.Context().Value(claimsKey{}).(*jwt.Claims)
+	return c
 }
 
 func isHostRoute(path string) bool {

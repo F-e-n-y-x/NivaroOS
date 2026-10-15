@@ -60,6 +60,16 @@ root-only RFB socket, `/run/nivaroos/hostvnc.sock`, served by the wrapper
   Wayland desktop exists, and on sidecar start for older installs once the
   active session is Wayland.
 
+"Smooth (beta)" (`hoststream_webrtc.go`): `GET /host/stream` says which
+lanes work; `POST /host/webrtc/offer` (non-trickle SDP) starts H.264 over
+WebRTC - a `gst-launch-1.0` child (ximagesrc, or on GNOME Wayland its own
+mutter ScreenCast session) encodes with nvh264enc / vah264enc / x264enc
+into RTP on loopback, pion forwards it; ICE on UDP 28650, LAN and
+Tailscale addresses only. Input and clipboard go to the same RFB socket.
+One viewer; nothing runs until an offer comes, and the encoder stops 10 s
+after the viewer leaves. `go test -tags webrtc_integration` does a real
+offer against a throwaway Xvfb + x11vnc.
+
 ## Testing
 
 Handlers are unit-tested against libvirt's `test:///default` fake driver
