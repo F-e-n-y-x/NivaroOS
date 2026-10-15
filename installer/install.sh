@@ -1726,9 +1726,9 @@ remove_backup_module() {
 # are embedded in it (services/vm-sidecar/hostdesktop/, the single source of
 # truth), and `nivaroos-vm-sidecar install-host-desktop` is exactly what the
 # dashboard's Install button and `nivaroos host-desktop enable` run -
-# per-distro packages (x11vnc, xdotool, xrandr/xset/xrefresh, xdpyinfo; plus
-# GStreamer's PipeWire capture and wayvnc where a Wayland desktop is
-# installed) and all. Whether there's a desktop to stream is checked later,
+# per-distro packages (x11vnc, xdotool, xrandr/xset/xrefresh, xdpyinfo,
+# GStreamer for the "Smooth (beta)" WebRTC stream; plus GStreamer's PipeWire
+# capture and wayvnc where a Wayland desktop is installed) and all. Whether there's a desktop to stream is checked later,
 # from the dashboard.
 # ------------------------------------------------------------------------------
 install_host_desktop() {
@@ -1746,6 +1746,30 @@ install_host_desktop() {
 			[ -e \"\$f\" ] && echo \"\$f\" >> \"$MANIFEST_FILE\"
 		done
 		sort -u -o \"$MANIFEST_FILE\" \"$MANIFEST_FILE\" 2>/dev/null || true
+	"
+}
+
+# ------------------------------------------------------------------------------
+# Host Desktop firewall (always, also for upgrades and for Host Desktop
+# enabled later from the dashboard): installer/nivaroos-host-firewall.sh
+# keeps x11vnc's TCP 5900 dropped (audit C1/L7 backstop) and opens UDP 28650
+# for the "Smooth (beta)" WebRTC stream on LAN + Tailscale only, where ufw or
+# firewalld is active. Re-applied at every boot by its oneshot unit; the
+# uninstaller runs `remove`.
+# ------------------------------------------------------------------------------
+install_host_firewall() {
+	run_step "Installing Host Desktop firewall rules" "
+		command -v nft >/dev/null 2>&1 || pkg_install_each nftables
+		mkdir -p /usr/local/lib/nivaroos
+		install -m 755 \"${SRC_DIR}/installer/nivaroos-host-firewall.sh\" /usr/local/lib/nivaroos/nivaroos-host-firewall
+		install -m 644 \"${SRC_DIR}/installer/systemd/nivaroos-host-firewall.service\" /usr/lib/systemd/system/nivaroos-host-firewall.service
+		for f in /usr/local/lib/nivaroos/nivaroos-host-firewall /usr/lib/systemd/system/nivaroos-host-firewall.service; do
+			grep -qxF \"\$f\" \"$MANIFEST_FILE\" 2>/dev/null || echo \"\$f\" >> \"$MANIFEST_FILE\"
+		done
+		systemctl daemon-reload
+		systemctl enable nivaroos-host-firewall.service >/dev/null 2>&1 || true
+		# restart = apply now (oneshot + RemainAfterExit); never fails the install.
+		systemctl restart nivaroos-host-firewall.service || /usr/local/lib/nivaroos/nivaroos-host-firewall apply
 	"
 }
 
@@ -2217,7 +2241,7 @@ plan_steps() {
 	[ "$WITH_HOST_DESKTOP" = "yes" ] && echo install_host_desktop
 	[ "$WITH_DOWNLOAD_STATION" = "yes" ] && echo install_download_station
 	[ "$WITH_BACKUP" = "yes" ] && echo install_backup
-	echo install_ui start_core_services verify_health install_uninstall_wrapper install_safety_net install_mdns_advertisement remove_leftovers
+	echo install_host_firewall install_ui start_core_services verify_health install_uninstall_wrapper install_safety_net install_mdns_advertisement remove_leftovers
 }
 
 main() {

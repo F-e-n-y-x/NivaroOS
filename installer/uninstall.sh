@@ -21,7 +21,7 @@ fi
 
 set -Eeuo pipefail
 
-ALL_UNITS="nivaroos-watchdog.timer nivaroos-watchdog.service nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-fans.service nivaroos-vm-sidecar.service nivaroos-download-sidecar.service nivaroos-torrent.service nivaroos-ds-browser.socket nivaroos-ds-browser.service nivaroos-ds-browser-install.service nivaroos-backup.service nivaroos-host-desktop.service rclone.service"
+ALL_UNITS="nivaroos-watchdog.timer nivaroos-watchdog.service nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-fans.service nivaroos-vm-sidecar.service nivaroos-download-sidecar.service nivaroos-torrent.service nivaroos-ds-browser.socket nivaroos-ds-browser.service nivaroos-ds-browser-install.service nivaroos-backup.service nivaroos-host-desktop.service nivaroos-host-firewall.service rclone.service"
 MANIFEST_FILE="/var/lib/nivaroos/manifest"
 DESKTOP_PROVISION_MARKER="/var/lib/nivaroos/provisioned-desktop"
 GDM_WAYLAND_MARKER="/var/lib/nivaroos/host-desktop-gdm-wayland"
@@ -360,9 +360,14 @@ remove_ds_extras() {
 	return 0
 }
 
-# Host Desktop: GDM's WaylandEnable=false back to what it was, the display
-# drop-ins it wrote, and the Wayland portal's remembered screen-share grant.
+# Host Desktop: its firewall rules, GDM's WaylandEnable=false back to what it
+# was, the display drop-ins it wrote, and the Wayland portal's remembered
+# screen-share grant.
 revert_host_desktop() {
+	# Firewall rules first: the script itself goes with /usr/local/lib/nivaroos.
+	if [ -x /usr/local/lib/nivaroos/nivaroos-host-firewall ]; then
+		/usr/local/lib/nivaroos/nivaroos-host-firewall remove || true
+	fi
 	rm -f /usr/local/bin/nivaroos-host-desktop.sh /usr/local/bin/nivaroos-host-desktop-de-install.sh \
 		/etc/lightdm/lightdm.conf.d/60-nivaroos-host-desktop.conf /etc/sddm.conf.d/60-nivaroos-host-desktop.conf \
 		/etc/X11/xorg.conf.d/10-nivaroos-headless.conf /run/nivaroos/host-desktop-wayland.status \
