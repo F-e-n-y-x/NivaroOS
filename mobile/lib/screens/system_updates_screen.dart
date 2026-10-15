@@ -41,17 +41,10 @@ class _Packages {
       );
 }
 
-class _ServerVersion {
-  _ServerVersion(this.current, this.needUpdate, this.latest, this.changeLog);
-  final String current;
-  final bool needUpdate;
-  final String latest;
-  final String changeLog;
-}
-
 /// Updates, in three separate tracks that are never mixed:
 ///
-/// - NivaroOS itself: `GET /v1/sys/version/check`, installed with
+/// - NivaroOS itself: `GET /v1/sys/version/check` (the server's build vs
+///   GitHub master, see [ServerUpdate]), installed with
 ///   `POST /v1/sys/update`.
 /// - The server's Debian packages: `/v1/sys/packages/*`.
 /// - This app: [AppUpdateService], the one self-update path (sideload
@@ -73,7 +66,7 @@ class SystemUpdatesScreen extends StatefulWidget {
 }
 
 class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
-  _ServerVersion? _version;
+  ServerUpdate? _version;
   Object? _versionError;
   _Packages? _packages;
   Object? _packagesError;
@@ -106,10 +99,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
           final res = await api.get('/sys/version/check');
           final d = res['data'];
           if (d is! Map) throw ApiException('Unexpected answer from the server.');
-          final v = d['version'];
-          final latest = v is Map ? v['version']?.toString() ?? '' : '';
-          _version = _ServerVersion(d['current_version']?.toString() ?? '', d['need_update'] == true, latest,
-              v is Map ? v['change_log']?.toString().trim() ?? '' : '');
+          _version = ServerUpdate.fromJson(d);
           _versionError = null;
         } catch (e) {
           _versionError = e;
@@ -184,10 +174,9 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
   static String _msg(Object e) => e.toString().replaceFirst('Exception: ', '');
 
   Future<void> _installServerUpdate() async {
-    final v = _version!;
     final ok = await ConfirmDialog.confirm(
       context,
-      title: 'Install NivaroOS ${v.latest}?',
+      title: 'Update NivaroOS?',
       message: 'NivaroOS services restart while it installs, so this app and the web UI lose the connection for a few minutes.',
       confirmLabel: 'Install',
     );
@@ -195,7 +184,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
     setState(() => _installingServer = true);
     try {
       await ApiClient.instance.post('/sys/update');
-      _snack('Installing NivaroOS ${v.latest}');
+      _snack('Updating NivaroOS');
     } catch (e) {
       _snack("Couldn't start the update. ${_msg(e)}");
     } finally {
@@ -363,25 +352,29 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
         ),
       ]);
     }
-    final current = v.current.isEmpty ? 'NivaroOS' : 'NivaroOS ${v.current}';
+    final behind = v.behind == true;
     return TileGroup(title: 'NivaroOS', children: [
       MergeSemantics(
         child: ListTile(
-          leading: _stateIcon(context, upToDate: !v.needUpdate),
-          title: Text(current),
+          leading: v.behind == null ? const Icon(Icons.help_outline) : _stateIcon(context, upToDate: !behind),
+          title: Text(v.build.isEmpty ? 'NivaroOS' : 'NivaroOS · ${v.build}'),
           subtitle: _installingServer
               ? _progressSubtitle('Starting the update')
-              : Text(v.needUpdate ? (v.latest.isEmpty ? 'A newer version is available' : 'Version ${v.latest} is available') : 'Up to date'),
+              : Text(switch (v.behind) {
+                  true => v.offer,
+                  false => 'Up to date',
+                  null => "Couldn't check for updates${v.reason.isEmpty ? '' : ' · ${v.reason}'}",
+                }),
         ),
       ),
-      if (v.changeLog.isNotEmpty)
+      if (behind && v.latestMessage.isNotEmpty)
         ListTile(
           leading: const Icon(Icons.notes_outlined),
-          title: const Text("What's new"),
+          title: const Text('Latest change'),
           trailing: const Icon(Icons.chevron_right),
-          onTap: () => _showNotes(v.needUpdate && v.latest.isNotEmpty ? 'NivaroOS ${v.latest}' : current, v.changeLog),
+          onTap: () => _showNotes('Latest change on GitHub', v.latestMessage),
         ),
-      if (v.needUpdate) _action(v.latest.isEmpty ? 'Install the update' : 'Install ${v.latest}', _installingServer ? null : _installServerUpdate),
+      if (behind) _action('Update NivaroOS', _installingServer ? null : _installServerUpdate),
     ]);
   }
 

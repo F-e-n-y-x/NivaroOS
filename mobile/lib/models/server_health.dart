@@ -449,11 +449,11 @@ ServerHealth buildHealth({
   } else {
     switch (updates.serverUpdate) {
       case true:
-        final v = updates.serverVersion;
+        final n = updates.serverChanges;
         items.add(AttentionItem(
           kind: AttentionKind.serverUpdate,
           severity: AttentionSeverity.info,
-          title: v == null || v.isEmpty ? 'NivaroOS update available' : 'NivaroOS $v is available',
+          title: updates.serverOffer ?? (n == null || n <= 0 ? 'NivaroOS update available' : 'NivaroOS: ${ServerUpdate.changesText(n)}'),
           detail: 'Server update',
         ));
       case false:

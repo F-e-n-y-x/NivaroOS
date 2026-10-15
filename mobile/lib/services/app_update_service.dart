@@ -77,6 +77,8 @@ class AppRelease {
     for (final r in releases) {
       if (r is! Map || r['draft'] == true || r['prerelease'] == true) continue;
       final tag = (r['tag_name'] ?? '').toString();
+      // server-vX.Y.Z: the server's own releases, never this app's.
+      if (tag.startsWith('server-')) continue;
       final version = versionFromTag(tag);
       if (version == null) continue;
       String? apk;

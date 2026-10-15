@@ -365,7 +365,8 @@ class HomeController extends ChangeNotifier {
   /// the Updates screen closes.
   Future<void> loadUpdates() async {
     bool? serverUpdate;
-    String? serverVersion;
+    int? serverChanges;
+    String? serverOffer;
     int? packages;
     var security = 0;
     await Future.wait([
@@ -374,9 +375,10 @@ class HomeController extends ChangeNotifier {
           final res = await _api.get('/sys/version/check');
           final d = res['data'];
           if (d is Map) {
-            serverUpdate = d['need_update'] == true;
-            final v = d['version'];
-            if (v is Map) serverVersion = v['version']?.toString();
+            final s = ServerUpdate.fromJson(d);
+            serverUpdate = s.behind;
+            serverChanges = s.aheadBy;
+            if (s.latestVersion.isNotEmpty) serverOffer = s.offer;
           }
         } catch (_) {}
       }(),
@@ -391,7 +393,7 @@ class HomeController extends ChangeNotifier {
         } catch (_) {}
       }(),
     ]);
-    updates = UpdateSummary(serverUpdate: serverUpdate, serverVersion: serverVersion, packages: packages, security: security);
+    updates = UpdateSummary(serverUpdate: serverUpdate, serverChanges: serverChanges, serverOffer: serverOffer, packages: packages, security: security);
     _notify();
   }
 

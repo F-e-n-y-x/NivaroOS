@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../backup/backup_api.dart';
 import '../backup/backup_models.dart' show BackupHealth;
+import '../models/dashboard_stats.dart' show ServerUpdate;
 import '../backup/backup_state.dart';
 import '../backup/backup_strings.dart';
 import '../services/api_client.dart';
@@ -46,8 +47,7 @@ class _MoreScreenState extends State<MoreScreen> {
 
   // NivaroOS itself, for its own row: the installed version and, when one
   // is out, the new one. Null until known.
-  String? _serverVersion;
-  String? _serverLatest;
+  ServerUpdate? _server;
 
   // Backup & Sync, for its row: null until known; installed false when
   // the optional module doesn't answer.
@@ -91,11 +91,7 @@ class _MoreScreenState extends State<MoreScreen> {
       final res = await ApiClient.instance.get('/sys/version/check');
       final data = res['data'];
       if (data is! Map || !mounted) return;
-      final latest = data['version'] is Map ? (data['version'] as Map)['version']?.toString() : null;
-      setState(() {
-        _serverVersion = data['current_version']?.toString();
-        _serverLatest = data['need_update'] == true && latest != null && latest.isNotEmpty ? latest : null;
-      });
+      setState(() => _server = ServerUpdate.fromJson(data));
     } catch (_) {}
   }
 
@@ -155,12 +151,12 @@ class _MoreScreenState extends State<MoreScreen> {
             ListTile(
               leading: const Icon(Icons.system_update_alt_outlined),
               title: const Text('NivaroOS update'),
-              subtitle: Text(_serverLatest != null
-                  ? 'Version $_serverLatest is available'
-                  : _serverVersion != null && _serverVersion!.isNotEmpty
-                      ? 'Up to date · $_serverVersion'
-                      : 'NivaroOS and this app'),
-              trailing: _serverLatest != null ? const StatusChip(label: 'New', status: Status.info) : null,
+              subtitle: Text(switch (_server) {
+                ServerUpdate s when s.behind == true => s.offer,
+                ServerUpdate(behind: false, :final build) when build.isNotEmpty => 'Up to date · $build',
+                _ => 'NivaroOS and this app',
+              }),
+              trailing: _server?.behind == true ? const StatusChip(label: 'New', status: Status.info) : null,
               onTap: () => _openUpdates(UpdatesPage.nivaroos),
             ),
             ListTile(

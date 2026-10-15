@@ -2,7 +2,18 @@
  "success": 200,
  "message": "ok",
  "data": {
-  "current_version": "1.0.0",
+  "build": {
+   "commit": "0d3716d2adeb2906089386668ef9363e5545438d",
+   "short": "0d3716d",
+   "date": "2026-10-15T21:54:43Z",
+   "version": "2026.10.15-0d3716d"
+  },
+  "update": {
+   "state": "up_to_date",
+   "ahead_by": 0,
+   "checked_at": "2026-10-16T04:00:00Z"
+  },
+  "current_version": "2026.10.15-0d3716d",
   "need_update": false,
   "version": {
    "id": 0,

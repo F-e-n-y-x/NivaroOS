@@ -231,10 +231,10 @@ void main() {
 
   group('updates and apps', () {
     test('an update is worth a look; a security update is a warning', () {
-      final h = _health(updates: const UpdateSummary(serverUpdate: true, serverVersion: '1.4.0', packages: 12, security: 2));
+      final h = _health(updates: const UpdateSummary(serverUpdate: true, serverChanges: 4, packages: 12, security: 2));
       expect(h.attention.map((a) => (a.title, a.severity)), [
         ('12 system updates', AttentionSeverity.warning),
-        ('NivaroOS 1.4.0 is available', AttentionSeverity.info),
+        ('NivaroOS: 4 new changes on GitHub since this build', AttentionSeverity.info),
       ]);
       expect(h.verdict, '2 things need attention');
     });

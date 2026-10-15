@@ -7,6 +7,8 @@
 // Unknown values stay unknown: a field the server didn't send is null (or
 // 0 where the old API needs an int), never a plausible-looking default.
 
+import 'package:intl/intl.dart';
+
 export 'server_health.dart';
 
 int _safeInt(dynamic val) {
@@ -487,17 +489,72 @@ class HostInfo {
 /// Pending updates, from `/sys/version/check` and `/sys/packages/check`.
 /// Either half is null when its check failed.
 class UpdateSummary {
-  const UpdateSummary({this.serverUpdate, this.serverVersion, this.packages, this.security = 0});
+  const UpdateSummary({this.serverUpdate, this.serverChanges, this.serverOffer, this.packages, this.security = 0});
 
-  /// True when a newer NivaroOS is available; null if the check failed.
+  /// True when GitHub master has changes the server's build lacks; null if
+  /// that couldn't be checked.
   final bool? serverUpdate;
 
-  /// The version on offer when [serverUpdate] is true.
-  final String? serverVersion;
+  /// How many, when [serverUpdate] is true and the server said.
+  final int? serverChanges;
+
+  /// "NivaroOS 1.5.1 is available" when a server-v release is on offer.
+  final String? serverOffer;
 
   /// Upgradable system packages; null if the check failed.
   final int? packages;
   final int security;
+}
+
+/// The server's own update state from `/sys/version/check`. The server is
+/// built from GitHub master, so it has no release number: it is behind
+/// when master has commits its build lacks (the server asks GitHub). The
+/// GitHub releases are this app's, never the server's version.
+class ServerUpdate {
+  const ServerUpdate({this.behind, this.aheadBy, this.latestVersion = '', this.build = '', this.latestMessage = '', this.reason = ''});
+
+  /// null: the server couldn't ask GitHub (offline, rate limited...).
+  final bool? behind;
+  final int? aheadBy;
+
+  /// A newer server-vX.Y.Z release (release installs only), else ''.
+  final String latestVersion;
+
+  /// "build abc1234, 16 Oct", "1.5.0 (build abc1234, 16 Oct)" for a release
+  /// install, or an older server's current_version.
+  final String build;
+  final String latestMessage;
+  final String reason;
+
+  factory ServerUpdate.fromJson(Map<dynamic, dynamic> d) {
+    var build = d['current_version']?.toString() ?? '';
+    final b = d['build'];
+    if (b is Map && (b['short']?.toString() ?? '').isNotEmpty) {
+      build = 'build ${b['short']}';
+      final t = DateTime.tryParse(b['date']?.toString() ?? '');
+      if (t != null) build += ', ${DateFormat('d MMM').format(t.toLocal())}';
+      if (b['release'] == true) build = '${b['version']} ($build)';
+    }
+    final u = d['update'];
+    // Older servers: need_update only.
+    if (u is! Map) return ServerUpdate(behind: d['need_update'] == true, build: build);
+    final state = u['state']?.toString();
+    return ServerUpdate(
+      behind: state == 'behind' ? true : (state == 'up_to_date' ? false : null),
+      aheadBy: (u['ahead_by'] as num?)?.toInt(),
+      latestVersion: u['latest_version']?.toString() ?? '',
+      build: build,
+      latestMessage: u['latest_message']?.toString().trim() ?? '',
+      reason: u['reason']?.toString() ?? '',
+    );
+  }
+
+  /// What's on offer: "NivaroOS 1.5.1 is available" or the change count.
+  String get offer => latestVersion.isNotEmpty ? 'NivaroOS $latestVersion is available' : changesText(aheadBy);
+
+  /// "3 new changes on GitHub since this build".
+  static String changesText(int? n) =>
+      n == null || n <= 0 ? 'Changes on GitHub since this build' : '$n new change${n == 1 ? '' : 's'} on GitHub since this build';
 }
 
 /// One backup job as Home needs it (`GET /v1/backup/jobs`).

@@ -149,9 +149,51 @@ void main() {
       expect(items.single.detail, contains('Sandisk'));
     });
 
-    test('a NivaroOS update names its version', () {
-      final items = buildAttention(updates: const UpdateSummary(serverUpdate: true, serverVersion: '1.1.0'));
-      expect(items.single.title, 'NivaroOS 1.1.0 is available');
+    test('a NivaroOS update says how far GitHub master is ahead', () {
+      final items = buildAttention(updates: const UpdateSummary(serverUpdate: true, serverChanges: 3));
+      expect(items.single.title, 'NivaroOS: 3 new changes on GitHub since this build');
+    });
+  });
+
+  // The server is built from master: its update is "master is ahead of my
+  // commit", never a comparison with the GitHub release (the Android app).
+  group('ServerUpdate.fromJson', () {
+    const build = {'commit': 'abc1234def', 'short': 'abc1234', 'date': '2026-10-16T10:00:00Z', 'version': '2026.10.16-abc1234'};
+
+    test('behind', () {
+      final s = ServerUpdate.fromJson({
+        'build': build,
+        'update': {'state': 'behind', 'ahead_by': 1, 'latest_message': ' fix it \n'},
+        'need_update': true,
+      });
+      expect((s.behind, s.aheadBy, s.build, s.latestMessage), (true, 1, 'build abc1234, 16 Oct', 'fix it'));
+      expect(ServerUpdate.changesText(s.aheadBy), '1 new change on GitHub since this build');
+    });
+
+    test('up to date', () {
+      final s = ServerUpdate.fromJson({'build': build, 'update': {'state': 'up_to_date', 'ahead_by': 0}});
+      expect(s.behind, isFalse);
+    });
+
+    test("GitHub down or rate limited is couldn't check, not an update", () {
+      final s = ServerUpdate.fromJson({'build': build, 'update': {'state': 'unknown', 'reason': 'GitHub rate limit, try again later'}, 'need_update': false});
+      expect(s.behind, isNull);
+      expect(s.reason, contains('rate limit'));
+      expect(buildAttention(updates: UpdateSummary(serverUpdate: s.behind, packages: 0)), isEmpty);
+    });
+
+    test('a release install names the newer server release', () {
+      final s = ServerUpdate.fromJson({
+        'build': {...build, 'version': '1.5.0', 'release': true},
+        'update': {'state': 'behind', 'ahead_by': 0, 'latest_version': '1.5.1'},
+      });
+      expect((s.behind, s.build, s.offer), (true, '1.5.0 (build abc1234, 16 Oct)', 'NivaroOS 1.5.1 is available'));
+      expect(buildAttention(updates: UpdateSummary(serverUpdate: true, serverOffer: s.offer)).single.title, 'NivaroOS 1.5.1 is available');
+    });
+
+    test('an older server: need_update and current_version', () {
+      final s = ServerUpdate.fromJson({'current_version': '1.0.0', 'need_update': false, 'version': {'version': '1.4.16'}});
+      expect((s.behind, s.build), (false, '1.0.0'));
     });
   });
 }

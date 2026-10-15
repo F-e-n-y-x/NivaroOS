@@ -207,6 +207,8 @@ void main() {
       expect(r.version, '1.3.0');
       expect(r.sumsUrl, isNotNull);
       expect(AppRelease.pick([release('server-only', apk: false)]), isNull);
+      // A server-v release is the server's, even if it carried an APK.
+      expect(AppRelease.pick([release('server-v1.5.0')]), isNull);
     });
 
     test('compares versions numerically', () {
