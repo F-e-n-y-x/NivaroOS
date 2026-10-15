@@ -23,6 +23,7 @@ export const REASONS = {
 	heartbeat: 'The server stopped answering',
 	frozen: 'The picture froze',
 	peer: 'The connection dropped',
+	encoder: 'Smooth video failed to start on this server',
 }
 
 const STORAGE_KEY = 'host_desktop_stream'

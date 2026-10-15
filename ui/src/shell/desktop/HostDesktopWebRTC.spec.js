@@ -141,6 +141,20 @@ describe('HostDesktopWebRTC', () => {
 		expect(lastState()).toEqual({ state: 'fallback', reason: 'Encoder failed to start' })
 	})
 
+	test('the server says every encoder failed: Auto falls back, Smooth retries', async () => {
+		await mount({ fallback: true })
+		pcs[0].msg({ t: 'err', code: 'encoder_failed' })
+		await flush()
+		expect(lastState()).toEqual({ state: 'fallback', reason: REASONS.encoder })
+		app.unmount()
+		el.remove()
+		events = []
+		await mount({ fallback: false })
+		pcs.at(-1).msg({ t: 'err', code: 'encoder_failed' })
+		await flush()
+		expect(lastState()).toEqual({ state: 'reconnecting', reason: REASONS.encoder })
+	})
+
 	test('Smooth: no first frame re-offers with backoff instead of falling back', async () => {
 		await mount({ fallback: false })
 		await vi.advanceTimersByTimeAsync(5000)

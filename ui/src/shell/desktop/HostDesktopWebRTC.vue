@@ -164,7 +164,11 @@ function onMessage(e) {
 		remote = { w: m.w, h: m.h }
 		emit('size', remote)
 	} else if (m.t === 'clip' && typeof m.text === 'string') emit('clipboard', m.text)
-	else if (m.t === 'err') console.warn('Host Desktop stream error:', m.code)
+	else if (m.t === 'err') {
+		console.warn('Host Desktop stream error:', m.code)
+		// Every encoder on the server failed: no picture is coming.
+		if (m.code === 'encoder_failed') props.fallback ? giveUp(REASONS.encoder) : retry(REASONS.encoder)
+	}
 }
 
 async function offer() {

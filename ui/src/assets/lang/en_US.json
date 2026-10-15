@@ -3549,5 +3549,13 @@
   "Smooth frame rate": "Smooth frame rate",
   "Smooth max bitrate": "Smooth max bitrate",
   "RTT {ms} ms": "RTT {ms} ms",
-  "Reconnecting...": "Reconnecting..."
+  "Reconnecting...": "Reconnecting...",
+  "GStreamer is not installed - reinstall Host Desktop from the dashboard": "GStreamer is not installed - reinstall Host Desktop from the dashboard",
+  "Smooth video on Wayland works with GNOME only for now": "Smooth video on Wayland works with GNOME only for now",
+  "No desktop session to stream": "No desktop session to stream",
+  "GStreamer plugins for Smooth video are missing - reinstall Host Desktop from the dashboard": "GStreamer plugins for Smooth video are missing - reinstall Host Desktop from the dashboard",
+  "No H.264 video encoder found on this server": "No H.264 video encoder found on this server",
+  "The Host Desktop VNC server is not running": "The Host Desktop VNC server is not running",
+  "This server has no LAN or Tailscale address for Smooth video": "This server has no LAN or Tailscale address for Smooth video",
+  "Smooth video failed to start on this server": "Smooth video failed to start on this server"
 }
