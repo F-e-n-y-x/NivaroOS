@@ -56,6 +56,23 @@ abstract final class SessionService {
     return false;
   }
 
+  /// The same server and session at a new address [url] (its https
+  /// address, see offerSecureConnection): the profile, the per-server
+  /// settings and the pairing move along; the heartbeat restarts on it.
+  static Future<void> moveServerTo(String url) async {
+    final from = ApiClient.instance.baseUrl;
+    if (from == url) return;
+    await DeviceSyncService.instance.onSigningOut();
+    final id = await StorageService.instance.getActiveProfileId();
+    final profile = (await StorageService.instance.getProfiles()).where((p) => p.id == id).firstOrNull;
+    await StorageService.instance.moveServerKeys(from, url);
+    if (profile != null) await StorageService.instance.saveProfile(profile.copyWith(url: url));
+    await StorageService.instance.setServerUrl(url);
+    ApiClient.instance.setBaseUrl(url);
+    await OfflineCache.instance.clear(from);
+    await started();
+  }
+
   /// Points the app at another server address (discovery, manual entry)
   /// without a session yet. Background work for the previous server stops.
   static Future<void> useServer(String url) async {

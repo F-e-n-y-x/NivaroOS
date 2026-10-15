@@ -17,6 +17,7 @@ import 'package:video_player/video_player.dart';
 
 import '../models/file_entry.dart';
 import '../services/api_client.dart';
+import '../services/media_relay.dart';
 import '../ui/ui.dart';
 import '../utils/format.dart';
 import 'files/file_ops.dart';
@@ -1401,7 +1402,7 @@ class _MediaPlayerState extends State<_MediaPlayer> {
         controller = VideoPlayerController.file(File(widget.file.path));
       } else {
         final token = await ApiClient.instance.freshToken();
-        final uri = ApiClient.instance.buildUri(_compatible ? '/file/stream' : '/file', {'path': widget.file.path});
+        final uri = await MediaRelay.instance.wrapIfNeeded(ApiClient.instance.buildUri(_compatible ? '/file/stream' : '/file', {'path': widget.file.path}));
         controller = VideoPlayerController.networkUrl(uri, httpHeaders: {'Authorization': ?token});
       }
       await controller.initialize();

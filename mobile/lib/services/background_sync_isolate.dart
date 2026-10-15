@@ -10,6 +10,7 @@ import 'companion_file_server.dart';
 import 'device_sync_service.dart';
 import 'home_widgets.dart';
 import 'notification_feed.dart';
+import 'server_trust.dart';
 import 'share_upload.dart' show runShareUploadJob;
 import 'storage_service.dart';
 
@@ -98,6 +99,7 @@ Future<void> phoneBackupMain() async {
   WidgetsFlutterBinding.ensureInitialized();
   DartPluginRegistrant.ensureInitialized();
   await StorageService.instance.init();
+  await ServerTrust.instance.init();
   await runPhoneBackupJob();
 }
 

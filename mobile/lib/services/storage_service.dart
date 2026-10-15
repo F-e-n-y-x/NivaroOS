@@ -67,9 +67,11 @@ class StorageService {
   static const _keyPhoneBackup = 'phone_backup_credential';
   // Remote console choices ("console.input", "console.fit@the server").
   static const _keyConsolePrefix = 'console.';
+  // CA certificates (PEM, JSON list) of servers trusted on first use.
+  static const _keyPinnedCas = 'pinned_server_cas';
 
   // Display preferences, not account data: clearAll() (sign out) keeps them.
-  static const _preservedKeys = {_keyThemeMode, _keyThemeAccent, _keyThemeWallpaper, _keyDesignDirection, _keyWidgetRefresh, _keyTerminalFontSize, _keyNotificationsAsked, _keyPhoneBackup};
+  static const _preservedKeys = {_keyThemeMode, _keyThemeAccent, _keyThemeWallpaper, _keyDesignDirection, _keyWidgetRefresh, _keyTerminalFontSize, _keyNotificationsAsked, _keyPhoneBackup, _keyPinnedCas};
 
   Future<void> init() async {
     if (_initialized) return;
@@ -226,6 +228,33 @@ class StorageService {
     final url = _cache[_keyServerUrl];
     if (url == null || url.isEmpty) return;
     await _set('$_keyCompanionSecretPrefix${_serverKey(url)}', secret);
+  }
+
+  /// The CA certificates (PEM) the user trusted - see ServerTrust.
+  Future<List<String>> getPinnedCas() async {
+    if (!_initialized) await init();
+    try {
+      final list = jsonDecode(_cache[_keyPinnedCas] ?? '[]');
+      return [for (final e in list as List) '$e'];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> setPinnedCas(List<String> pems) async {
+    if (!_initialized) await init();
+    await _set(_keyPinnedCas, jsonEncode(pems));
+  }
+
+  /// Carries what is kept per server (pairing secret, tabs, folders) from
+  /// address [from] to [to] - the same server, now reached over https.
+  Future<void> moveServerKeys(String from, String to) async {
+    if (!_initialized) await init();
+    final a = '@${_serverKey(from)}', b = '@${_serverKey(to)}';
+    for (final e in _cache.entries.where((e) => e.key.endsWith(a)).toList()) {
+      await _set('${e.key.substring(0, e.key.length - a.length)}$b', e.value);
+      await _remove(e.key);
+    }
   }
 
   static String _serverKey(String url) {

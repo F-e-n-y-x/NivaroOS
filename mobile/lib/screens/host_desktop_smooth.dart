@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../services/api_client.dart';
+import '../services/server_trust.dart';
 import '../services/speedtest_service.dart' show isHomeNetworkHost;
 import '../services/tailscale_service.dart';
 import '../ui/ui.dart';
@@ -255,6 +256,13 @@ class _SmoothHostDesktopState extends State<SmoothHostDesktop> with WidgetsBindi
       ..addJavaScriptChannel('NivaroosBridge', onMessageReceived: (m) => _onBridge(m.message))
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: _onNavigation,
+        // The server's own certificate (HTTPS on your network): the WebView
+        // doesn't know the pinned CA, so it proceeds only for the exact
+        // certificate a pinned-CA-verified connection gets from the server.
+        onSslAuthError: (e) async {
+          final ok = await ServerTrust.instance.matchesServer(Uri.parse(_base), e.certificate?.data);
+          await (ok ? e.proceed() : e.cancel());
+        },
         onWebResourceError: (e) {
           if (e.isForMainFrame ?? false) _fallback("Smooth mode couldn't load from the server.");
         },

@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import '../services/api_client.dart';
 import '../services/app_lock.dart';
 import '../services/connection_security.dart';
+import '../services/server_trust.dart';
+import '../services/session_service.dart';
 import '../ui/ui.dart';
 import '../widgets/connection_security_icon.dart';
+import 'secure_connection.dart';
 
 /// Settings › Privacy & security: the app lock, hiding the terminal from
 /// screenshots, and how safe the connection to the current server is.
@@ -68,6 +71,30 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
       ),
     );
     if (picked != null) await _lock.setLockAfter(picked);
+  }
+
+  Future<void> _useHttps() async {
+    final from = ApiClient.instance.baseUrl;
+    setState(() => _busy = true);
+    String? message;
+    try {
+      final offered = await ServerTrust.offeredHttps(from);
+      if (!mounted) return;
+      if (offered == null) {
+        message = 'This server doesn’t serve HTTPS on your network. Switch it on in the dashboard: Settings › Network & Sharing › HTTPS on your network.';
+      } else {
+        final secure = await offerSecureConnection(context, from);
+        if (secure != null) {
+          await SessionService.moveServerTo(secure);
+          message = 'Now connected over https.';
+        }
+      }
+    } on ApiException catch (e) {
+      message = e.message;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (message != null && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -135,6 +162,14 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                       title: Text(security.label),
                       subtitle: Text('${ApiClient.displayHost(url)} · ${security.description}'),
                     ),
+                    if (security == TransportSecurity.localNetwork)
+                      ListTile(
+                        leading: const Icon(Icons.lock_outline),
+                        title: const Text('Use a secure connection'),
+                        subtitle: const Text('When the server serves HTTPS on your network, switch to it and stay signed in'),
+                        enabled: !_busy,
+                        onTap: _useHttps,
+                      ),
                   ],
                 ),
             ],

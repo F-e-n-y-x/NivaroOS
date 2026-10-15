@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import 'offline_cache.dart';
+import 'server_trust.dart';
 import 'storage_service.dart';
 
 /// What kind of failure an [ApiException] is, so screens can pick the
@@ -147,6 +148,7 @@ class ApiClient {
   Future<RefreshResult>? _refreshFuture;
 
   Future<void> init() async {
+    await ServerTrust.instance.init();
     _baseUrl = await StorageService.instance.getServerUrl();
     _accessToken = await StorageService.instance.getAccessToken();
     _refreshToken = await StorageService.instance.getRefreshToken();
@@ -601,8 +603,8 @@ class ApiClient {
     final details = '$route→ ${error.runtimeType}: ${text.split('\n').first}';
     if (error is HandshakeException || error is TlsException || text.contains('CERTIFICATE_VERIFY_FAILED') || text.contains('HandshakeException')) {
       return ApiException(
-        "The server's certificate isn't trusted, so the connection was stopped. The app can't use a self-signed certificate yet: "
-        'use the http:// address on your network, or a certificate from a trusted authority.',
+        "The server's certificate isn't trusted, so the connection was stopped. If this is your NivaroOS server's own "
+        'certificate, add the server again in Connect to a server to check its fingerprint and trust it.',
         kind: ApiErrorKind.certificate,
         details: details,
       );

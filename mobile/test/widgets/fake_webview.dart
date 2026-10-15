@@ -69,6 +69,10 @@ class FakeNavigationDelegate extends PlatformNavigationDelegate {
 
   NavigationRequestCallback? onNavigationRequest;
   WebResourceErrorCallback? onWebResourceError;
+  SslAuthErrorCallback? onSslAuthError;
+
+  @override
+  Future<void> setOnSSlAuthError(SslAuthErrorCallback onSslAuthError) async => this.onSslAuthError = onSslAuthError;
 
   @override
   Future<void> setOnNavigationRequest(NavigationRequestCallback onNavigationRequest) async =>

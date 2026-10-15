@@ -52,6 +52,7 @@ ol { padding-left: 20px; margin: 6px 0 0; }
 <li>Tick <b>Trust this CA to identify websites</b>.</li></ol></section>
 <section><h2>Linux (Chrome, system)</h2>
 <p><code>sudo cp nivaroos-ca.crt /usr/local/share/ca-certificates/ &amp;&amp; sudo update-ca-certificates</code>. Chrome on Linux: Settings &gt; Privacy and security &gt; Security &gt; Manage certificates &gt; Authorities &gt; Import.</p></section>
+<p>Using Tailscale? Remote Access &gt; "Serve the dashboard over HTTPS on your tailnet" gives tailnet devices a public certificate with nothing to install.</p>
 <p>After installing, open the dashboard with https:// and sign in once more (browsers keep separate sign-ins for http and https).</p>
 {{end}}
 </main>

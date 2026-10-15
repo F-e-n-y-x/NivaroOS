@@ -13,6 +13,16 @@ by re-running the installer; the app changes ship in the next APK.
 
 ### Added
 
+- HTTPS on your home network (Settings > Network & Sharing, off by
+  default). The server makes its own certificate authority (limited to
+  local names and home-network/Tailscale addresses) and serves the
+  dashboard on https port 443 next to http, renewing the certificate by
+  itself when it ages or the IP changes. `http://<server>/trust` has the
+  certificate, its fingerprint and install steps for each device. Once a
+  browser trusts it, "Send browsers to HTTPS" can redirect page loads; the
+  app, scripts and remote access keep working over http. The Android app
+  shows the fingerprint and trusts the server once you accept it (Connect
+  to a server, or Privacy & security > Use a secure connection).
 - Host Desktop on Wayland. GNOME (mutter's remote-desktop API, no prompt),
   wlroots compositors (sway, Hyprland, labwc, river, wayfire; through
   wayvnc) and other desktops such as KDE Plasma 6 (xdg-desktop-portal; the

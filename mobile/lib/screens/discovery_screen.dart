@@ -7,6 +7,7 @@ import '../services/storage_service.dart';
 import '../ui/ui.dart';
 import 'home_shell.dart';
 import 'login_screen.dart';
+import 'secure_connection.dart';
 
 /// First run: find the server. NivaroOS servers on this Wi-Fi announce
 /// themselves over mDNS and are listed as they answer; any other server
@@ -76,8 +77,14 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       _foundError = null;
     });
     try {
-      final probe = await ApiClient.probe(input);
+      var probe = await _probe(input);
       if (!mounted) return;
+      // The server offers https with its own certificate: ask once.
+      if (probe.url.startsWith('http://')) {
+        final secure = await offerSecureConnection(context, probe.url);
+        if (!mounted) return;
+        if (secure != null) probe = ServerProbe(url: secure, initialized: probe.initialized);
+      }
       final saved = (await StorageService.instance.getProfiles())
           .where((p) => ApiClient.normalizeServerUrl(p.url) == probe.url && p.hasSession)
           .firstOrNull;
@@ -95,6 +102,19 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       setState(() => typed ? _addressError = e.message : _foundError = e.message);
     } finally {
       if (mounted) setState(() => _checking = null);
+    }
+  }
+
+  /// [ApiClient.probe], and for an https address whose certificate isn't
+  /// trusted yet: the trust-on-first-use offer, then the probe again.
+  Future<ServerProbe> _probe(String input) async {
+    try {
+      return await ApiClient.probe(input);
+    } on ApiException catch (e) {
+      if (e.kind != ApiErrorKind.certificate || !mounted) rethrow;
+      final secure = await offerSecureConnection(context, ApiClient.normalizeServerUrl(input));
+      if (secure == null) rethrow;
+      return ApiClient.probe(secure);
     }
   }
 
