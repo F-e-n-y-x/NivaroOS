@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/dashboard_stats.dart';
+import '../models/self_update.dart';
 import '../services/api_client.dart';
 import '../services/app_update_service.dart';
 import '../ui/ui.dart';
@@ -44,8 +45,9 @@ class _Packages {
 /// Updates, in three separate tracks that are never mixed:
 ///
 /// - NivaroOS itself: `GET /v1/sys/version/check` (the server's build vs
-///   GitHub master, see [ServerUpdate]), installed with
-///   `POST /v1/sys/update`.
+///   GitHub master, see [ServerUpdate]); a server on releases updates with
+///   its self-updater (`/v1/sys/update/status`, `.../apply`, `.../rollback`,
+///   see [SelfUpdate]), one built from source with the installer.
 /// - The server's Debian packages: `/v1/sys/packages/*`.
 /// - This app: [AppUpdateService], the one self-update path (sideload
 ///   builds only, owner decision §7.1): the same release pick, checksum
@@ -77,6 +79,11 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
   bool _upgradeRunning = false;
   bool _installingServer = false;
 
+  /// The server's self-updater; null on a server without one.
+  SelfUpdate? _self;
+  Timer? _selfPoll;
+  bool _selfRequesting = false;
+
   String _appInstalled = '';
   String _appBuild = '';
   UpdateCheck? _app;
@@ -87,6 +94,28 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
   void initState() {
     super.initState();
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    _selfPoll?.cancel();
+    super.dispose();
+  }
+
+  // Every 3 s while an update runs (the server's services restart in the
+  // middle of it: a failed poll is just retried).
+  Future<void> _loadSelf() async {
+    _selfPoll?.cancel();
+    try {
+      final res = await ApiClient.instance.get('/sys/update/status');
+      final d = res['data'];
+      _self = d is Map ? SelfUpdate.fromJson(d) : null;
+    } on ApiException catch (e) {
+      if (e.statusCode != null) _self = null;
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {});
+    if (_self?.busy == true || _selfRequesting) _selfPoll = Timer(const Duration(seconds: 3), _loadSelf);
   }
 
   Future<void> _refresh() => Future.wait([_loadServer(), _checkApp()]);
@@ -123,6 +152,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
           _upgradeRunning = d is Map && d['running'] == true;
         } catch (_) {}
       }(),
+      _loadSelf(),
       () async {
         try {
           final res = await api.get('/sys/hardware');
@@ -190,6 +220,45 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
     } finally {
       if (mounted) setState(() => _installingServer = false);
     }
+  }
+
+  Future<void> _selfRequest(String action, Map<String, Object> body, String started) async {
+    setState(() => _selfRequesting = true);
+    try {
+      await ApiClient.instance.post('/sys/update/$action', body: body);
+      _snack(started);
+      // The updater picks the request up in a moment.
+      Future.delayed(const Duration(seconds: 4), () {
+        if (mounted) setState(() => _selfRequesting = false);
+      });
+      _loadSelf();
+    } catch (e) {
+      if (mounted) setState(() => _selfRequesting = false);
+      _snack("Couldn't start it. ${_msg(e)}");
+    }
+  }
+
+  Future<void> _applySelfUpdate() async {
+    final s = _self!;
+    final ok = await ConfirmDialog.confirm(
+      context,
+      title: 'Update to NivaroOS ${s.available}?',
+      message: 'Only the services that changed restart, so this app may lose the connection for a moment. '
+          'Running backups are waited for. If anything fails its checks, the previous version comes back by itself.',
+      confirmLabel: 'Update',
+    );
+    if (ok && mounted) await _selfRequest('apply', {'mode': 'wait'}, 'Updating NivaroOS');
+  }
+
+  Future<void> _rollbackSelf() async {
+    final r = _self?.result;
+    final ok = await ConfirmDialog.confirm(
+      context,
+      title: 'Roll back ${r?.to ?? 'the last update'}?',
+      message: 'Every file the update changed goes back to ${r?.from == 'source' ? 'the previous build' : r?.from ?? 'the previous version'}. Databases stay as they are now.',
+      confirmLabel: 'Roll back',
+    );
+    if (ok && mounted) await _selfRequest('rollback', {'restore_data': false}, 'Rolling back');
   }
 
   Future<void> _checkPackages() async {
@@ -353,7 +422,12 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
       ]);
     }
     final behind = v.behind == true;
-    return TileGroup(title: 'NivaroOS', children: [
+    final s = _self;
+    // A server on releases updates here; one built from source keeps the
+    // installer (its "Update NivaroOS" asks the server, which says so).
+    final onReleases = s != null && s.current.isNotEmpty;
+    final status = StatusColors.of(context);
+    return TileGroup(title: 'NivaroOS', footer: onReleases ? s.scheduleText : null, children: [
       MergeSemantics(
         child: ListTile(
           leading: v.behind == null ? const Icon(Icons.help_outline) : _stateIcon(context, upToDate: !behind),
@@ -374,7 +448,44 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
           trailing: const Icon(Icons.chevron_right),
           onTap: () => _showNotes('Latest change on GitHub', v.latestMessage),
         ),
-      if (behind) _action('Update NivaroOS', _installingServer ? null : _installServerUpdate),
+      if (s != null && s.busy)
+        ListTile(
+          leading: const Icon(Icons.downloading_outlined),
+          title: const Text('Updating NivaroOS'),
+          subtitle: _progressSubtitle(s.stepText, s.state == 'downloading' && s.progress > 0 ? s.progress / 100 : null),
+        ),
+      if (s != null && !s.busy && s.result != null)
+        MergeSemantics(
+          child: ListTile(
+            leading: s.result!.failed
+                ? Icon(Icons.history, color: status.warning.color)
+                : Icon(Icons.check_circle_outline, color: status.success.color),
+            title: const Text('Last update'),
+            subtitle: Text(s.result!.text),
+          ),
+        ),
+      if (s != null)
+        for (final note in [s.unsupported, s.skipped, s.lastError].where((n) => n.isNotEmpty))
+          ListTile(leading: const Icon(Icons.info_outline), title: Text(note)),
+      if (onReleases && !s.busy && s.notes.isNotEmpty && s.available.isNotEmpty)
+        ListTile(
+          leading: const Icon(Icons.notes_outlined),
+          title: Text("What's new in ${s.available}"),
+          subtitle: s.availableSize > 0 ? Text(formatBytes(s.availableSize)) : null,
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showNotes('NivaroOS ${s.available}', s.notes),
+        ),
+      if (onReleases && !s.busy && s.available.isNotEmpty && s.unsupported.isEmpty)
+        _action('Update to ${s.available}', _selfRequesting ? null : _applySelfUpdate),
+      if (!onReleases && behind) _action('Update NivaroOS', _installingServer ? null : _installServerUpdate),
+      if (s != null && !s.busy && s.canRollback)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Space.md, 0, Space.md, Space.md),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(onPressed: _selfRequesting ? null : _rollbackSelf, icon: const Icon(Icons.undo), label: const Text('Roll back the last update')),
+          ),
+        ),
     ]);
   }
 

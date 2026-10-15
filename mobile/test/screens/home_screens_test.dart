@@ -228,6 +228,39 @@ void main() {
       });
     });
 
+    testWidgets('a server on releases updates itself after asking; the last result is shown', (tester) async {
+      final server = await _run(tester, const SystemUpdatesScreen(), () async {
+        await tester.scrollUntilVisible(find.text('Update to 1.5.0'), 200, scrollable: find.byType(Scrollable).first);
+        expect(find.textContaining('1.4.9 was rolled back to 1.4.0: failed: health check'), findsOneWidget);
+        expect(find.textContaining('install at about 04:00'), findsOneWidget);
+        await tester.tap(find.text('Update to 1.5.0'));
+        await _settle(tester);
+        expect(find.text('Update to NivaroOS 1.5.0?'), findsOneWidget);
+        await tester.tap(find.widgetWithText(TextButton, 'Update'));
+        await _settle(tester);
+      }, overrides: {
+        'GET /v1/sys/update/status': {
+          'success': 200,
+          'message': 'ok',
+          'data': {
+            'state': {
+              'state': 'available',
+              'current': '1.4.0',
+              'available': {'version': '1.5.0', 'size': 134217728, 'notes_md': '- faster'},
+              'last_result': {'result': 'rolled_back', 'from': '1.4.0', 'to': '1.4.9', 'reason': 'failed: health check'},
+            },
+            'settings': {'channel': 'stable', 'auto': 'install', 'window': '04:00'},
+            'running': false,
+            'can_rollback': false,
+          },
+        },
+        'POST /v1/sys/update/apply': {'success': 200, 'message': 'started'},
+        'GET /test/github/releases': <Object>[],
+      });
+      expect(server.requests, contains('POST /v1/sys/update/apply'));
+      expect(server.requests, isNot(contains('POST /v1/sys/update')));
+    });
+
     testWidgets('shows real facts only and installs packages after asking', (tester) async {
       final server = await _run(tester, const SystemUpdatesScreen(page: UpdatesPage.packages), () async {
         for (final fake in ['KVM Sidecar Active', 'x86_64 / Linux 6.x', 'Stable (Production)', 'Latest Git Commit (master)']) {
@@ -244,7 +277,9 @@ void main() {
         'GET /test/github/releases': <Object>[],
       });
       expect(server.requests, contains('POST /v1/sys/packages/upgrade'));
-      expect(server.requests.where((r) => r.contains('/sys/update')), isEmpty);
+      // Installing packages never starts a NivaroOS update (reading the
+      // updater's status is fine).
+      expect(server.requests.where((r) => r.startsWith('POST') && r.contains('/sys/update')), isEmpty);
     });
   });
 }
