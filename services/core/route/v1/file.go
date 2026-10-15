@@ -82,8 +82,6 @@ var (
 		// 允许CORS跨域请求
 		CheckOrigin: nivaroos_middleware.CheckWebSocketOrigin,
 	}
-	conn *websocket.Conn
-	err  error
 )
 
 // @Summary 读取文件
@@ -1751,8 +1749,12 @@ func ConnectWebSocket(ctx *echo.Context) error {
 	// peerModel := service.MyService.Peer().GetPeerByUserAgent(ctx.Request().UserAgent())
 	peerModel := model2.PeerDriveDBModel{}
 	name := service.GetName(request)
-	if conn, err = upgraderFile.Upgrade(writer, request, writer.Header()); err != nil {
-		log.Println(err)
+	conn, err := upgraderFile.Upgrade(writer, request, writer.Header())
+	if err != nil {
+		// Upgrade already wrote the HTTP error. Going on with a nil conn
+		// (and, before, a package-level conn shared by every request)
+		// made the pump goroutines panic and take core down.
+		return nil
 	}
 	client := &Client{handler: &handler, conn: conn, send: make(chan []byte, 256), ID: service.GetPeerId(request, key), IP: service.GetIP(request), Name: name, RtcSupported: true, TimerId: 0, LastBeat: time.Now()}
 	if peerId != "" || len(peerModel.ID) > 0 {
