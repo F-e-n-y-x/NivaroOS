@@ -256,5 +256,17 @@ const sys = {
 		// api.delete already wraps its second argument as the request body.
 		return api.delete(`${PREFIX}/apt/sources`, { file, line, raw });
 	},
+
+	// Server releases (nivaroos-update.service; docs/guides/server-updates.md).
+	getServerUpdate() {
+		return api.get(`${PREFIX}/update/status`);
+	},
+	// action: check | apply ({mode: wait|cancel_backups}) | rollback ({restore_data})
+	requestServerUpdate(action, body = {}) {
+		return api.post(`${PREFIX}/update/${action}`, body);
+	},
+	setServerUpdateSettings(settings) {
+		return api.put(`${PREFIX}/update/settings`, settings);
+	},
 }
 export default sys;

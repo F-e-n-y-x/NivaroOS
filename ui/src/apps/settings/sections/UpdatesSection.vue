@@ -28,7 +28,7 @@
 							<i class="mdi mdi-refresh mr-1"></i>
 							{{ $t('Check for updates') }}
 						</b-button>
-						<b-button v-if="hasNivaroUpdate" data-test="nivaro-update" rounded size="is-small" type="is-primary" :loading="nivaroUpdating" @click="startNivaroUpdate">
+						<b-button v-if="hasNivaroUpdate && !build.release" data-test="nivaro-update" rounded size="is-small" type="is-primary" :loading="nivaroUpdating" @click="startNivaroUpdate">
 							<i class="mdi mdi-download mr-1"></i>
 							{{ $t('Update NivaroOS') }}
 						</b-button>
@@ -52,6 +52,10 @@
 				<div class="commit-msg" data-test="nivaro-latest">{{ update.latest_message }}</div>
 			</div>
 		</div>
+
+		<!-- Server releases: the self-updater (a release install updates here;
+			a box built from source is told about releases too). -->
+		<server-update-panel></server-update-panel>
 
 		<!-- ==================== ANDROID APP (GitHub releases) ==================== -->
 		<!-- GitHub releases are the Android app's, never the server's version. -->
@@ -195,17 +199,20 @@
 <script>
 import { apiError } from '@/utils/apiError'
 import axios from 'axios'
+import ServerUpdatePanel from '../ServerUpdatePanel.vue'
 
 // Search index: labels are the titles this section renders (the search
 // jumps to them); keywords are other words people type for them.
 export const ROWS = [
 	{ label: 'NivaroOS System Update', keywords: 'nivaroos version update build commit' },
+	{ label: 'NivaroOS server releases', keywords: 'server release update automatic night rollback channel beta' },
 	{ label: 'Android app', keywords: 'apk phone mobile release download' },
 	{ label: 'Linux System Packages (APT)', keywords: 'apt upgrade packages security' }
 ]
 
 export default {
 	name: 'updates-section',
+	components: { ServerUpdatePanel },
 	data() {
 		return {
 			build: {},
