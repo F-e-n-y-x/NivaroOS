@@ -12,7 +12,8 @@ import (
 	echo_middleware "github.com/labstack/echo/v5/middleware"
 )
 
-// Pins what echo v4 sent so the v5 migration stays invisible to clients:
+// Pins what echo v4 sent (for a page of this same host) so the v5 migration
+// stays invisible to clients:
 // CORS headers and the {"message": ...} error body.
 func TestCorsAndErrorShape(t *testing.T) {
 	e := echo.New()
@@ -30,8 +31,8 @@ func TestCorsAndErrorShape(t *testing.T) {
 		return w
 	}
 
-	w := do(http.MethodOptions, "/bad", map[string]string{"Origin": "http://x.example", "Access-Control-Request-Method": "GET"})
-	if w.Code != http.StatusNoContent || w.Header().Get("Access-Control-Allow-Origin") != "*" ||
+	w := do(http.MethodOptions, "/bad", map[string]string{"Origin": "http://example.com:5173", "Access-Control-Request-Method": "GET"})
+	if w.Code != http.StatusNoContent || w.Header().Get("Access-Control-Allow-Origin") != "http://example.com:5173" ||
 		w.Header().Get("Access-Control-Allow-Credentials") != "true" ||
 		w.Header().Get("Access-Control-Allow-Methods") != "POST,GET,OPTIONS,PUT,DELETE" ||
 		w.Header().Get("Access-Control-Max-Age") != "172800" {
@@ -46,8 +47,8 @@ func TestCorsAndErrorShape(t *testing.T) {
 		"/boom":    {500, `{"message":"Internal Server Error"}`},
 		"/missing": {404, `{"message":"Not Found"}`},
 	} {
-		w := do(http.MethodGet, path, map[string]string{"Origin": "http://x.example"})
-		if w.Code != want.code || strings.TrimSpace(w.Body.String()) != want.body || w.Header().Get("Access-Control-Allow-Origin") != "*" {
+		w := do(http.MethodGet, path, map[string]string{"Origin": "http://example.com:5173"})
+		if w.Code != want.code || strings.TrimSpace(w.Body.String()) != want.body || w.Header().Get("Access-Control-Allow-Origin") != "http://example.com:5173" {
 			t.Errorf("%s: %d %q %v", path, w.Code, w.Body.String(), w.Header())
 		}
 	}

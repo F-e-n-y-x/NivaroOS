@@ -25,6 +25,7 @@ package route
 
 import (
 	"crypto/ecdsa"
+	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"net/http"
 	"strconv"
 	"strings"
@@ -39,13 +40,19 @@ import (
 
 func ginCors() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		origin := c.Request.Header.Get("Origin")
-		c.Header("Access-Control-Allow-Origin", origin)
-		c.Header("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE,UPDATE")
-		c.Header("Access-Control-Allow-Headers", "Authorization, Content-Length, X-CSRF-Token, Token,session,Language,Content-Type,Access-Control-Allow-Origin,Access-Control-Allow-Headers,Access-Control-Allow-Methods,Connection,Host,Origin,Referer,User-Agent,X-Requested-With")
-		c.Header("Access-Control-Expose-Headers", "Content-Length, Access-Control-Allow-Origin, Access-Control-Allow-Headers")
-		c.Header("Access-Control-Max-Age", "172800")
-		c.Header("Access-Control-Allow-Credentials", "true")
+		// Only pages from this same host (any port: the dev server, the
+		// DS browser) may read answers cross-origin. Any Origin used to be
+		// echoed with credentials: any website could read the account
+		// list, or the first-account registration key of a new box.
+		if origin := c.Request.Header.Get("Origin"); nivaroos_middleware.SameHostOrigin(c.Request) {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Vary", "Origin")
+			c.Header("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE,UPDATE")
+			c.Header("Access-Control-Allow-Headers", "Authorization, Content-Length, X-CSRF-Token, Token,session,Language,Content-Type,Access-Control-Allow-Origin,Access-Control-Allow-Headers,Access-Control-Allow-Methods,Connection,Host,Origin,Referer,User-Agent,X-Requested-With")
+			c.Header("Access-Control-Expose-Headers", "Content-Length, Access-Control-Allow-Origin, Access-Control-Allow-Headers")
+			c.Header("Access-Control-Max-Age", "172800")
+			c.Header("Access-Control-Allow-Credentials", "true")
+		}
 		c.Set("Content-Type", "application/json")
 
 		if c.Request.Method == "OPTIONS" {

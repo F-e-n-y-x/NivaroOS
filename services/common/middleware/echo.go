@@ -11,18 +11,20 @@ import (
 	echo_middleware "github.com/labstack/echo/v5/middleware"
 )
 
-// CorsConfig is the CORS policy every NivaroOS echo service uses. Echo v5
-// refuses AllowOrigins "*" together with AllowCredentials, so the wildcard
-// is answered through UnsafeAllowOriginFunc - same headers as echo v4 sent
-// (Access-Control-Allow-Origin: * plus Allow-Credentials: true).
+// CorsConfig is the CORS policy every NivaroOS echo service uses: only
+// pages from this same host (any port) may read answers cross-origin. (It
+// answered "*" with credentials, which browsers refuse for credentialed
+// requests anyway, and allowed every site to read the rest.)
 func CorsConfig() echo_middleware.CORSConfig {
 	return echo_middleware.CORSConfig{
-		UnsafeAllowOriginFunc: func(*echo.Context, string) (string, bool, error) { return "*", true, nil },
-		AllowMethods:          []string{http.MethodPost, http.MethodGet, http.MethodOptions, http.MethodPut, http.MethodDelete},
-		AllowHeaders:          []string{echo.HeaderAuthorization, echo.HeaderContentLength, echo.HeaderXCSRFToken, echo.HeaderContentType, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders, echo.HeaderAccessControlAllowMethods, echo.HeaderConnection, echo.HeaderOrigin, echo.HeaderXRequestedWith},
-		ExposeHeaders:         []string{echo.HeaderContentLength, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders},
-		MaxAge:                172800,
-		AllowCredentials:      true,
+		UnsafeAllowOriginFunc: func(c *echo.Context, origin string) (string, bool, error) {
+			return origin, SameHostOrigin(c.Request()), nil
+		},
+		AllowMethods:     []string{http.MethodPost, http.MethodGet, http.MethodOptions, http.MethodPut, http.MethodDelete},
+		AllowHeaders:     []string{echo.HeaderAuthorization, echo.HeaderContentLength, echo.HeaderXCSRFToken, echo.HeaderContentType, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders, echo.HeaderAccessControlAllowMethods, echo.HeaderConnection, echo.HeaderOrigin, echo.HeaderXRequestedWith},
+		ExposeHeaders:    []string{echo.HeaderContentLength, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders},
+		MaxAge:           172800,
+		AllowCredentials: true,
 	}
 }
 
