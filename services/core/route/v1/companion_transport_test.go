@@ -143,7 +143,7 @@ func (f *fakePhoneHTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Loopback stand-ins: 127.0.0.1 plays the phone's Wi-Fi address, 127.0.0.2
 // its Tailscale address, 127.0.0.3 another device on the home LAN.
 func useLoopbackAddressKinds(t *testing.T) {
-	companionIPKindHook = func(ip net.IP) (string, bool) {
+	hook := func(ip net.IP) (string, bool) {
 		switch ip.String() {
 		case "127.0.0.1", "127.0.0.3", "127.0.0.4":
 			return companionRouteLAN, true
@@ -152,8 +152,9 @@ func useLoopbackAddressKinds(t *testing.T) {
 		}
 		return "", false
 	}
+	companionIPKindHook.Store(&hook)
 	resetCompanionRoutes()
-	t.Cleanup(func() { companionIPKindHook = nil; resetCompanionRoutes() })
+	t.Cleanup(func() { companionIPKindHook.Store(nil); resetCompanionRoutes() })
 }
 
 func resetCompanionRoutes() {

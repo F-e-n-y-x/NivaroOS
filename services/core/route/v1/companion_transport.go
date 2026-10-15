@@ -33,6 +33,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -62,13 +63,14 @@ func mustCIDR(s string) *net.IPNet {
 }
 
 // companionIPKindHook lets tests classify loopback test servers; nil in
-// production.
-var companionIPKindHook func(ip net.IP) (kind string, ok bool)
+// production. Atomic: a dial still in flight from one test reads it while
+// the next test swaps it.
+var companionIPKindHook atomic.Pointer[func(ip net.IP) (kind string, ok bool)]
 
 // companionIPKind classifies an IP as "lan", "tailscale" or "" (never dial).
 func companionIPKind(ip net.IP) string {
-	if companionIPKindHook != nil {
-		if k, ok := companionIPKindHook(ip); ok {
+	if hook := companionIPKindHook.Load(); hook != nil {
+		if k, ok := (*hook)(ip); ok {
 			return k
 		}
 	}
