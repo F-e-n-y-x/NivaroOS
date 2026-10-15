@@ -114,6 +114,17 @@ func init() {
 		config.Set(common.ConfigKeyGatewayPort, port)
 		return config.WriteConfig()
 	})
+
+	_state.TLS = &service.TLS{
+		Dir:  filepath.Join(constants.DefaultDataPath, "tls"),
+		Port: config.GetString(common.ConfigKeyTLSPort),
+		Save: func(enabled, redirect bool) error {
+			config.Set(common.ConfigKeyTLS, enabled)
+			config.Set(common.ConfigKeyTLSRedirect, redirect)
+			return config.WriteConfig()
+		},
+	}
+	_state.TLS.Load(config.GetBool(common.ConfigKeyTLS), config.GetBool(common.ConfigKeyTLSRedirect))
 }
 
 func main() {
@@ -127,6 +138,8 @@ func main() {
 		_state.GetRuntimePath(),
 		pidFilename, external.ManagementURLFilename, external.StaticURLFilename,
 	)
+
+	defer _state.TLS.Stop()
 
 	defer func() {
 		if _gateway != nil {
@@ -212,11 +225,13 @@ func run(
 					}
 				}()
 
-				if err := management.CreateRoute(&model.Route{
-					Path:   "/v1/gateway/port",
-					Target: "http://" + listener.Addr().String(),
-				}); err != nil {
-					return err
+				for _, p := range []string{"/v1/gateway/port", route.TLSRoutePath} {
+					if err := management.CreateRoute(&model.Route{
+						Path:   p,
+						Target: "http://" + listener.Addr().String(),
+					}); err != nil {
+						return err
+					}
 				}
 
 				_managementServiceReady <- struct{}{}
@@ -273,6 +288,19 @@ func run(
 					return err
 				}
 
+				// https never blocks http: a failure shows in Settings.
+				_state.TLS.Handler = route
+				if err := _state.TLS.Apply(); err != nil {
+					logger.Error("https listener not started", zap.Any("error", err))
+				}
+				go func() {
+					for range time.Tick(5 * time.Minute) {
+						if err := _state.TLS.Refresh(); err != nil {
+							logger.Error("https certificate refresh failed", zap.Any("error", err))
+						}
+					}
+				}()
+
 				_gatewayServiceReady <- struct{}{}
 
 				return nil
@@ -316,7 +344,7 @@ func run(
 	})
 }
 
-func reloadGateway(port string, route *http.ServeMux) error {
+func reloadGateway(port string, mux *http.ServeMux) error {
 	listener, err := net.Listen("tcp", net.JoinHostPort("", port))
 	if err != nil {
 		return err
@@ -332,7 +360,7 @@ func reloadGateway(port string, route *http.ServeMux) error {
 	// start new gateway
 	gatewayNew := &http.Server{
 		Addr:              addr,
-		Handler:           route,
+		Handler:           route.HTTPSRedirect(mux, _state.TLS),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

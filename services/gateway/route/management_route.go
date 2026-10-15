@@ -53,6 +53,32 @@ func (m *ManagementRoute) buildV1Group(e *echo.Echo) {
 	}
 }
 
+// jwtAuth: a valid user token, or same-host automation.
+func (m *ManagementRoute) jwtAuth() echo.MiddlewareFunc {
+	return echojwt.WithConfig(echojwt.Config{
+		// socket-peer loopback check; c.RealIP() trusted spoofable
+		// X-Forwarded-For/X-Real-IP headers
+		Skipper: nivaroos_middleware.LocalAutomationSkipper(),
+		ParseTokenFunc: func(c *echo.Context, token string) (interface{}, error) {
+			valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(m.management.State.GetRuntimePath()) })
+			if err != nil || !valid {
+				return nil, echo.ErrUnauthorized
+			}
+			c.Request().Header.Set("user_id", strconv.Itoa(claims.ID))
+
+			return claims, nil
+		},
+		TokenLookupFuncs: []echo_middleware.ValuesExtractor{
+			func(c *echo.Context) ([]string, echo_middleware.ExtractorSource, error) {
+				if len(c.Request().Header.Get(echo.HeaderAuthorization)) > 0 {
+					return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, echo_middleware.ExtractorSourceHeader, nil
+				}
+				return []string{jwt.QueryToken(c.Request())}, echo_middleware.ExtractorSourceQuery, nil
+			},
+		},
+	})
+}
+
 func (m *ManagementRoute) buildV1RouteGroup(v1Group *echo.Group) {
 	v1GatewayGroup := v1Group.Group("/gateway")
 
@@ -82,28 +108,9 @@ func (m *ManagementRoute) buildV1RouteGroup(v1Group *echo.Group) {
 
 				return ctx.NoContent(http.StatusCreated)
 			},
-			echojwt.WithConfig(echojwt.Config{
-				// socket-peer loopback check; c.RealIP() trusted spoofable
-				// X-Forwarded-For/X-Real-IP headers
-				Skipper: nivaroos_middleware.LocalAutomationSkipper(),
-				ParseTokenFunc: func(c *echo.Context, token string) (interface{}, error) {
-					valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(m.management.State.GetRuntimePath()) })
-					if err != nil || !valid {
-						return nil, echo.ErrUnauthorized
-					}
-					c.Request().Header.Set("user_id", strconv.Itoa(claims.ID))
+			m.jwtAuth())
 
-					return claims, nil
-				},
-				TokenLookupFuncs: []echo_middleware.ValuesExtractor{
-					func(c *echo.Context) ([]string, echo_middleware.ExtractorSource, error) {
-						if len(c.Request().Header.Get(echo.HeaderAuthorization)) > 0 {
-							return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, echo_middleware.ExtractorSourceHeader, nil
-						}
-						return []string{jwt.QueryToken(c.Request())}, echo_middleware.ExtractorSourceQuery, nil
-					},
-				},
-			}))
+		m.buildTLSRoutes(v1GatewayGroup)
 
 		v1GatewayGroup.GET("/port", func(ctx *echo.Context) error {
 			return ctx.JSON(http.StatusOK, model.Result{
@@ -136,27 +143,6 @@ func (m *ManagementRoute) buildV1RouteGroup(v1Group *echo.Group) {
 					Message: common_err.GetMsg(common_err.SUCCESS),
 				})
 			},
-			echojwt.WithConfig(echojwt.Config{
-				// socket-peer loopback check; c.RealIP() trusted spoofable
-				// X-Forwarded-For/X-Real-IP headers
-				Skipper: nivaroos_middleware.LocalAutomationSkipper(),
-				ParseTokenFunc: func(c *echo.Context, token string) (interface{}, error) {
-					valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(m.management.State.GetRuntimePath()) })
-					if err != nil || !valid {
-						return nil, echo.ErrUnauthorized
-					}
-					c.Request().Header.Set("user_id", strconv.Itoa(claims.ID))
-
-					return claims, nil
-				},
-				TokenLookupFuncs: []echo_middleware.ValuesExtractor{
-					func(c *echo.Context) ([]string, echo_middleware.ExtractorSource, error) {
-						if len(c.Request().Header.Get(echo.HeaderAuthorization)) > 0 {
-							return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, echo_middleware.ExtractorSourceHeader, nil
-						}
-						return []string{jwt.QueryToken(c.Request())}, echo_middleware.ExtractorSourceQuery, nil
-					},
-				},
-			}))
+			m.jwtAuth())
 	}
 }

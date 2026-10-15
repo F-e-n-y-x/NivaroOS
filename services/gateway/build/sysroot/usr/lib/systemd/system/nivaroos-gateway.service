@@ -10,7 +10,7 @@ Restart=always
 Type=notify
 # Sandbox (security audit 2026-10, M3). Still uid 0 - same-host automation
 # proves itself with the root-only token in /run/nivaroos (H1) - but with
-# only CAP_NET_BIND_SERVICE (port 80; gateway.ini is rewritten on a port change),
+# only CAP_NET_BIND_SERVICE (ports 80 and 443; gateway.ini is rewritten on a port change),
 # a read-only system (only the paths below are writable) and none of
 # root's other powers, so a bug here can't be turned into the whole box.
 ProtectSystem=strict
@@ -19,6 +19,10 @@ RuntimeDirectory=nivaroos
 RuntimeDirectoryPreserve=yes
 LogsDirectory=nivaroos
 ReadWritePaths=-/etc/nivaroos/gateway.ini
+# https on the home network (Settings, default off): its local CA and
+# server certificate (docs/specs/2026-10-16-lan-https.md).
+StateDirectory=nivaroos/tls
+StateDirectoryMode=0700
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
 PrivateTmp=true

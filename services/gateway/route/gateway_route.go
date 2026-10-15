@@ -332,6 +332,12 @@ func (g *GatewayRoute) GetRoute() *http.ServeMux {
 			return
 		}
 
+		// Short address for the "trust this server" page (typed on phones).
+		if r.URL.Path == "/trust" {
+			http.Redirect(w, r, TLSRoutePath+"/trust", http.StatusFound)
+			return
+		}
+
 		if isGPUPath(r.URL.Path) {
 			nivaroos_middleware.MarkLocalAutomation(r)
 			rewriteRequestSourceIP(r)

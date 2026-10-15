@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trust this server</title>
+<style>
+:root { --bg: #f6f7f9; --card: #fff; --text: #1c1f24; --muted: #5b6370; --accent: #2563eb; --line: #e3e6eb; }
+@media (prefers-color-scheme: dark) { :root { --bg: #121417; --card: #1c1f24; --text: #e8eaed; --muted: #9aa3ae; --accent: #6ea0ff; --line: #2c3138; } }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 680px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 1.5rem; margin: 0 0 8px; }
+h2 { font-size: 1.05rem; margin: 0 0 6px; }
+p, li { color: var(--muted); }
+section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 14px 0; }
+code { font: 0.85rem/1.4 ui-monospace, Menlo, Consolas, monospace; word-break: break-all; color: var(--text); }
+.btn { display: inline-block; background: var(--accent); color: #fff; text-decoration: none; padding: 10px 18px; border-radius: 8px; font-weight: 600; margin: 4px 8px 4px 0; }
+.btn.alt { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+ol { padding-left: 20px; margin: 6px 0 0; }
+</style>
+</head>
+<body>
+<main>
+<h1>Trust this server</h1>
+{{if not .Fingerprint}}
+<section><p>HTTPS on your network is off. The owner can switch it on in Settings &gt; Network &amp; Sharing &gt; HTTPS on your network.</p></section>
+{{else}}
+<p>This NivaroOS server encrypts its dashboard on your home network with its own certificate. Install it once on each device and the browser shows the connection as secure. The certificate only works for this server's local names and home-network addresses, never for websites on the internet.</p>
+<section>
+<a class="btn" href="/v1/gateway/tls/ca.crt" download="nivaroos-ca.crt">Download certificate</a>
+{{if .Running}}<a class="btn alt" id="open" href="#">Open the secure dashboard</a>{{end}}
+<p>Before you trust it, check that the fingerprint below matches the one in Settings on the server (or in the NivaroOS app):</p>
+<code>SHA-256 {{.Fingerprint}}</code>
+</section>
+<section><h2>Windows</h2><ol>
+<li>Open the downloaded <b>nivaroos-ca.crt</b> and choose <b>Install Certificate</b>.</li>
+<li>Pick <b>Current User</b>, then <b>Place all certificates in the following store</b> &gt; <b>Trusted Root Certification Authorities</b>.</li>
+<li>Finish, accept the warning, and restart the browser.</li></ol></section>
+<section><h2>macOS</h2><ol>
+<li>Open the downloaded file; Keychain Access adds it to <b>login</b>.</li>
+<li>Double-click "NivaroOS local CA", open <b>Trust</b>, set <b>When using this certificate</b> to <b>Always Trust</b>.</li></ol></section>
+<section><h2>iPhone and iPad</h2><ol>
+<li>Open this page in Safari and tap <b>Download certificate</b>, then <b>Allow</b>.</li>
+<li>Settings &gt; <b>Profile Downloaded</b> &gt; <b>Install</b>.</li>
+<li>Settings &gt; General &gt; About &gt; <b>Certificate Trust Settings</b>: switch on "NivaroOS local CA".</li></ol></section>
+<section><h2>Android (browsers)</h2><ol>
+<li>Download the certificate.</li>
+<li>Settings &gt; Security &gt; More security settings &gt; Encryption &amp; credentials &gt; <b>Install a certificate</b> &gt; <b>CA certificate</b>, and pick the file.</li></ol>
+<p>The NivaroOS app doesn't need this: it shows the fingerprint and asks you once.</p></section>
+<section><h2>Firefox (any system)</h2><ol>
+<li>Settings &gt; Privacy &amp; Security &gt; Certificates &gt; <b>View Certificates</b> &gt; Authorities &gt; <b>Import</b>.</li>
+<li>Tick <b>Trust this CA to identify websites</b>.</li></ol></section>
+<section><h2>Linux (Chrome, system)</h2>
+<p><code>sudo cp nivaroos-ca.crt /usr/local/share/ca-certificates/ &amp;&amp; sudo update-ca-certificates</code>. Chrome on Linux: Settings &gt; Privacy and security &gt; Security &gt; Manage certificates &gt; Authorities &gt; Import.</p></section>
+<p>After installing, open the dashboard with https:// and sign in once more (browsers keep separate sign-ins for http and https).</p>
+{{end}}
+</main>
+<script>
+(function () {
+	var a = document.getElementById('open');
+	if (!a) return;
+	var port = {{.Port}};
+	a.href = 'https://' + location.hostname + (port === '443' ? '' : ':' + port) + '/';
+})();
+</script>
+</body>
+</html>

@@ -6,6 +6,9 @@ type State struct {
 
 	runtimePath string
 	wwwPath     string
+
+	// TLS is the optional https listener; nil in tests that don't need it.
+	TLS *TLS
 }
 
 func NewState() *State {

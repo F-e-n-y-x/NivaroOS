@@ -46,6 +46,7 @@ check() { # service unit package
 }
 
 check gateway nivaroos-gateway route
+check gateway nivaroos-gateway service
 check user nivaroos-user-service route
 check user nivaroos-user-service route/v1
 check message-bus nivaroos-message-bus repository

@@ -15,6 +15,9 @@ const (
 	ConfigKeyLogSaveName = "gateway.LogSaveName"
 	ConfigKeyLogFileExt  = "gateway.LogFileExt"
 	ConfigKeyGatewayPort = "gateway.Port"
+	ConfigKeyTLS         = "gateway.TLS"         // https on the home network, default off
+	ConfigKeyTLSPort     = "gateway.TLSPort"     // default 443
+	ConfigKeyTLSRedirect = "gateway.TLSRedirect" // send browsers to https, default off
 	ConfigKeyRuntimePath = "common.RuntimePath"
 
 	GatewayName       = "gateway"
@@ -27,6 +30,8 @@ func LoadConfig() (*viper.Viper, error) {
 	config.SetDefault(ConfigKeyLogPath, constants.DefaultLogPath)
 	config.SetDefault(ConfigKeyLogSaveName, GatewayName)
 	config.SetDefault(ConfigKeyLogFileExt, "log")
+
+	config.SetDefault(ConfigKeyTLSPort, "443")
 
 	config.SetDefault(ConfigKeyRuntimePath, constants.DefaultRuntimePath) // See https://refspecs.linuxfoundation.org/FHS_3.0/fhs/ch05s13.html
 
