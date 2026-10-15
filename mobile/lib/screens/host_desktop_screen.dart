@@ -16,7 +16,7 @@ import 'host_display_fit.dart';
 /// (`/v1/vm-sidecar/host/console`). Only the host has a display resolution,
 /// and - on Wayland - a locked screen or a sharing prompt to get past.
 ///
-/// With the stream mode on Auto or Smooth (beta) it opens
+/// With the stream mode on Auto (the default) or WebRTC only it opens
 /// [SmoothHostDesktop] (WebRTC in a WebView) instead, where that can work,
 /// and falls back to the native console, saying why, where it can't.
 class HostDesktopScreen extends StatefulWidget {
@@ -40,7 +40,7 @@ class _HostDesktopScreenState extends State<HostDesktopScreen> {
   HostDisplay? _display;
   HostDesktopStatus? _blocked;
   bool _unblocking = false;
-  HostStreamMode _mode = HostStreamMode.compatible;
+  HostStreamMode _mode = HostStreamMode.auto;
   bool _smooth = false;
 
   @override
@@ -81,19 +81,21 @@ class _HostDesktopScreenState extends State<HostDesktopScreen> {
   }
 
   Future<void> _start() async {
-    _mode = HostStreamMode.values.asNameMap()[await consolePref(HostStreamMode.pref)] ?? HostStreamMode.compatible;
+    // Never chosen: Auto (WebRTC first). A choice made before stays.
+    _mode = HostStreamMode.values.asNameMap()[await consolePref(HostStreamMode.pref)] ?? HostStreamMode.auto;
     unawaited(_loadDisplay());
     if (!mounted) return;
     if (_mode == HostStreamMode.compatible || !await _trySmooth()) unawaited(_rfb.connect());
   }
 
-  /// Opens Smooth when it can work here; otherwise says why and returns
-  /// false (the native console, if running, stays).
+  /// Opens WebRTC when it can work here; otherwise returns false (the
+  /// native console, if running, stays) and, when WebRTC was asked for
+  /// rather than Auto's default, says why.
   Future<bool> _trySmooth() async {
     final why = await _smoothBlocker();
     if (!mounted) return false;
     if (why != null) {
-      _compatibleNote(why);
+      if (_mode != HostStreamMode.auto) _compatibleNote(why);
       return false;
     }
     _smooth = true;
@@ -110,7 +112,7 @@ class _HostDesktopScreenState extends State<HostDesktopScreen> {
       if (s.webrtc) return null;
       return s.reason.isEmpty ? "The server can't stream its screen as video yet." : s.reason;
     } on VmException {
-      return "This server doesn't offer Smooth mode yet.";
+      return "This server doesn't offer WebRTC video yet.";
     }
   }
 

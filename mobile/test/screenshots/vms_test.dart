@@ -234,7 +234,7 @@ final Map<String, _Shot> _shots = {
     dark: false,
     before: (tester) => _menu(tester, 'Stream mode'),
   ),
-  // Smooth (beta): the WebRTC embed in a WebView (here a stand-in picture).
+  // WebRTC (Auto's first choice): the embed in a WebView (here a stand-in picture).
   'host_desktop_smooth_connecting': _Shot(
     () => SmoothHostDesktop(onFallback: (_) {}),
     dark: false,
@@ -250,14 +250,14 @@ final Map<String, _Shot> _shots = {
       await tester.pump(const Duration(milliseconds: 300));
     },
   ),
-  // Its Display menu: the console's own, frame rate and bitrate in place of the VNC qualities.
+  // Its Display menu: the console's own, the quality presets in place of the VNC qualities, GPU/CPU in the header.
   'host_desktop_smooth_display': _Shot(
     () => SmoothHostDesktop(onFallback: (_) {}),
     dark: false,
     overrides: {'GET /': const FakeResponse('<html><head></head><body></body></html>')},
     before: (tester) async {
       _web.last.post('{"t":"size","w":1920,"h":1080}');
-      _web.last.post('{"t":"stats","encoder":"nvh264enc","fps":60,"rttMs":3}');
+      _web.last.post('{"t":"stats","encoder":"nvh264enc","fps":30,"rttMs":3,"preset":"balanced"}');
       _web.last.post('{"state":"live"}');
       await tester.pump(const Duration(milliseconds: 300));
       await _tapTooltip(tester, 'Display');

@@ -1,4 +1,4 @@
-// Host desktop Smooth (beta): when the app opens the WebRTC embed, what it
+// Host desktop over WebRTC (Auto, the default): when the app opens the embed, what it
 // hands the page (the token, before any script, never in the URL), and
 // every way back to the native console.
 import 'dart:convert';
@@ -112,7 +112,8 @@ void main() {
       final load = web.last.loads.single;
       expect(load.baseUrl, '$_lan/#/host-desktop/embed?mode=smooth');
       expect(load.baseUrl, isNot(contains('jwt')));
-      expect(load.html, contains('<head><script>window.__nivaroosToken="jwt-1";window.__nivaroosStream={"fps":30,"maxKbps":12000};</script>'));
+      expect(load.html,
+          contains('<head><script>window.__nivaroosToken="jwt-1";window.__nivaroosStream={"preset":"balanced","adapt":true,"fps":30,"maxKbps":12000};</script>'));
       expect(find.text('Connecting to Host desktop'), findsOneWidget);
       expect(find.byTooltip('Pin toolbar'), findsNothing);
 
@@ -169,13 +170,20 @@ void main() {
     });
   });
 
-  testWidgets('a server without WebRTC goes straight to the native console with its reason', (tester) async {
+  testWidgets('a server without WebRTC goes straight to the native console; WebRTC only says why, Auto quietly', (tester) async {
     await withServer(() async {
-      final (vm, rfb) = await open(tester, mode: 'auto', webrtc: false, reason: 'No H.264 encoder found on the server');
+      final (vm, rfb) = await open(tester, webrtc: false, reason: 'No H.264 encoder found on the server');
       expect(vm.streamCalls, 1);
       expect(web.controllers, isEmpty);
       expect(rfb.connects, 1);
       expect(find.textContaining('Using Compatible mode. No H.264 encoder found on the server'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+    await withServer(() async {
+      final (vm, rfb) = await open(tester, mode: 'auto', webrtc: false, reason: 'No H.264 encoder found on the server');
+      expect(vm.streamCalls, 1);
+      expect(rfb.connects, 1);
+      expect(find.textContaining('Using Compatible mode'), findsNothing);
       await tester.pumpWidget(const SizedBox());
     });
   });
@@ -192,14 +200,43 @@ void main() {
     });
   });
 
-  testWidgets('Compatible (the default) never opens the WebView', (tester) async {
+  testWidgets('Compatible (an explicit choice) never opens the WebView', (tester) async {
     await withServer(() async {
-      final (vm, rfb) = await open(tester, mode: '');
+      final (vm, rfb) = await open(tester, mode: 'compatible');
       expect(vm.streamCalls, 0);
       expect(web.controllers, isEmpty);
       expect(rfb.connects, 1);
       await tester.pumpWidget(const SizedBox());
     });
+  });
+
+  testWidgets('never chosen: Auto, WebRTC first', (tester) async {
+    await withServer(() async {
+      final (vm, rfb) = await open(tester, mode: '');
+      expect(vm.streamCalls, 1);
+      expect(web.last.loads, hasLength(1));
+      expect(rfb.connects, 0);
+      await tester.pumpWidget(const SizedBox());
+    });
+    // Through a tunnel Auto goes to the native console without a word.
+    ApiClient.instance.setBaseUrl('https://nas.example.com');
+    await withServer(() async {
+      final (_, rfb) = await open(tester, mode: '');
+      expect(rfb.connects, 1);
+      expect(find.textContaining('Using Compatible mode'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
+  test('saved stream settings: presets, and raw fps / bitrate from before presets become Custom', () {
+    expect(smoothStreamFromPrefs(), (preset: SmoothPreset.balanced, adapt: true, fps: 30, maxKbps: 12000));
+    expect(smoothStreamFromPrefs(fps: '30', kbps: '12000').preset, SmoothPreset.balanced);
+    expect(smoothStreamFromPrefs(fps: '60', kbps: '12000'), (preset: SmoothPreset.custom, adapt: true, fps: 60, maxKbps: 12000));
+    expect(smoothStreamFromPrefs(preset: 'low', adapt: 'off', fps: '60').preset, SmoothPreset.low);
+    expect(smoothStreamFromPrefs(preset: 'low', adapt: 'off').adapt, isFalse);
+    expect(smoothStreamFromPrefs(preset: 'turbo').preset, SmoothPreset.balanced);
+    expect(encoderLabel('nvh264enc'), 'GPU · NVENC');
+    expect(encoderLabel('x264enc'), 'CPU · x264');
   });
 
   testWidgets('a refreshed token is handed to the page; a refused one reloads with a fresh one', (tester) async {
@@ -229,21 +266,33 @@ void main() {
     });
   });
 
-  testWidgets('in the background the page is unloaded; back in the app it loads again', (tester) async {
+  testWidgets('a short trip out of the app keeps the stream; a long one unloads the page, and back it loads again', (tester) async {
     await withServer(() async {
       await open(tester);
       final c = web.last;
       web.last.post('{"state":"live"}');
       await tester.pump();
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      void away() {
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      }
+      void back() {
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      }
+      away();
+      await tester.pump(const Duration(seconds: 60));
+      back();
+      await tester.pump(const Duration(seconds: 120));
+      expect(c.loads, hasLength(1)); // the same page, the same peer
+      away();
+      await tester.pump(SmoothHostDesktop.backgroundGrace);
       await tester.pump();
       expect(c.loads, hasLength(2));
       expect(c.loads.last.html, isNot(contains('__nivaroosToken')));
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      back();
       for (var i = 0; i < 3; i++) {
         await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
         await tester.pump();
@@ -338,28 +387,43 @@ void main() {
     });
   });
 
-  testWidgets('Display: frame rate and bitrate go to the page and are remembered; stats in the header', (tester) async {
+  testWidgets('Display: presets go to the page and are remembered; GPU or CPU and stats in the header', (tester) async {
     await withServer(() async {
       final c = await live(tester);
-      c.post('{"t":"stats","encoder":"nvh264enc","fps":59,"rttMs":4}');
+      c.post('{"t":"stats","encoder":"nvh264enc","fps":59,"rttMs":4,"preset":"balanced"}');
       await tester.tap(find.byTooltip('Display'));
       await tester.pumpAndSettle();
-      expect(find.text('1920 × 1080 · 59 fps · 4 ms'), findsOneWidget);
-      for (final t in ['Fit to screen', 'Fill screen', '1:1 pixels', 'Match this phone', 'Stay in landscape', '30 fps · lighter']) {
+      expect(find.text('1920 × 1080 · GPU · NVENC · 59 fps · 4 ms'), findsOneWidget);
+      for (final t in ['Fit to screen', 'Fill screen', '1:1 pixels', 'Match this phone', 'Stay in landscape', 'Low bandwidth', 'Balanced', 'High quality', 'Custom', 'Adapt to the network']) {
         expect(find.text(t), findsOneWidget, reason: t);
       }
-      // No VNC picture qualities: they don't apply to a video stream.
+      // No VNC picture qualities, no raw numbers outside Custom.
       expect(find.text('Best picture'), findsNothing);
+      expect(find.text('60 fps · smoothest'), findsNothing);
+      await tester.tap(find.text('Low bandwidth'));
+      await tester.pumpAndSettle();
+      expect(c.scripts.last, 'window.nivaroosEmbed&&nivaroosEmbed.setStream({"preset":"low","adapt":true,"fps":30,"maxKbps":12000});');
+
+      // Custom: the raw frame rate and bitrate.
+      await tester.tap(find.byTooltip('Display'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Custom'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Display'));
+      await tester.pumpAndSettle();
+      expect(find.text('Adapt to the network'), findsNothing);
       await tester.tap(find.text('60 fps · smoothest'));
       await tester.pumpAndSettle();
-      expect(c.scripts.last, 'window.nivaroosEmbed&&nivaroosEmbed.setStream({fps:60,maxKbps:12000});');
       await tester.tap(find.byTooltip('Display'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Max bitrate · 12 Mbps'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Max bitrate · 12 Mbps'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('40 Mbps'));
       await tester.pumpAndSettle();
-      expect(c.scripts.last, 'window.nivaroosEmbed&&nivaroosEmbed.setStream({fps:60,maxKbps:40000});');
+      expect(c.scripts.last, 'window.nivaroosEmbed&&nivaroosEmbed.setStream({"preset":"custom","adapt":true,"fps":60,"maxKbps":40000});');
+      expect(await StorageService.instance.getConsolePref(SmoothHostDesktop.presetPref), 'custom');
       expect(await StorageService.instance.getConsolePref(SmoothHostDesktop.fpsPref), '60');
       expect(await StorageService.instance.getConsolePref(SmoothHostDesktop.kbpsPref), '40000');
 
@@ -371,7 +435,23 @@ void main() {
         await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
         await tester.pump();
       }
-      expect(c.loads.last.html, contains('window.__nivaroosStream={"fps":60,"maxKbps":40000}'));
+      expect(c.loads.last.html, contains('window.__nivaroosStream={"preset":"custom","adapt":true,"fps":60,"maxKbps":40000}'));
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
+  testWidgets('the network adaptation says so, and the Display menu shows where it stepped to', (tester) async {
+    await withServer(() async {
+      await StorageService.instance.setConsolePref(SmoothHostDesktop.presetPref, 'balanced');
+      final c = await live(tester);
+      c.post('{"t":"adapt","preset":"low","dir":"down"}');
+      c.post('{"t":"stats","encoder":"x264enc","fps":20,"rttMs":300,"preset":"low"}');
+      await tester.pump();
+      expect(find.text('The network is slow - switched to Low bandwidth'), findsOneWidget);
+      await tester.tap(find.byTooltip('Display'));
+      await tester.pumpAndSettle();
+      expect(find.text('1920 × 1080 · CPU · x264 · 20 fps · 300 ms'), findsOneWidget);
+      expect(find.text('Balanced · now Low bandwidth (network)'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
   });

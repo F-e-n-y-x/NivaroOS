@@ -14,17 +14,18 @@ import '../services/rfb_client.dart';
 import '../widgets/console_toolbar.dart' show consolePref, saveConsolePref;
 import '../widgets/rfb_view.dart';
 
-// Host desktop "Smooth (beta)": the web dashboard's WebRTC viewer
+// Host desktop over WebRTC (the default, Auto): the web dashboard's viewer
 // (`#/host-desktop/embed?mode=smooth`) in a WebView, inside the same
 // session chrome as the native console. Shared contract:
 // /root/nivaroos-wip/webrtc-contract.md (Embedding).
 
 /// How the host desktop streams. Compatible is the native VNC console;
-/// Auto and Smooth try WebRTC first and fall back to it.
+/// Auto (the default) tries WebRTC first and falls back to it; WebRTC only
+/// (`smooth`, the saved name) doesn't fall back by itself.
 enum HostStreamMode {
-  auto('Auto', 'Smooth where it works, Compatible everywhere else'),
-  smooth('Smooth (beta)', 'Video stream: smoother motion, needs your home network or Tailscale'),
-  compatible('Compatible', 'The classic remote screen. Works over any connection');
+  auto('Auto', 'WebRTC video where it works, Compatible everywhere else'),
+  smooth('WebRTC only', 'Video stream: smooth motion, needs your home network or Tailscale'),
+  compatible('Compatible (VNC)', 'The classic remote screen. Works over any connection');
 
   const HostStreamMode(this.label, this.detail);
   final String label;
@@ -75,14 +76,14 @@ String? smoothBlockedByRoute(String baseUrl) {
   if (host == 'localhost' || host == '127.0.0.1' || isHomeNetworkHost(host) || TailscaleService.isTailscaleAddress(baseUrl)) {
     return null;
   }
-  return 'Smooth mode needs your home network or Tailscale, and this connection goes through the internet.';
+  return 'WebRTC video needs your home network or Tailscale, and this connection goes through the internet.';
 }
 
 /// [html] with the JWT set as `window.__nivaroosToken` first thing in
 /// `<head>`, so it is there before any page script runs. Never in the URL.
-/// [stream] (`{fps, maxKbps}`) goes with it as `window.__nivaroosStream`,
+/// [stream] (`{preset, adapt, fps, maxKbps}`) goes with it as `window.__nivaroosStream`,
 /// for the page's first offer.
-String injectNivaroosToken(String html, String token, {Map<String, int>? stream}) {
+String injectNivaroosToken(String html, String token, {Map<String, Object>? stream}) {
   final tag = '<script>window.__nivaroosToken=${_js(token)};'
       '${stream == null ? '' : 'window.__nivaroosStream=${jsonEncode(stream)};'}</script>';
   final head = RegExp(r'<head[^>]*>', caseSensitive: false).firstMatch(html);
@@ -110,11 +111,17 @@ class EmbedRfbClient extends RfbClient {
 
   int? fps;
   int? rttMs;
+  String encoder = '';
+
+  /// The preset streaming now (the network adaptation may have stepped
+  /// below the chosen one), from the page's stats.
+  String? preset;
   Rect? _placed;
 
   @override
   String get displayInfo => [
         '$width × $height',
+        if (encoderLabel(encoder).isNotEmpty) encoderLabel(encoder),
         if (fps != null) '$fps fps',
         if (rttMs != null) '$rttMs ms',
       ].join(' · ');
@@ -155,7 +162,7 @@ class EmbedRfbClient extends RfbClient {
     return true;
   }
 
-  void setStream(int fps, int maxKbps) => _call('setStream({fps:$fps,maxKbps:$maxKbps})');
+  void setStream(SmoothStream s) => _call('setStream(${jsonEncode(s.toJson())})');
 
   /// The console's fit, zoom and pan: where the page draws the video, in
   /// its CSS pixels (= logical pixels; the WebView fills the same box).
@@ -184,6 +191,8 @@ class EmbedRfbClient extends RfbClient {
       case 'stats':
         fps = (msg['fps'] as num?)?.round();
         rttMs = (msg['rttMs'] as num?)?.round();
+        encoder = '${msg['encoder'] ?? ''}';
+        preset = msg['preset'] is String ? msg['preset'] as String : null;
         frameCount.value++;
     }
   }
@@ -192,6 +201,43 @@ class EmbedRfbClient extends RfbClient {
 /// Frame rates and bitrates the page accepts (ui streamMode.js).
 const smoothFps = [30, 60];
 const smoothKbps = [4000, 8000, 12000, 20000, 40000];
+
+/// "GPU · NVENC" / "CPU · x264" for the server's encoder (ui streamMode.js).
+String encoderLabel(String enc) =>
+    const {'nvh264enc': 'GPU · NVENC', 'vah264enc': 'GPU · VA-API', 'x264enc': 'CPU · x264'}[enc] ?? '';
+
+/// The stream quality presets (the server owns their numbers per GPU / CPU
+/// encoder); custom = the raw frame rate and bitrate.
+enum SmoothPreset {
+  low('Low bandwidth'),
+  balanced('Balanced'),
+  high('High quality'),
+  custom('Custom');
+
+  const SmoothPreset(this.label);
+  final String label;
+
+  static SmoothPreset? byName(Object? n) => values.asNameMap()[n];
+}
+
+/// What the page streams: a preset (adapting to the network or not), or
+/// custom fps / bitrate.
+typedef SmoothStream = ({SmoothPreset preset, bool adapt, int fps, int maxKbps});
+
+extension on SmoothStream {
+  Map<String, Object> toJson() => {'preset': preset.name, 'adapt': adapt, 'fps': fps, 'maxKbps': maxKbps};
+}
+
+/// The saved stream settings. Never chosen: Balanced, adapting. Before
+/// presets (fps / bitrate only), anything but 30 fps / 12 Mbps is Custom.
+SmoothStream smoothStreamFromPrefs({String? preset, String? adapt, String? fps, String? kbps}) {
+  final f = int.tryParse(fps ?? '');
+  final k = int.tryParse(kbps ?? '');
+  final fv = smoothFps.contains(f) ? f! : 30;
+  final kv = smoothKbps.contains(k) ? k! : 12000;
+  final p = SmoothPreset.byName(preset) ?? (preset == null && (fv != 30 || kv != 12000) ? SmoothPreset.custom : SmoothPreset.balanced);
+  return (preset: p, adapt: adapt != 'off', fps: fv, maxKbps: kv);
+}
 
 /// The Smooth session: the native console ([RemoteConsoleFrame]) over the
 /// embed page, with the frame rate and bitrate in its Display menu where
@@ -216,7 +262,9 @@ class SmoothHostDesktop extends StatefulWidget {
 
   static const embedPath = '/#/host-desktop/embed?mode=smooth';
 
-  /// Console prefs the frame rate and bitrate are remembered under.
+  /// Console prefs the stream settings are remembered under.
+  static const presetPref = 'preset@smooth';
+  static const adaptPref = 'adapt@smooth';
   static const fpsPref = 'fps@smooth';
   static const kbpsPref = 'kbps@smooth';
 
@@ -224,6 +272,11 @@ class SmoothHostDesktop extends StatefulWidget {
   /// server whose dashboard has no embed page (older NivaroOS) or a page
   /// that never says anything.
   static const startTimeout = Duration(seconds: 15);
+
+  /// A short trip out of the app (a message, the clipboard) keeps the
+  /// stream; away longer, the page is unloaded so the server's encoder
+  /// stops, and coming back loads it again.
+  static const backgroundGrace = Duration(seconds: 90);
 
   /// How often the token is checked; [ApiClient.freshToken] refreshes it
   /// 5 minutes before it expires.
@@ -236,10 +289,9 @@ class SmoothHostDesktop extends StatefulWidget {
 class _SmoothHostDesktopState extends State<SmoothHostDesktop> with WidgetsBindingObserver {
   late final WebViewController _web;
   late final EmbedRfbClient _client;
-  Timer? _startTimer, _tokenTimer;
+  Timer? _startTimer, _tokenTimer, _backgroundTimer;
   String? _token;
-  int _fps = 30;
-  int _kbps = 12000;
+  SmoothStream _stream = (preset: SmoothPreset.balanced, adapt: true, fps: 30, maxKbps: 12000);
   bool _stopped = false;
   bool _done = false;
   bool _reauthed = false;
@@ -264,7 +316,7 @@ class _SmoothHostDesktopState extends State<SmoothHostDesktop> with WidgetsBindi
           await (ok ? e.proceed() : e.cancel());
         },
         onWebResourceError: (e) {
-          if (e.isForMainFrame ?? false) _fallback("Smooth mode couldn't load from the server.");
+          if (e.isForMainFrame ?? false) _fallback("WebRTC video couldn't load from the server.");
         },
       ));
     _client = EmbedRfbClient(_web, load: _load, unload: _unload);
@@ -273,10 +325,12 @@ class _SmoothHostDesktopState extends State<SmoothHostDesktop> with WidgetsBindi
   }
 
   Future<void> _start() async {
-    final fps = int.tryParse(await consolePref(SmoothHostDesktop.fpsPref) ?? '');
-    final kbps = int.tryParse(await consolePref(SmoothHostDesktop.kbpsPref) ?? '');
-    if (smoothFps.contains(fps)) _fps = fps!;
-    if (smoothKbps.contains(kbps)) _kbps = kbps!;
+    _stream = smoothStreamFromPrefs(
+      preset: await consolePref(SmoothHostDesktop.presetPref),
+      adapt: await consolePref(SmoothHostDesktop.adaptPref),
+      fps: await consolePref(SmoothHostDesktop.fpsPref),
+      kbps: await consolePref(SmoothHostDesktop.kbpsPref),
+    );
     if (mounted) unawaited(_client.connect());
   }
 
@@ -285,6 +339,7 @@ class _SmoothHostDesktopState extends State<SmoothHostDesktop> with WidgetsBindi
     WidgetsBinding.instance.removeObserver(this);
     _startTimer?.cancel();
     _tokenTimer?.cancel();
+    _backgroundTimer?.cancel();
     _done = true;
     _client.dispose();
     super.dispose();
@@ -293,9 +348,11 @@ class _SmoothHostDesktopState extends State<SmoothHostDesktop> with WidgetsBindi
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.hidden || state == AppLifecycleState.paused) {
-      _stop();
-    } else if (state == AppLifecycleState.resumed && _stopped && !_done) {
-      unawaited(_client.connect());
+      _backgroundTimer ??= Timer(SmoothHostDesktop.backgroundGrace, _stop);
+    } else if (state == AppLifecycleState.resumed) {
+      _backgroundTimer?.cancel();
+      _backgroundTimer = null;
+      if (_stopped && !_done) unawaited(_client.connect());
     }
   }
 
@@ -307,11 +364,11 @@ class _SmoothHostDesktopState extends State<SmoothHostDesktop> with WidgetsBindi
   Future<void> _load() async {
     _stopped = false;
     _startTimer?.cancel();
-    _startTimer = Timer(SmoothHostDesktop.startTimeout, () => _fallback("Smooth mode didn't start in time."));
+    _startTimer = Timer(SmoothHostDesktop.startTimeout, () => _fallback("WebRTC video didn't start in time."));
     try {
       final token = await ApiClient.instance.freshToken();
       if (token == null) {
-        _fallback('Sign in again to use Smooth mode.');
+        _fallback('Sign in again to use WebRTC video.');
         return;
       }
       final res = await http.get(Uri.parse('$_base/')).timeout(const Duration(seconds: 10));
@@ -319,12 +376,12 @@ class _SmoothHostDesktopState extends State<SmoothHostDesktop> with WidgetsBindi
       if (!mounted || _stopped || _done) return;
       _token = token;
       await _web.loadHtmlString(
-        injectNivaroosToken(utf8.decode(res.bodyBytes), token, stream: {'fps': _fps, 'maxKbps': _kbps}),
+        injectNivaroosToken(utf8.decode(res.bodyBytes), token, stream: _stream.toJson()),
         baseUrl: '$_base${SmoothHostDesktop.embedPath}',
       );
     } catch (e) {
       debugPrint('[smooth] load failed: $e');
-      _fallback("Smooth mode couldn't load from the server.");
+      _fallback("WebRTC video couldn't load from the server.");
     }
   }
 
@@ -369,6 +426,7 @@ class _SmoothHostDesktopState extends State<SmoothHostDesktop> with WidgetsBindi
       return;
     }
     if (msg is! Map) return;
+    if (msg['t'] == 'adapt') return _adapted(msg);
     if (msg['t'] != null) return _client.bridge(msg);
     final reason = '${msg['reason'] ?? ''}'.trim();
     switch (msg['state']) {
@@ -381,35 +439,63 @@ class _SmoothHostDesktopState extends State<SmoothHostDesktop> with WidgetsBindi
         // A live stream dropped; the page offers again by itself.
         _client.status.value = RfbStatus.connecting;
       case 'fallback':
-        _fallback(reason.isEmpty ? "Smooth mode isn't available on the server." : reason);
+        _fallback(reason.isEmpty ? "WebRTC video isn't available on the server." : reason);
       case 'error' when reason.toLowerCase().contains('session expired') && !_reauthed:
         // The token was refused: once, a fresh one and a reload.
         _reauthed = true;
         ApiClient.instance.refresh().then((r) {
           if (!mounted) return;
-          r == RefreshResult.refreshed ? _client.connect() : _fallback('Sign in again to use Smooth mode.');
+          r == RefreshResult.refreshed ? _client.connect() : _fallback('Sign in again to use WebRTC video.');
         });
       case 'error':
-        _fallback(reason.isEmpty ? 'Smooth mode stopped.' : reason);
+        _fallback(reason.isEmpty ? 'WebRTC video stopped.' : reason);
     }
   }
 
-  void _setStream({int? fps, int? kbps}) {
-    setState(() {
-      _fps = fps ?? _fps;
-      _kbps = kbps ?? _kbps;
-    });
-    unawaited(saveConsolePref(SmoothHostDesktop.fpsPref, '$_fps'));
-    unawaited(saveConsolePref(SmoothHostDesktop.kbpsPref, '$_kbps'));
-    _client.setStream(_fps, _kbps);
+  /// The page's network adaptation stepped the preset down or back up.
+  void _adapted(Map<Object?, Object?> msg) {
+    final p = SmoothPreset.byName(msg['preset']);
+    if (p == null) return;
+    final text = msg['dir'] == 'down' ? 'The network is slow - switched to ${p.label}' : 'The network is stable again - back to ${p.label}';
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(text)));
   }
 
-  // In the Display menu where the VNC console has its picture qualities.
-  List<Widget> _qualityItems(BuildContext context) => [
+  void _setStream({SmoothPreset? preset, bool? adapt, int? fps, int? kbps}) {
+    final s = _stream;
+    setState(() => _stream = (preset: preset ?? s.preset, adapt: adapt ?? s.adapt, fps: fps ?? s.fps, maxKbps: kbps ?? s.maxKbps));
+    unawaited(saveConsolePref(SmoothHostDesktop.presetPref, _stream.preset.name));
+    unawaited(saveConsolePref(SmoothHostDesktop.adaptPref, _stream.adapt ? 'on' : 'off'));
+    unawaited(saveConsolePref(SmoothHostDesktop.fpsPref, '${_stream.fps}'));
+    unawaited(saveConsolePref(SmoothHostDesktop.kbpsPref, '${_stream.maxKbps}'));
+    _client.setStream(_stream);
+  }
+
+  // In the Display menu where the VNC console has its picture qualities:
+  // the presets, then (Custom) the raw frame rate and bitrate.
+  List<Widget> _qualityItems(BuildContext context) {
+    final s = _stream;
+    return [
+      for (final p in SmoothPreset.values)
+        RadioMenuButton<SmoothPreset>(
+          value: p,
+          groupValue: s.preset,
+          onChanged: (v) => _setStream(preset: v),
+          // Kept current while the menu is open, like its header.
+          child: ListenableBuilder(
+            listenable: _client.frameCount,
+            builder: (context, _) {
+              final now = SmoothPreset.byName(_client.preset);
+              return Text(p == s.preset && now != null && now != p && p != SmoothPreset.custom
+                  ? '${p.label} · now ${now.label} (network)'
+                  : p.label);
+            },
+          ),
+        ),
+      if (s.preset == SmoothPreset.custom) ...[
         for (final f in smoothFps)
           RadioMenuButton<int>(
             value: f,
-            groupValue: _fps,
+            groupValue: s.fps,
             onChanged: (v) => _setStream(fps: v),
             child: Text(f == 60 ? '60 fps · smoothest' : '30 fps · lighter'),
           ),
@@ -419,14 +505,21 @@ class _SmoothHostDesktopState extends State<SmoothHostDesktop> with WidgetsBindi
             for (final k in smoothKbps)
               RadioMenuButton<int>(
                 value: k,
-                groupValue: _kbps,
+                groupValue: s.maxKbps,
                 onChanged: (v) => _setStream(kbps: v),
                 child: Text('${k ~/ 1000} Mbps${k == 12000 ? ' · default' : ''}'),
               ),
           ],
-          child: Text('Max bitrate · ${_kbps ~/ 1000} Mbps'),
+          child: Text('Max bitrate · ${s.maxKbps ~/ 1000} Mbps'),
         ),
-      ];
+      ] else
+        CheckboxMenuButton(
+          value: s.adapt,
+          onChanged: (v) => _setStream(adapt: v ?? true),
+          child: const Text('Adapt to the network'),
+        ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) => RemoteConsoleFrame(
