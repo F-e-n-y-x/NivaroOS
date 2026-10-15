@@ -61,6 +61,8 @@ void main() {
     await StorageService.instance.init();
     await StorageService.instance.setConsolePref('input', 'touch');
     await StorageService.instance.setConsolePref('fit@mint', 'fit');
+    await StorageService.instance.setConsolePref('bar@vm', 'shown');
+    await StorageService.instance.setConsolePref('barx@vm', '0');
   });
 
   group('touch mode', () {
@@ -217,6 +219,47 @@ void main() {
       expect(find.byTooltip('Show keyboard'), findsOneWidget);
       // Toolbar targets are at least 48dp.
       expect(tester.getSize(find.byTooltip('Disconnect')).height, greaterThanOrEqualTo(48));
+    });
+
+    testWidgets('Hide toolbar keeps it hidden, on reconnect and next time, until its tab is tapped', (tester) async {
+      final c = await frame(tester);
+      await tester.tap(find.byTooltip('Hide toolbar'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Show keyboard'), findsNothing);
+      expect(await StorageService.instance.getConsolePref('bar@vm'), 'hidden');
+      // Connecting again doesn't bring it back.
+      c.status.value = RfbStatus.connecting;
+      await tester.pump();
+      c.status.value = RfbStatus.connected;
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Show keyboard'), findsNothing);
+      // Nor does opening the console again.
+      await tester.pumpWidget(const SizedBox());
+      await frame(tester);
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Show keyboard'), findsNothing);
+      final tab = find.bySemanticsLabel('Show session toolbar');
+      expect(tester.getSize(tab).height, greaterThanOrEqualTo(48));
+      await tester.tap(tab);
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Show keyboard'), findsOneWidget);
+      expect(await StorageService.instance.getConsolePref('bar@vm'), 'shown');
+    });
+
+    testWidgets('the tab slides along the top edge, inside the safe area, and keeps its place', (tester) async {
+      tester.view.padding = const FakeViewPadding(left: 40, right: 40);
+      await frame(tester);
+      await tester.tap(find.byTooltip('Hide toolbar'));
+      await tester.pumpAndSettle();
+      final tab = find.bySemanticsLabel('Show session toolbar');
+      await tester.drag(tab, const Offset(-1000, 0));
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(tab).dx, 40 + 8, reason: 'stops at the cutout plus the margin');
+      expect(await StorageService.instance.getConsolePref('barx@vm'), '-1.000');
+      await tester.pumpWidget(const SizedBox());
+      await frame(tester);
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(find.bySemanticsLabel('Show session toolbar')).dx, 48);
     });
 
     testWidgets('with TalkBack on, the toolbar stays', (tester) async {

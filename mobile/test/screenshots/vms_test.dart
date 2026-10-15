@@ -225,6 +225,7 @@ final Map<String, Future<void> Function(WidgetTester tester)?> _sessionShots = {
   'host_desktop_display_menu': (tester) => _tapTooltip(tester, 'Display'),
   'host_desktop_keys': (tester) => _tapTooltip(tester, 'Extra keys'),
   'host_desktop_mouse': (tester) => _tapTooltip(tester, 'Input: touch. Switch to mouse pointer'),
+  'host_desktop_bar_hidden': (tester) => _tapTooltip(tester, 'Hide toolbar'),
 };
 
 /// A client whose list never answers: the first-load skeleton.
@@ -264,6 +265,7 @@ void main() {
             );
             // Back to the default for the next shot.
             await StorageService.instance.setConsolePref('input', 'touch');
+            await StorageService.instance.setConsolePref('bar@host', 'shown');
           });
         }
       }

@@ -81,6 +81,7 @@ void main() {
     ApiClient.instance.setBaseUrl('http://nivaro.test');
     ApiClient.instance.setSession('t', 'r');
     TerminalSessionsApi.instance.debugReset();
+    await StorageService.instance.setConsolePref('bar@terminal', 'shown');
   });
 
   group('protocol', () {
@@ -304,6 +305,45 @@ void main() {
       await tester.pump();
       await _settle(tester);
       expect(server.requests, contains('DELETE /v1/sys/terminal-sessions/a'));
+    });
+  });
+
+  testWidgets('Full screen hides the bar and the system bars behind a tab, remembered', (tester) async {
+    final modes = <Object?>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'SystemChrome.setEnabledSystemUIMode') modes.add(call.arguments);
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    final server = FakeSessionServer()..host.add(sessionJson('a'));
+    final ws = FakeConnector();
+    Widget screen() => TerminalScreen(session: TerminalSession.fromJson(sessionJson('a')), connector: ws.call);
+    await _run(tester, server, screen(), () async {
+      await _settle(tester);
+      ws.last
+        ..hello(sessionJson('a'))
+        ..live();
+      await tester.pump();
+      expect(find.byType(AppBar), findsOneWidget);
+      await tester.tap(find.byTooltip('More options'));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.ensureVisible(find.text('Full screen'));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.text('Full screen'));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byType(AppBar), findsNothing);
+      expect(modes.last, 'SystemUiMode.immersiveSticky');
+      expect(await StorageService.instance.getConsolePref('bar@terminal'), 'hidden');
+    });
+    // Opened again: still full screen; the tab brings the bar back.
+    await _run(tester, server, screen(), () async {
+      await _settle(tester);
+      expect(find.byType(AppBar), findsNothing);
+      await tester.tap(find.bySemanticsLabel('Show top bar'));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(modes.last, 'SystemUiMode.edgeToEdge');
+      expect(await StorageService.instance.getConsolePref('bar@terminal'), 'shown');
     });
   });
 

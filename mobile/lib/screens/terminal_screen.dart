@@ -9,6 +9,7 @@ import '../services/storage_service.dart';
 import '../services/terminal_protocol.dart';
 import '../services/terminal_sessions.dart';
 import '../ui/ui.dart';
+import '../widgets/console_edge_handle.dart';
 import '../widgets/terminal_surface.dart';
 import 'terminal_sessions_screen.dart';
 
@@ -154,6 +155,11 @@ class _TerminalScreenState extends State<TerminalScreen> with WidgetsBindingObse
   bool _alt = false;
   double _fontSize = TerminalFontSize.fallback;
 
+  // Full screen: the app bar hidden behind a tab on the top edge (slid to
+  // [_barX], -1 left .. 1 right) and the system bars away; remembered.
+  bool _barHidden = false;
+  double _barX = 1;
+
   ScaffoldMessengerState? _messenger;
 
   TerminalSessionsApi get _api => TerminalSessionsApi.instance;
@@ -169,6 +175,7 @@ class _TerminalScreenState extends State<TerminalScreen> with WidgetsBindingObse
     StorageService.instance.getTerminalFontSize().then((v) {
       if (v != null && mounted) setState(() => _fontSize = TerminalFontSize.clamp(v));
     });
+    _loadBar();
     // After the first layout, so the terminal knows its size and the shell
     // starts at it.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -195,8 +202,29 @@ class _TerminalScreenState extends State<TerminalScreen> with WidgetsBindingObse
     _focus.dispose();
     _controller.dispose();
     _scroll.dispose();
+    if (_barHidden) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
+
+  Future<void> _loadBar() async {
+    try {
+      final hidden = await StorageService.instance.getConsolePref('bar@terminal') == 'hidden';
+      final x = double.tryParse(await StorageService.instance.getConsolePref('barx@terminal') ?? '');
+      if (!mounted) return;
+      if (x != null && x.isFinite) setState(() => _barX = x.clamp(-1.0, 1.0));
+      if (hidden) _setBarHidden(true, save: false);
+    } catch (_) {}
+  }
+
+  /// Full screen from the menu; the tab on the top edge brings the bar back.
+  void _setBarHidden(bool hidden, {bool save = true}) {
+    setState(() => _barHidden = hidden);
+    SystemChrome.setEnabledSystemUIMode(hidden ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge);
+    if (save) _saveBarPref('bar@terminal', hidden ? 'hidden' : 'shown');
+  }
+
+  static void _saveBarPref(String name, String value) =>
+      unawaited(StorageService.instance.setConsolePref(name, value).catchError((Object _) {}));
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -717,7 +745,7 @@ class _TerminalScreenState extends State<TerminalScreen> with WidgetsBindingObse
           },
           child: Scaffold(
             backgroundColor: scheme.surfaceContainerLowest,
-            appBar: AppBar(
+            appBar: _barHidden ? null : AppBar(
               backgroundColor: scheme.surfaceContainer,
               systemOverlayStyle: AppTheme.systemBarsStyle(Brightness.dark),
               title: Column(
@@ -777,6 +805,8 @@ class _TerminalScreenState extends State<TerminalScreen> with WidgetsBindingObse
                         _newSession();
                       case 'all':
                         _allTerminals();
+                      case 'fullscreen':
+                        _setBarHidden(true);
                       case 'end':
                         _end();
                     }
@@ -789,6 +819,7 @@ class _TerminalScreenState extends State<TerminalScreen> with WidgetsBindingObse
                     const PopupMenuDivider(),
                     const PopupMenuItem(value: 'bigger', child: ListTile(leading: Icon(Icons.text_increase_outlined), title: Text('Larger text'))),
                     const PopupMenuItem(value: 'smaller', child: ListTile(leading: Icon(Icons.text_decrease_outlined), title: Text('Smaller text'))),
+                    const PopupMenuItem(value: 'fullscreen', child: ListTile(leading: Icon(Icons.fullscreen), title: Text('Full screen'))),
                     const PopupMenuDivider(),
                     if (_session != null && running && !_legacy)
                       const PopupMenuItem(value: 'rename', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Rename'))),
@@ -811,58 +842,72 @@ class _TerminalScreenState extends State<TerminalScreen> with WidgetsBindingObse
             ),
             // Edge to edge: the key row takes the bottom inset itself, so its
             // colour runs under the gesture bar.
-            body: SafeArea(
-              top: false,
-              bottom: false,
-              child: Column(children: [
-                Expanded(
-                  child: Semantics(
-                    label: 'Terminal output',
-                    child: TerminalSurface(
-                      key: _surface,
-                      terminal: _terminal,
-                      controller: _controller,
-                      scrollController: _scroll,
-                      focusNode: _focus,
-                      theme: terminalThemeFor(scheme, StatusColors.of(context)),
-                      fontSize: _fontSize,
-                      readOnly: !_connected && _phase != _Phase.reconnecting,
-                      onFontSizeChanged: _setFontSize,
-                      onFontSizeChangeEnd: (v) => _setFontSize(v, save: true),
-                      onCopy: _copied,
-                      onPaste: _paste,
+            body: Stack(fit: StackFit.expand, children: [
+              SafeArea(
+                top: _barHidden,
+                bottom: false,
+                child: Column(children: [
+                  Expanded(
+                    child: Semantics(
+                      label: 'Terminal output',
+                      child: TerminalSurface(
+                        key: _surface,
+                        terminal: _terminal,
+                        controller: _controller,
+                        scrollController: _scroll,
+                        focusNode: _focus,
+                        theme: terminalThemeFor(scheme, StatusColors.of(context)),
+                        fontSize: _fontSize,
+                        readOnly: !_connected && _phase != _Phase.reconnecting,
+                        onFontSizeChanged: _setFontSize,
+                        onFontSizeChangeEnd: (v) => _setFontSize(v, save: true),
+                        onCopy: _copied,
+                        onPaste: _paste,
+                      ),
                     ),
                   ),
-                ),
-                ?_banner(context),
-                if (_phase != _Phase.ended && _phase != _Phase.gone && !(_phase == _Phase.failed && _session == null))
-                  _KeyBar(
-                    ctrl: _ctrl,
-                    alt: _alt,
-                    onPaste: _paste,
-                    onKey: (k) {
-                      HapticFeedback.selectionClick();
-                      switch (k) {
-                        case 'ctrl':
-                          setState(() => _ctrl = !_ctrl);
-                        case 'alt':
-                          setState(() => _alt = !_alt);
-                        default:
-                          final key = _KeyBarState.terminalKeys[k];
-                          if (key != null) {
-                            // A latched Ctrl/Alt applies to this key (Ctrl+Left
-                            // jumps a word) and is used up by it.
-                            final ctrl = _ctrl, alt = _alt;
-                            if (ctrl || alt) setState(() => _ctrl = _alt = false);
-                            _terminal.keyInput(key, ctrl: ctrl, alt: alt);
-                          } else {
-                            _onInput(k);
-                          }
-                      }
-                    },
+                  ?_banner(context),
+                  if (_phase != _Phase.ended && _phase != _Phase.gone && !(_phase == _Phase.failed && _session == null))
+                    _KeyBar(
+                      ctrl: _ctrl,
+                      alt: _alt,
+                      onPaste: _paste,
+                      onKey: (k) {
+                        HapticFeedback.selectionClick();
+                        switch (k) {
+                          case 'ctrl':
+                            setState(() => _ctrl = !_ctrl);
+                          case 'alt':
+                            setState(() => _alt = !_alt);
+                          default:
+                            final key = _KeyBarState.terminalKeys[k];
+                            if (key != null) {
+                              // A latched Ctrl/Alt applies to this key (Ctrl+Left
+                              // jumps a word) and is used up by it.
+                              final ctrl = _ctrl, alt = _alt;
+                              if (ctrl || alt) setState(() => _ctrl = _alt = false);
+                              _terminal.keyInput(key, ctrl: ctrl, alt: alt);
+                            } else {
+                              _onInput(k);
+                            }
+                        }
+                      },
+                    ),
+                ]),
+              ),
+              if (_barHidden)
+                consoleTopEdge(
+                  context,
+                  x: _barX,
+                  child: ConsoleEdgeHandle(
+                    label: 'Show top bar',
+                    onTap: () => _setBarHidden(false),
+                    onSlide: (dx) =>
+                        setState(() => _barX = slideAlongTopEdge(context, _barX, dx, ConsoleEdgeHandle.size.width)),
+                    onSlideEnd: () => _saveBarPref('barx@terminal', _barX.toStringAsFixed(3)),
                   ),
-              ]),
-            ),
+                ),
+            ]),
           ),
         );
       }),

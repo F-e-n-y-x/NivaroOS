@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import '../services/rfb_client.dart';
 import '../services/storage_service.dart';
 import '../ui/ui.dart';
+import 'console_edge_handle.dart';
 import 'rfb_viewport.dart';
 
 export 'rfb_viewport.dart' show RfbFit, RfbViewport;
@@ -863,8 +864,12 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
   final Set<int> _latched = {};
   final Map<PhysicalKeyboardKey, int> _downKeys = {};
 
-  // The toolbar: shown, where along the top edge, and when it hides.
+  // The toolbar: shown, where along the top edge (-1 left .. 1 right),
+  // and when it hides. Hidden with its button, it stays hidden (on
+  // connect too, and next time) until its tab is tapped; that and where
+  // it sits are remembered per console type, host or VM.
   bool _toolbarShown = true;
+  bool _barHidden = false;
   double _toolbarX = 0;
   int _menusOpen = 0;
   Timer? _hideTimer;
@@ -885,6 +890,7 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
   static const _sentinel = '​​';
 
   RfbClient get _client => widget.client;
+  String get _kind => widget.clipboardTarget == RemoteClipboardHistory.hostTarget ? 'host' : 'vm';
   RemoteClipboardHistory get _history => widget.history ?? RemoteClipboardHistory.instance;
   bool get _session => widget.placeholder == null;
 
@@ -972,8 +978,13 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
     final fit = RfbFit.values.asNameMap()[await _pref('fit@$target')];
     final quality = RfbQuality.values.asNameMap()[await _pref('quality@$target')];
     final landscape = await _pref('landscape') == 'true';
+    final barHidden = await _pref('bar@$_kind') == 'hidden';
+    final barX = double.tryParse(await _pref('barx@$_kind') ?? '');
     if (!mounted) return;
     setState(() {
+      _barHidden = barHidden;
+      if (barHidden) _toolbarShown = false;
+      if (barX != null && barX.isFinite) _toolbarX = barX.clamp(-1.0, 1.0);
       _inputMode = input ?? _inputMode;
       _fit = fit ?? _fit;
       _quality = quality ?? _quality;
@@ -1033,6 +1044,7 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
   /// Shows the toolbar and restarts its hide timer. It stays while a menu
   /// is open, and for good while TalkBack or Switch Access is on.
   void _poke() {
+    if (_barHidden) return;
     _hideTimer?.cancel();
     if (!_toolbarShown) setState(() => _toolbarShown = true);
     _hideTimer = Timer(toolbarHideAfter, () {
@@ -1051,12 +1063,24 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
     _poke();
   }
 
-  void _slideToolbar(DragUpdateDetails d) {
-    final width = MediaQuery.sizeOf(context).width;
-    final pill = _pillKey.currentContext?.size?.width ?? width;
-    final room = ((width - pill) / 2 - Space.sm).clamp(0.0, double.infinity);
-    setState(() => _toolbarX = (_toolbarX + d.delta.dx).clamp(-room, room));
+  void _slideToolbar(double dx) {
+    final width = _toolbarShown ? _pillKey.currentContext?.size?.width : ConsoleEdgeHandle.size.width;
+    setState(() => _toolbarX = slideAlongTopEdge(context, _toolbarX, dx, width ?? double.infinity));
     _poke();
+  }
+
+  void _toolbarSlid() => _savePref('barx@$_kind', _toolbarX.toStringAsFixed(3));
+
+  /// The toolbar's own Hide button, and its tab: the choice sticks.
+  void _setBarHidden(bool hidden) {
+    HapticFeedback.selectionClick();
+    _hideTimer?.cancel();
+    setState(() {
+      _barHidden = hidden;
+      _toolbarShown = !hidden;
+    });
+    _savePref('bar@$_kind', hidden ? 'hidden' : 'shown');
+    if (!hidden) _poke();
   }
 
   // --- keyboard ---
@@ -1383,96 +1407,82 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
 
   Widget _toolbar(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final top = MediaQuery.paddingOf(context).top + Space.sm;
     final Widget child;
     if (_toolbarShown) {
-      child = Material(
-        key: _pillKey,
-        color: scheme.surfaceContainerHigh.withValues(alpha: 0.94),
-        shape: StadiumBorder(side: BorderSide(color: scheme.outlineVariant)),
-        elevation: 3,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // The grip: slide the toolbar along the top edge.
-            ExcludeSemantics(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onHorizontalDragUpdate: _slideToolbar,
-                child: SizedBox(
-                  width: 24,
-                  height: 48,
-                  child: Icon(Icons.drag_indicator, size: 20, color: scheme.onSurfaceVariant),
+      child = Padding(
+        key: const ValueKey('pill'),
+        padding: const EdgeInsets.only(top: Space.sm),
+        child: Material(
+          key: _pillKey,
+          color: scheme.surfaceContainerHigh.withValues(alpha: 0.94),
+          shape: StadiumBorder(side: BorderSide(color: scheme.outlineVariant)),
+          elevation: 3,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // The grip: slide the toolbar along the top edge.
+              ExcludeSemantics(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragUpdate: (d) => _slideToolbar(d.delta.dx),
+                  onHorizontalDragEnd: (_) => _toolbarSlid(),
+                  child: SizedBox(
+                    width: 24,
+                    height: 48,
+                    child: Icon(Icons.drag_indicator, size: 20, color: scheme.onSurfaceVariant),
+                  ),
                 ),
               ),
-            ),
-            // 48dp targets whatever the style's density. On a narrow
-            // screen (or at large text) the middle scrolls; Disconnect stays.
-            Flexible(
-              child: IconButtonTheme(
-                data: IconButtonThemeData(style: IconButton.styleFrom(minimumSize: const Size.square(48))),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Flexible(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(mainAxisSize: MainAxisSize.min, children: _toolbarButtons(context)),
+              // 48dp targets whatever the style's density. On a narrow
+              // screen (or at large text) the middle scrolls; Hide and
+              // Disconnect stay.
+              Flexible(
+                child: IconButtonTheme(
+                  data: IconButtonThemeData(style: IconButton.styleFrom(minimumSize: const Size.square(48))),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Flexible(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(mainAxisSize: MainAxisSize.min, children: _toolbarButtons(context)),
+                      ),
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(right: Space.xs),
-                    child: IconButton(
-                      tooltip: 'Disconnect',
-                      icon: Icon(Icons.close, color: scheme.error),
-                      onPressed: _disconnect,
+                    IconButton(
+                      tooltip: 'Hide toolbar',
+                      icon: const Icon(Icons.expand_less),
+                      onPressed: () => _setBarHidden(true),
                     ),
-                  ),
-                ]),
+                    Padding(
+                      padding: const EdgeInsets.only(right: Space.xs),
+                      child: IconButton(
+                        tooltip: 'Disconnect',
+                        icon: Icon(Icons.close, color: scheme.error),
+                        onPressed: _disconnect,
+                      ),
+                    ),
+                  ]),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     } else {
-      child = Semantics(
-        button: true,
+      child = ConsoleEdgeHandle(
+        key: const ValueKey('tab'),
         label: 'Show session toolbar',
-        excludeSemantics: true,
-        child: InkWell(
-          onTap: _poke,
-          customBorder: const StadiumBorder(),
-          child: SizedBox(
-            width: 64,
-            height: 48,
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: Container(
-                width: 48,
-                height: 20,
-                decoration: ShapeDecoration(
-                  color: scheme.surfaceContainerHigh.withValues(alpha: 0.7),
-                  shape: StadiumBorder(side: BorderSide(color: scheme.outlineVariant)),
-                ),
-                child: Icon(Icons.expand_more, size: 18, color: scheme.onSurfaceVariant),
-              ),
-            ),
-          ),
-        ),
+        onTap: () => _barHidden ? _setBarHidden(false) : _poke(),
+        onSlide: _slideToolbar,
+        onSlideEnd: _toolbarSlid,
       );
     }
-    return Positioned(
-      top: top - (_toolbarShown ? 0 : Space.sm),
-      left: Space.sm,
-      right: Space.sm,
-      child: Center(
-        child: Transform.translate(
-          offset: Offset(_toolbarX, 0),
-          child: Semantics(
-            container: true,
-            label: 'Session toolbar',
-            explicitChildNodes: true,
-            child: AnimatedSwitcher(duration: Motion.of(context).short, child: child),
-          ),
-        ),
+    return consoleTopEdge(
+      context,
+      x: _toolbarX,
+      child: Semantics(
+        container: true,
+        label: 'Session toolbar',
+        explicitChildNodes: true,
+        child: AnimatedSwitcher(duration: Motion.of(context).short, child: child),
       ),
     );
   }

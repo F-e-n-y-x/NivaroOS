@@ -15,6 +15,7 @@ import 'package:nivaroos_mobile/screens/container_logs_screen.dart';
 import 'package:nivaroos_mobile/screens/custom_install_screen.dart';
 import 'package:nivaroos_mobile/screens/terminal_screen.dart';
 import 'package:nivaroos_mobile/screens/terminal_sessions_screen.dart';
+import 'package:nivaroos_mobile/services/storage_service.dart';
 import 'package:nivaroos_mobile/services/terminal_sessions.dart';
 import 'package:nivaroos_mobile/widgets/terminal_surface.dart';
 import 'package:xterm/src/ui/render.dart';
@@ -100,6 +101,16 @@ class FakeTerminal implements TerminalTransport {
 }
 
 /// Long-presses "nextcloud" in the terminal, for the selection shot.
+/// More > Full screen: the bar goes behind a tab on the top edge.
+Future<void> terminalFullScreen(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('More options'));
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(find.text('Full screen'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Full screen'));
+  await tester.pumpAndSettle();
+}
+
 Future<void> selectInTerminal(WidgetTester tester) async {
   final r = tester.allRenderObjects.whereType<RenderTerminal>().first;
   final buffer = tester.widget<TerminalSurface>(find.byType(TerminalSurface)).terminal.buffer;
@@ -122,7 +133,10 @@ void main() {
     AppsScreen.clearCache();
     await signIn();
   });
-  tearDown(() => StoreInstaller.instance.debugSet('jellyfin', null));
+  tearDown(() async {
+    StoreInstaller.instance.debugSet('jellyfin', null);
+    await StorageService.instance.setConsolePref('bar@terminal', 'shown');
+  });
 
   /// Light and dark at 412x915, plus [extra].
   void shots(
@@ -236,6 +250,8 @@ void main() {
   // longer has.
   shots('terminal', () => TerminalScreen(session: buildBox, connector: (uri, headers) async => FakeTerminal()), extra: {Size2.small}, fixedDark: true);
   shots('terminal_selection', () => TerminalScreen(session: buildBox, connector: (uri, headers) async => FakeTerminal()), fixedDark: true, before: selectInTerminal);
+  shots('terminal_fullscreen', () => TerminalScreen(session: buildBox, connector: (uri, headers) async => FakeTerminal()),
+      fixedDark: true, before: terminalFullScreen);
   shots('terminal_reconnecting', () => TerminalScreen(session: buildBox, connector: (uri, headers) async => throw const SocketException('unreachable')), fixedDark: true);
   shots('terminal_closed', () => TerminalScreen(session: buildBox, connector: (uri, headers) async => throw const TerminalHandshakeException(404)), fixedDark: true);
 
