@@ -269,10 +269,8 @@ func (s *Service) recoverRuns() error {
 		if jerr != nil {
 			continue
 		}
-		switch RunKind(r.Kind) {
-		case KindBackup, KindPreview, KindPrune:
-		default:
-			continue // a restore is not repeated behind the user's back
+		if !requeueInterrupted(RunKind(r.Kind)) {
+			continue
 		}
 		if job.Retry.Max > 0 && r.Attempt <= job.Retry.Max {
 			if _, _, err := s.queue.Enqueue(job, EnqueueOptions{
@@ -283,6 +281,12 @@ func (s *Service) recoverRuns() error {
 		}
 	}
 	return nil
+}
+
+// requeueInterrupted: an interrupted run of this kind is queued again (a
+// restore is not repeated behind the user's back).
+func requeueInterrupted(k RunKind) bool {
+	return k == KindBackup || k == KindPreview || k == KindPrune
 }
 
 // notify sends a notification to the desktop.

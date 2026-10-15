@@ -220,6 +220,10 @@ func (x *runExec) cancelCode() ErrorCode {
 			return c
 		}
 	}
+	if x.s.ctx.Err() != nil {
+		// The service is stopping (systemctl stop/restart, an update).
+		return ErrInterrupted
+	}
 	return ErrCancelledByUser
 }
 
@@ -1148,6 +1152,14 @@ func (x *runExec) finishFailure(code ErrorCode) execOutcome {
 	switch code {
 	case ErrCancelledByUser, ErrCancelledUnmounted:
 		x.finish(StatusCancelled, code, Message{Key: "backup.run.summary.cancelled", Args: map[string]interface{}{"reason_key": errorReasonKey(code)}})
+		return execOutcome{}
+	case ErrInterrupted:
+		// Stopped by a service stop: queued again for the next start,
+		// like a run a crash left running (recoverRuns).
+		x.finish(StatusInterrupted, code, Message{Key: "backup.run.summary.interrupted"})
+		if requeueInterrupted(RunKind(x.run.Kind)) && x.job.Retry.Max > 0 && x.run.Attempt <= x.job.Retry.Max {
+			x.enqueueRetry(time.Time{})
+		}
 		return execOutcome{}
 	}
 	if ClassOf(code) == ClassDeferred {

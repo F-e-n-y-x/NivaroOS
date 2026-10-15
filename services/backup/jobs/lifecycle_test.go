@@ -814,3 +814,24 @@ func TestGuardStoppedRunKeepsItsPlanList(t *testing.T) {
 		t.Fatalf("a successful run left its plan list: %v", err)
 	}
 }
+
+// A service stop (systemctl stop/restart, an update) is not the user
+// cancelling: the run ends interrupted and is queued again, as after a
+// crash, instead of "cancelled by you" and no retry.
+func TestShutdownInterruptsAndRequeues(t *testing.T) {
+	h := newHarness(t, true)
+	j := sampleJob("Docs")
+	j.Retry = Retry{Max: 3}
+	job := h.createJob(j)
+	runID := h.run(job, KindBackup)
+	h.startedJob(1)
+	h.cancel()
+	r := h.waitStatus(runID, StatusInterrupted, StatusCancelled, StatusFailed)
+	if RunStatus(r.Status) != StatusInterrupted || ErrorCode(r.ErrorCode) != ErrInterrupted {
+		t.Fatalf("stopped run: %s %s", r.Status, r.ErrorCode)
+	}
+	h.eventually("a queued retry", func() bool { return len(h.runsBy(job.ID, RunByRetry)) == 1 })
+	if rr := h.runsBy(job.ID, RunByRetry)[0]; rr.Attempt != 2 || RunStatus(rr.Status) != StatusQueued {
+		t.Fatalf("retry: %+v", rr)
+	}
+}
