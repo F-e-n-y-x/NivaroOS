@@ -101,6 +101,11 @@ func decodePPM(data []byte) (image.Image, error) {
 	if maxVal != 255 {
 		return nil, fmt.Errorf("unsupported maxval %d (expected 255)", maxVal)
 	}
+	// The header is checked against the bytes actually there before the
+	// canvas is allocated: a bad header must not claim gigabytes.
+	if width < 1 || height < 1 || width > len(data) || height > len(data) || width*height*3 > len(data) {
+		return nil, fmt.Errorf("PPM header %dx%d does not match %d bytes", width, height, len(data))
+	}
 
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	row := make([]byte, width*3)

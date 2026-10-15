@@ -4,18 +4,36 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/gif"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/disintegration/imaging"
 	"github.com/dsoprea/go-exif/v3"
 	exifcommon "github.com/dsoprea/go-exif/v3/common"
+	_ "golang.org/x/image/bmp"
+	"golang.org/x/image/draw"
+	_ "golang.org/x/image/tiff"
 )
 
-func GetImage(path string, width, height int) ([]byte, error) {
+// thumbMaxPixels caps what a thumbnail request will decode: a tiny file can
+// claim a huge canvas, and the decoder allocates it up front (fatal OOM).
+// ponytail: 100 MP covers today's cameras; raise it for bigger panoramas.
+const thumbMaxPixels = 100_000_000
+
+func GetImage(path string, width, height int) (thumb []byte, err error) {
+	// The EXIF and image decoders parse whatever file the user points at;
+	// a panic in them is a bad file, not a reason to drop the request.
+	defer func() {
+		if r := recover(); r != nil {
+			thumb, err = nil, fmt.Errorf("could not read image: %v", r)
+		}
+	}()
 	if thumbnail, err := GetThumbnailByOwnerPhotos(path); err == nil {
 		return thumbnail, nil
 	} else {
@@ -70,21 +88,39 @@ func GetThumbnailByOwnerPhotos(path string) ([]byte, error) {
 	return thumbnail, nil
 }
 func GetThumbnailByWebPhoto(path string, width, height int) ([]byte, error) {
-	src, err := imaging.Open(path)
-	if err != nil {
-		fmt.Println(err)
-		return nil, err
-	}
-
-	img := imaging.Resize(src, width, 0, imaging.Lanczos)
-
-	f, err := imaging.FormatFromFilename(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
+	cfg, format, err := image.DecodeConfig(f)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Width < 1 || cfg.Height < 1 || cfg.Width*cfg.Height > thumbMaxPixels {
+		return nil, fmt.Errorf("image too large to thumbnail: %dx%d", cfg.Width, cfg.Height)
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+	src, _, err := image.Decode(f)
+	if err != nil {
+		return nil, err
+	}
+
+	if height == 0 {
+		height = max(1, cfg.Height*width/cfg.Width)
+	}
+	dst := image.NewNRGBA(image.Rect(0, 0, width, height))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Src, nil)
+
 	buf := bytes.Buffer{}
-	imaging.Encode(&buf, img, f)
-	return buf.Bytes(), nil
+	if format == "jpeg" {
+		err = jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 90})
+	} else {
+		err = png.Encode(&buf, dst)
+	}
+	return buf.Bytes(), err
 }
 
 func ImageExtArray() []string {
