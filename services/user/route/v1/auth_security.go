@@ -117,9 +117,14 @@ func (l *loginLimits) allow(keys ...string) bool {
 		}
 		b := l.buckets[k]
 		if b == nil {
-			if strings.HasPrefix(k, "user:") {
+			switch {
+			case strings.HasPrefix(k, "user:"):
 				b = rate.NewLimiter(rate.Every(time.Minute), 10)
-			} else {
+			case strings.HasPrefix(k, "avatar-ip:"): // login-screen picture lookups
+				b = rate.NewLimiter(rate.Every(3*time.Second), 20)
+			case k == "avatar-net:": // all internet clients together
+				b = rate.NewLimiter(rate.Every(time.Second), 60)
+			default:
 				b = rate.NewLimiter(rate.Every(12*time.Second), 5) // 5 at once, then 5/min
 			}
 			l.buckets[k] = b

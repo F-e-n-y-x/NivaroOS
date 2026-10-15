@@ -30,6 +30,8 @@ func InitRouter() *gin.Engine {
 	r.GET("/v1/users/wallpaper", v1.GetPublicWallpaper)
 	r.HEAD("/v1/users/wallpaper", v1.GetPublicWallpaper)
 	r.GET("/v1/users/appearance", v1.GetPublicAppearance)
+	// The typed account's picture on the login screen (rate-limited).
+	r.GET("/v1/users/login-avatar", v1.GetLoginAvatar)
 
 	r.GET("/v1/users/status", v1.GetUserStatus) // init/check
 
