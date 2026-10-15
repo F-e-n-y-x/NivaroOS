@@ -1273,6 +1273,9 @@ GPUEOF
 		# local-storage-helper.sh (disk and USB mounting) - on a fresh
 		# install those calls all failed.
 		mkdir -p /usr/share/nivaroos/shell
+		# Upstream CasaOS's update.sh piped a third party's script into
+		# bash as root; nothing called it. Gone from older installs too.
+		rm -f /usr/share/nivaroos/shell/update.sh
 		for sh in \"${SRC_DIR}\"/services/core/build/sysroot/usr/share/nivaroos/shell/*.sh \"${SRC_DIR}\"/services/local-storage/build/sysroot/usr/share/nivaroos/shell/*.sh; do
 			[ -f \"\$sh\" ] || continue
 			cp -f \"\$sh\" /usr/share/nivaroos/shell/
