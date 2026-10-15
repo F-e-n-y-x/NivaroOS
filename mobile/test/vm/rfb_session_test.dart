@@ -210,7 +210,7 @@ void main() {
     testWidgets('the toolbar hides itself after a few seconds and comes back from its tab', (tester) async {
       await frame(tester);
       expect(find.byTooltip('Show keyboard'), findsOneWidget);
-      await tester.pump(RemoteConsoleFrameState.toolbarHideAfter + const Duration(seconds: 1));
+      await tester.pump(ConsoleSessionToolbar.hideAfter + const Duration(seconds: 1));
       await tester.pumpAndSettle();
       expect(find.byTooltip('Show keyboard'), findsNothing);
       expect(find.bySemanticsLabel('Show session toolbar'), findsOneWidget);
@@ -251,23 +251,23 @@ void main() {
       await tester.tap(find.byTooltip('Pin toolbar'));
       await tester.pumpAndSettle();
       expect(await StorageService.instance.getConsolePref('bar@vm'), 'pinned');
-      await tester.pump(RemoteConsoleFrameState.toolbarHideAfter * 2);
+      await tester.pump(ConsoleSessionToolbar.hideAfter * 2);
       await tester.pumpAndSettle();
       expect(find.byTooltip('Show keyboard'), findsOneWidget);
       c.status.value = RfbStatus.connecting;
       await tester.pump();
       c.status.value = RfbStatus.connected;
-      await tester.pump(RemoteConsoleFrameState.toolbarHideAfter * 2);
+      await tester.pump(ConsoleSessionToolbar.hideAfter * 2);
       await tester.pumpAndSettle();
       expect(find.byTooltip('Show keyboard'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
       await frame(tester);
-      await tester.pump(RemoteConsoleFrameState.toolbarHideAfter * 2);
+      await tester.pump(ConsoleSessionToolbar.hideAfter * 2);
       await tester.pumpAndSettle();
       expect(find.byTooltip('Show keyboard'), findsOneWidget);
       // Unpinning brings the auto-hide back.
       await tester.tap(find.byTooltip('Unpin toolbar'));
-      await tester.pump(RemoteConsoleFrameState.toolbarHideAfter + const Duration(seconds: 1));
+      await tester.pump(ConsoleSessionToolbar.hideAfter + const Duration(seconds: 1));
       await tester.pumpAndSettle();
       expect(find.byTooltip('Show keyboard'), findsNothing);
       expect(await StorageService.instance.getConsolePref('bar@vm'), 'shown');
@@ -291,7 +291,7 @@ void main() {
 
     testWidgets('with TalkBack on, the toolbar stays', (tester) async {
       await frame(tester, a11y: true);
-      await tester.pump(RemoteConsoleFrameState.toolbarHideAfter * 2);
+      await tester.pump(ConsoleSessionToolbar.hideAfter * 2);
       await tester.pumpAndSettle();
       expect(find.byTooltip('Show keyboard'), findsOneWidget);
     });

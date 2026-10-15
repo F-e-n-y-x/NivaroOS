@@ -7,11 +7,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/rfb_client.dart';
-import '../services/storage_service.dart';
 import '../ui/ui.dart';
-import 'console_edge_handle.dart';
+import 'console_toolbar.dart';
 import 'rfb_viewport.dart';
 
+export 'console_toolbar.dart' show ConsoleSessionToolbar, ConsoleSessionToolbarState;
 export 'rfb_viewport.dart' show RfbFit, RfbViewport;
 
 // The remote console UI shared by the VM console and the host desktop:
@@ -848,10 +848,9 @@ class RemoteConsoleFrame extends StatefulWidget {
 
 class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBindingObserver {
   final _viewKey = GlobalKey<RfbViewState>();
-  final _pillKey = GlobalKey();
+  final _bar = GlobalKey<ConsoleSessionToolbarState>();
   final _sessionFocus = FocusNode(debugLabel: 'remote session');
   final _keyboardFocus = FocusNode(debugLabel: 'remote keyboard');
-  final _keyboardText = TextEditingController(text: _sentinel);
   final _keyScroll = ScrollController();
   StreamSubscription<String>? _clipSub;
 
@@ -864,18 +863,6 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
   final Set<int> _latched = {};
   final Map<PhysicalKeyboardKey, int> _downKeys = {};
 
-  // The toolbar: shown, where along the top edge (-1 left .. 1 right),
-  // and when it hides. Hidden with its button, it stays hidden (on
-  // connect too, and next time) until its tab is tapped; pinned, it never
-  // hides. That and where it sits are remembered per console type, host or VM.
-  bool _toolbarShown = true;
-  bool _barHidden = false;
-  bool _barPinned = false;
-  double _toolbarX = 0;
-  int _menusOpen = 0;
-  Timer? _hideTimer;
-  static const toolbarHideAfter = Duration(seconds: 4);
-
   // Reconnecting after a lost connection: up to [_maxReconnects] tries,
   // 1, 2, 4, 8, then 15 seconds apart (about 45 s in all, long enough for
   // a phone to switch networks or Tailscale to come back), over the last
@@ -886,17 +873,10 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
 
   static const keysRowHeight = 56.0;
 
-  // The hidden field always holds this, so a backspace on an "empty"
-  // field still arrives as a change.
-  static const _sentinel = '​​';
-
   RfbClient get _client => widget.client;
   String get _kind => widget.clipboardTarget == RemoteClipboardHistory.hostTarget ? 'host' : 'vm';
   RemoteClipboardHistory get _history => widget.history ?? RemoteClipboardHistory.instance;
   bool get _session => widget.placeholder == null;
-
-  /// Whether the session toolbar is showing (rather than its tab).
-  bool get toolbarShown => _toolbarShown;
 
   @override
   void initState() {
@@ -905,7 +885,6 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
     _client.status.addListener(_statusChanged);
     _clipSub = _client.remoteClipboard.listen(_remoteCopied);
     _keyboardFocus.addListener(() => setState(() {}));
-    _poke();
     _loadPrefs();
   }
 
@@ -944,11 +923,9 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
     WidgetsBinding.instance.removeObserver(this);
     _client.status.removeListener(_statusChanged);
     _clipSub?.cancel();
-    _hideTimer?.cancel();
     _reconnectTimer?.cancel();
     _sessionFocus.dispose();
     _keyboardFocus.dispose();
-    _keyboardText.dispose();
     _keyScroll.dispose();
     if (_immersive) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     if (_landscapeLocked) SystemChrome.setPreferredOrientations(const []);
@@ -957,43 +934,18 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
 
   // --- remembered choices ---
 
-  static Future<String?> _pref(String name) async {
-    try {
-      return await StorageService.instance.getConsolePref(name);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  static Future<void> _savePref(String name, String value) async {
-    try {
-      await StorageService.instance.setConsolePref(name, value);
-    } catch (e) {
-      debugPrint('[console] Could not save $name: $e');
-    }
-  }
-
   Future<void> _loadPrefs() async {
     final target = widget.clipboardTarget;
-    final input = RfbInputMode.values.asNameMap()[await _pref('input')];
-    final fit = RfbFit.values.asNameMap()[await _pref('fit@$target')];
-    final quality = RfbQuality.values.asNameMap()[await _pref('quality@$target')];
-    final landscape = await _pref('landscape') == 'true';
-    final bar = await _pref('bar@$_kind');
-    final barHidden = bar == 'hidden';
-    final barX = double.tryParse(await _pref('barx@$_kind') ?? '');
+    final input = RfbInputMode.values.asNameMap()[await consolePref('input')];
+    final fit = RfbFit.values.asNameMap()[await consolePref('fit@$target')];
+    final quality = RfbQuality.values.asNameMap()[await consolePref('quality@$target')];
+    final landscape = await consolePref('landscape') == 'true';
     if (!mounted) return;
     setState(() {
-      _barHidden = barHidden;
-      _barPinned = bar == 'pinned';
-      if (barHidden) _toolbarShown = false;
-      if (barX != null && barX.isFinite) _toolbarX = barX.clamp(-1.0, 1.0);
       _inputMode = input ?? _inputMode;
       _fit = fit ?? _fit;
       _quality = quality ?? _quality;
     });
-    // The timer started before the choice loaded.
-    if (_barPinned) _hideTimer?.cancel();
     _client.maxFps = _quality.fps;
     _client.jpegQuality = _quality.jpeg;
     if (landscape) _setLandscape(true, save: false);
@@ -1046,92 +998,19 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
 
   // --- toolbar ---
 
-  /// Shows the toolbar and restarts its hide timer. It stays while a menu
-  /// is open, and for good while TalkBack or Switch Access is on.
-  void _poke() {
-    if (_barHidden) return;
-    _hideTimer?.cancel();
-    if (!_toolbarShown) setState(() => _toolbarShown = true);
-    if (_barPinned) return;
-    _hideTimer = Timer(toolbarHideAfter, () {
-      if (!mounted || _menusOpen > 0 || MediaQuery.maybeAccessibleNavigationOf(context) == true) return;
-      setState(() => _toolbarShown = false);
-    });
-  }
-
-  void _menuOpened() {
-    _menusOpen++;
-    _hideTimer?.cancel();
-  }
-
-  void _menuClosed() {
-    _menusOpen = _menusOpen > 0 ? _menusOpen - 1 : 0;
-    _poke();
-  }
-
-  void _slideToolbar(double dx) {
-    final width = _toolbarShown ? _pillKey.currentContext?.size?.width : ConsoleEdgeHandle.size.width;
-    setState(() => _toolbarX = slideAlongTopEdge(context, _toolbarX, dx, width ?? double.infinity));
-    _poke();
-  }
-
-  void _toolbarSlid() => _savePref('barx@$_kind', _toolbarX.toStringAsFixed(3));
-
-  /// The toolbar's own Hide button, and its tab: the choice sticks.
-  void _setBarHidden(bool hidden) {
-    HapticFeedback.selectionClick();
-    _hideTimer?.cancel();
-    setState(() {
-      _barHidden = hidden;
-      _barPinned = false;
-      _toolbarShown = !hidden;
-    });
-    _savePref('bar@$_kind', hidden ? 'hidden' : 'shown');
-    if (!hidden) _poke();
-  }
-
-  /// The toolbar's Pin button: it stays up until unpinned.
-  void _setBarPinned(bool pinned) {
-    HapticFeedback.selectionClick();
-    setState(() => _barPinned = pinned);
-    _savePref('bar@$_kind', pinned ? 'pinned' : 'shown');
-    _poke();
-  }
+  void _poke() => _bar.currentState?.poke();
+  void _menuOpened() => _bar.currentState?.menuOpened();
+  void _menuClosed() => _bar.currentState?.menuClosed();
 
   // --- keyboard ---
 
   void _toggleKeyboard() {
-    final open = _keyboardFocus.hasFocus;
-    if (open && MediaQuery.viewInsetsOf(context).bottom == 0) {
-      // Focused, but the system hid the keyboard (back): show it again.
-      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
-      return;
-    }
-    if (open) {
-      _sessionFocus.requestFocus();
-    } else {
-      _keyboardFocus.requestFocus();
-      setState(() => _showKeys = true);
-    }
+    if (RemoteKeyboardField.toggle(context, _keyboardFocus, _sessionFocus)) setState(() => _showKeys = true);
   }
 
   void _key(int keysym) {
     _client.tapKey(keysym);
     _releaseLatches();
-  }
-
-  void _onKeyboardText(String value) {
-    if (value.length < _sentinel.length) {
-      for (var i = value.length; i < _sentinel.length; i++) {
-        _key(Keysym.backspace);
-      }
-    } else {
-      final added = value.startsWith(_sentinel) ? value.substring(_sentinel.length) : value.replaceAll('​', '');
-      for (final rune in added.runes) {
-        _key(RfbClient.keysymForRune(rune));
-      }
-    }
-    _keyboardText.value = const TextEditingValue(text: _sentinel, selection: TextSelection.collapsed(offset: 2));
   }
 
   static final Map<LogicalKeyboardKey, int> _modifierKeys = {
@@ -1208,13 +1087,13 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
   void _setInputMode(RfbInputMode mode) {
     HapticFeedback.selectionClick();
     setState(() => _inputMode = mode);
-    _savePref('input', mode.name);
+    saveConsolePref('input', mode.name);
     _poke();
   }
 
   Future<void> _setFit(RfbFit fit) async {
     setState(() => _fit = fit);
-    await _savePref('fit@${widget.clipboardTarget}', fit.name);
+    await saveConsolePref('fit@${widget.clipboardTarget}', fit.name);
     if (fit == RfbFit.matchPhone && mounted) await widget.onMatchPhone?.call(context);
   }
 
@@ -1222,14 +1101,14 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
     setState(() => _quality = q);
     _client.maxFps = q.fps;
     _client.jpegQuality = q.jpeg;
-    _savePref('quality@${widget.clipboardTarget}', q.name);
+    saveConsolePref('quality@${widget.clipboardTarget}', q.name);
   }
 
   void _setLandscape(bool on, {bool save = true}) {
     setState(() => _landscapeLocked = on);
     SystemChrome.setPreferredOrientations(
         on ? const [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight] : const []);
-    if (save) _savePref('landscape', '$on');
+    if (save) saveConsolePref('landscape', '$on');
   }
 
   void _setImmersive(bool on) {
@@ -1243,15 +1122,7 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
 
   Future<void> _onBack(bool didPop, Object? result) async {
     if (didPop) return;
-    final close = await ConfirmDialog.confirm(
-      context,
-      title: 'Disconnect?',
-      message: widget.clipboardTarget == RemoteClipboardHistory.hostTarget
-          ? 'The server keeps running. You can open it again from More.'
-          : '${widget.clipboardTarget} keeps running. You can open the console again from the VM list.',
-      confirmLabel: 'Disconnect',
-    );
-    if (close && mounted) Navigator.of(context).pop();
+    if (await confirmConsoleDisconnect(context, widget.clipboardTarget) && mounted) Navigator.of(context).pop();
   }
 
   void _disconnect() {
@@ -1272,7 +1143,7 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
 
   /// The console's theme: the app's style, always dark - true black when
   /// the app is in true black.
-  static ThemeData _theme(BuildContext context) {
+  static ThemeData consoleTheme(BuildContext context) {
     final app = Theme.of(context);
     return AppTheme.build(
       brightness: Brightness.dark,
@@ -1284,7 +1155,7 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
 
   @override
   Widget build(BuildContext context) {
-    final theme = _theme(context);
+    final theme = consoleTheme(context);
     _setImmersive(_session);
     return Theme(
       data: theme,
@@ -1356,35 +1227,17 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
             bottomInset: keyboard + (keysShown ? keysRowHeight : 0),
             label: widget.screenLabel ?? 'Screen of ${widget.title}',
           ),
-          // The hidden field that brings up the soft keyboard and receives
-          // its text. It must be on screen (1x1) for the IME to attach.
-          Positioned(
-            left: 0,
-            top: 0,
-            width: 1,
-            height: 1,
-            child: ExcludeSemantics(
-              child: Opacity(
-                opacity: 0,
-                child: TextField(
-                  focusNode: _keyboardFocus,
-                  controller: _keyboardText,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  enableIMEPersonalizedLearning: false,
-                  keyboardType: TextInputType.visiblePassword,
-                  textInputAction: TextInputAction.send,
-                  onChanged: _onKeyboardText,
-                  onSubmitted: (_) => _key(Keysym.enter),
-                  onEditingComplete: () {},
-                ),
-              ),
-            ),
-          ),
+          RemoteKeyboardField(focusNode: _keyboardFocus, onKey: _key),
           if (!connected) _overlay(context),
           if (keysShown)
             Positioned(left: 0, right: 0, bottom: keyboard, child: _keyBar(context)),
-          if (connected) _toolbar(context),
+          ConsoleSessionToolbar(
+            key: _bar,
+            kind: _kind,
+            visible: connected,
+            buttons: _toolbarButtons(context),
+            onDisconnect: _disconnect,
+          ),
         ],
       ),
     );
@@ -1399,7 +1252,7 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
     return ColoredBox(
       color: hasFrame ? Colors.black.withValues(alpha: 0.6) : Colors.black,
       child: SafeArea(
-        child: _SessionMessage(
+        child: ConsoleSessionMessage(
           heading: reconnecting
               ? 'Reconnecting to ${widget.title}'
               : switch (status) {
@@ -1416,95 +1269,6 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
           onRetry: connecting ? null : _retry,
           onClose: _disconnect,
         ),
-      ),
-    );
-  }
-
-  Widget _toolbar(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final Widget child;
-    if (_toolbarShown) {
-      child = Padding(
-        key: const ValueKey('pill'),
-        padding: const EdgeInsets.only(top: Space.sm),
-        child: Material(
-          key: _pillKey,
-          color: scheme.surfaceContainerHigh.withValues(alpha: 0.94),
-          shape: StadiumBorder(side: BorderSide(color: scheme.outlineVariant)),
-          elevation: 3,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // The grip: slide the toolbar along the top edge.
-              ExcludeSemantics(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onHorizontalDragUpdate: (d) => _slideToolbar(d.delta.dx),
-                  onHorizontalDragEnd: (_) => _toolbarSlid(),
-                  child: SizedBox(
-                    width: 24,
-                    height: 48,
-                    child: Icon(Icons.drag_indicator, size: 20, color: scheme.onSurfaceVariant),
-                  ),
-                ),
-              ),
-              // 48dp targets whatever the style's density. On a narrow
-              // screen (or at large text) the middle scrolls; Hide and
-              // Disconnect stay.
-              Flexible(
-                child: IconButtonTheme(
-                  data: IconButtonThemeData(style: IconButton.styleFrom(minimumSize: const Size.square(48))),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Flexible(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(mainAxisSize: MainAxisSize.min, children: _toolbarButtons(context)),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: _barPinned ? 'Unpin toolbar' : 'Pin toolbar',
-                      isSelected: _barPinned,
-                      icon: const Icon(Icons.push_pin_outlined),
-                      selectedIcon: const Icon(Icons.push_pin),
-                      onPressed: () => _setBarPinned(!_barPinned),
-                    ),
-                    IconButton(
-                      tooltip: 'Hide toolbar',
-                      icon: const Icon(Icons.expand_less),
-                      onPressed: () => _setBarHidden(true),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(right: Space.xs),
-                      child: IconButton(
-                        tooltip: 'Disconnect',
-                        icon: Icon(Icons.close, color: scheme.error),
-                        onPressed: _disconnect,
-                      ),
-                    ),
-                  ]),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    } else {
-      child = ConsoleEdgeHandle(
-        key: const ValueKey('tab'),
-        label: 'Show session toolbar',
-        onTap: () => _barHidden ? _setBarHidden(false) : _poke(),
-        onSlide: _slideToolbar,
-        onSlideEnd: _toolbarSlid,
-      );
-    }
-    return consoleTopEdge(
-      context,
-      x: _toolbarX,
-      child: Semantics(
-        container: true,
-        label: 'Session toolbar',
-        explicitChildNodes: true,
-        child: AnimatedSwitcher(duration: Motion.of(context).short, child: child),
       ),
     );
   }
@@ -1548,9 +1312,9 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
         tooltip: 'Clipboard',
         icon: const Icon(Icons.content_paste_outlined),
         onPressed: () {
-          _hideTimer?.cancel();
+          _menuOpened();
           _openClipboard(context).whenComplete(() {
-            if (mounted) _poke();
+            if (mounted) _menuClosed();
           });
         },
       ),
@@ -1713,9 +1477,100 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
   }
 }
 
+/// Asks before leaving a live console: [target] keeps running.
+Future<bool> confirmConsoleDisconnect(BuildContext context, String target) => ConfirmDialog.confirm(
+      context,
+      title: 'Disconnect?',
+      message: target == RemoteClipboardHistory.hostTarget
+          ? 'The server keeps running. You can open it again from More.'
+          : '$target keeps running. You can open the console again from the VM list.',
+      confirmLabel: 'Disconnect',
+    );
+
+/// The hidden field that brings up the soft keyboard and turns what is
+/// typed into keysyms for [onKey]. It sits on screen (1x1, invisible) in
+/// the console's Stack, as the IME only attaches to a field on screen.
+class RemoteKeyboardField extends StatefulWidget {
+  const RemoteKeyboardField({super.key, required this.focusNode, required this.onKey});
+
+  final FocusNode focusNode;
+  final ValueChanged<int> onKey;
+
+  /// The toolbar's keyboard button: opens the keyboard (true), or closes
+  /// it by moving focus to [session]. Focused but hidden by the system
+  /// (back), it shows it again.
+  static bool toggle(BuildContext context, FocusNode keyboard, FocusNode session) {
+    if (keyboard.hasFocus && MediaQuery.viewInsetsOf(context).bottom == 0) {
+      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+      return false;
+    }
+    if (keyboard.hasFocus) {
+      session.requestFocus();
+      return false;
+    }
+    keyboard.requestFocus();
+    return true;
+  }
+
+  @override
+  State<RemoteKeyboardField> createState() => _RemoteKeyboardFieldState();
+}
+
+class _RemoteKeyboardFieldState extends State<RemoteKeyboardField> {
+  // The field always holds this, so a backspace on an "empty" field
+  // still arrives as a change.
+  static const _sentinel = '\u200b\u200b';
+  final _text = TextEditingController(text: _sentinel);
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  void _changed(String value) {
+    if (value.length < _sentinel.length) {
+      for (var i = value.length; i < _sentinel.length; i++) {
+        widget.onKey(Keysym.backspace);
+      }
+    } else {
+      final added = value.startsWith(_sentinel) ? value.substring(_sentinel.length) : value.replaceAll('\u200b', '');
+      for (final rune in added.runes) {
+        widget.onKey(RfbClient.keysymForRune(rune));
+      }
+    }
+    _text.value = const TextEditingValue(text: _sentinel, selection: TextSelection.collapsed(offset: 2));
+  }
+
+  @override
+  Widget build(BuildContext context) => Positioned(
+        left: 0,
+        top: 0,
+        width: 1,
+        height: 1,
+        child: ExcludeSemantics(
+          child: Opacity(
+            opacity: 0,
+            child: TextField(
+              focusNode: widget.focusNode,
+              controller: _text,
+              autocorrect: false,
+              enableSuggestions: false,
+              enableIMEPersonalizedLearning: false,
+              keyboardType: TextInputType.visiblePassword,
+              textInputAction: TextInputAction.send,
+              onChanged: _changed,
+              onSubmitted: (_) => widget.onKey(Keysym.enter),
+              onEditingComplete: () {},
+            ),
+          ),
+        ),
+      );
+}
+
 /// Connecting, reconnecting or lost, over the session.
-class _SessionMessage extends StatelessWidget {
-  const _SessionMessage({required this.heading, this.detail, required this.busy, this.onRetry, required this.onClose});
+class ConsoleSessionMessage extends StatelessWidget {
+  const ConsoleSessionMessage({super.key, required this.heading, this.detail, required this.busy, this.onRetry, required this.onClose});
 
   final String heading;
   final String? detail;
