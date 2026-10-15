@@ -295,4 +295,31 @@ describe('#/host-desktop/embed', () => {
 		app.unmount()
 		el.remove()
 	})
+
+	test("the app's keyboard types through nivaroosEmbed.key; host copies reach the bridge", async () => {
+		vi.useFakeTimers()
+		const posted = []
+		window.NivaroosBridge = { postMessage: (m) => posted.push(JSON.parse(m)) }
+		vi.stubGlobal('RTCPeerConnection', FakePC)
+		vi.stubGlobal('fetch', async (url) =>
+			String(url).includes('/offer')
+				? json(200, { type: 'answer', sdp: 'v=0 answer' })
+				: json(200, { modes: { webrtc: { available: true, encoder: 'nvh264enc' } } }),
+		)
+		const { default: Embed } = await import('@/views/HostDesktopEmbed.vue')
+		const el = document.createElement('div')
+		document.body.appendChild(el)
+		const app = createApp({ render: () => h(Embed) })
+		app.config.globalProperties.$t = (s) => s
+		app.mount(el)
+		await flush()
+		const pc = pcs.at(-1)
+		window.nivaroosEmbed.key(0x61, true)
+		expect(pc.dc.sent.at(-1)).toEqual({ t: 'k', ks: 0x61, d: true })
+		pc.msg({ t: 'clip', text: 'from host' })
+		expect(posted.at(-1)).toEqual({ t: 'clip', text: 'from host' })
+		app.unmount()
+		el.remove()
+		expect(window.nivaroosEmbed).toBeUndefined()
+	})
 })

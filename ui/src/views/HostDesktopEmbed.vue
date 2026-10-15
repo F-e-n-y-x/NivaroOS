@@ -7,7 +7,7 @@
 	switches to its own VNC client.
 -->
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import HostDesktopWebRTC from '@/shell/desktop/HostDesktopWebRTC.vue'
 import { loadPrefs } from '@/shell/desktop/streamMode'
 
@@ -29,18 +29,32 @@ function onState(e) {
 	} catch {}
 }
 
+// The host copied text. Android's WebView has no navigator.clipboard on
+// plain http, so the app copies it to the phone.
 function onClipboard(text) {
+	try {
+		if (window.NivaroosBridge) return window.NivaroosBridge.postMessage(JSON.stringify({ t: 'clip', text }))
+	} catch {}
 	if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(() => {})
+}
+
+// The app's soft keyboard types through window.nivaroosEmbed.key(keysym, down).
+function onReady(rfb) {
+	window.nivaroosEmbed = { key: (ks, down) => rfb.sendKey(ks, null, down) }
 }
 
 onMounted(() => {
 	document.title = 'Host Desktop - NivaroOS'
 })
+
+onBeforeUnmount(() => {
+	delete window.nivaroosEmbed
+})
 </script>
 
 <template>
 	<div class="hd-embed">
-		<host-desktop-web-r-t-c :fallback="true" :fps="prefs.fps" :max-kbps="prefs.maxKbps" @state="onState" @clipboard="onClipboard"></host-desktop-web-r-t-c>
+		<host-desktop-web-r-t-c :fallback="true" :fps="prefs.fps" :max-kbps="prefs.maxKbps" @ready="onReady" @state="onState" @clipboard="onClipboard"></host-desktop-web-r-t-c>
 		<div v-if="state !== 'live'" class="hd-embed-status" role="status" aria-live="polite">
 			<span v-if="state === 'connecting'">{{ $t('Connecting...') }}</span>
 			<span v-else-if="state === 'fallback'">{{ $t('Compatible mode') }}</span>
