@@ -61,3 +61,15 @@ cd services/backup && GOWORK=off go generate ./jobs
 export PATH=$PATH:/usr/local/go/bin
 GOWORK=off go vet ./... && GOWORK=off go test ./...
 ```
+
+End-to-end (`e2e/`, build tag `e2e`): the real binary and rclone engine
+on throwaway instances - create/edit/delete, run, cancel, crash
+(SIGKILL) and stop mid-run, retry backoff, excludes, many small and
+large files, restore to the original place and elsewhere (sha256
+checked), purge on delete, live progress and speed, schedule catch-up,
+and page load times with thousands of runs and a hanging cloud. It
+never touches the live service, `/DATA` or a cloud account.
+
+```sh
+services/backup/e2e/run.sh            # ~6 min; -short skips the catch-up wait
+```
