@@ -573,7 +573,7 @@
 						{{ $t('Unlock the server\'s screen') }}
 					</button>
 					<button type="button" class="reconnect-btn" @click="manualReconnect">
-						{{ $t('Reconnect') }}
+						{{ webrtcState === 'paused' ? $t('Resume') : $t('Reconnect') }}
 					</button>
 					<button
 						v-if="serviceStatus && serviceStatus.installed && !serviceStatus.service_active"
@@ -1387,6 +1387,12 @@ export default {
 				this.rfb = null
 				this.webrtcStats = null
 				this.connect()
+			} else if (state === 'paused') {
+				// Hidden for a long time: stopped until a click on the picture
+				// (the viewer resumes) or Reconnect.
+				this.status = 'disconnected'
+				this.connectError = this.$t(reason)
+				this.stopCapsLockPoll()
 			} else if (state === 'error') {
 				// Token expired: connect() refreshes it first (or shows "session expired").
 				this.rfb = null

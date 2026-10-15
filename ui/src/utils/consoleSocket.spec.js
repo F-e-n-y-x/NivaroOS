@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { watchedSocket, STALE_MS } from './consoleSocket'
+import { watchedSocket, CHECK_MS, RESUME_GRACE_MS, STALE_MS } from './consoleSocket'
 
 class FakeWS {
 	constructor(url) {
@@ -27,14 +27,38 @@ describe('watchedSocket', () => {
 		const onStale = vi.fn()
 		const s = watchedSocket('ws://x/host/console', onStale, () => t)
 		FakeWS.last.emit('message', { data: '' }) // heartbeat
-		t = STALE_MS - 1
-		s.check()
+		for (t = CHECK_MS; t < STALE_MS; t += CHECK_MS) s.check()
 		expect(onStale).not.toHaveBeenCalled()
 		t = STALE_MS + 1
 		s.check()
 		expect(onStale).toHaveBeenCalledTimes(1)
 		s.check()
 		expect(onStale).toHaveBeenCalledTimes(1)
+	})
+
+	it('a hidden tab (late checks) is not a dead link: back, the link gets a grace to speak', () => {
+		vi.stubGlobal('WebSocket', FakeWS)
+		let t = 0
+		const onStale = vi.fn()
+		const s = watchedSocket('ws://x/host/console', onStale, () => t)
+		FakeWS.last.emit('message', { data: '' })
+		t = 10 * 60 * 1000 // ten minutes in a background tab, no checks ran
+		s.check()
+		expect(onStale).not.toHaveBeenCalled()
+		FakeWS.last.emit('message', { data: '' }) // the queued heartbeats arrive
+		for (const end = t + STALE_MS; t < end; t += CHECK_MS) s.check()
+		expect(onStale).not.toHaveBeenCalled()
+		// Truly dead after the return: noticed within the grace.
+		const s2 = watchedSocket('ws://y', onStale, () => t)
+		FakeWS.last.emit('message', { data: '' })
+		t += 10 * 60 * 1000
+		s2.check()
+		for (const end = t + RESUME_GRACE_MS + CHECK_MS; t < end;) {
+			t += CHECK_MS
+			s2.check()
+		}
+		expect(onStale).toHaveBeenCalledTimes(1)
+		s.stop()
 	})
 
 	it('never fires against a sidecar without heartbeats, or once closed', () => {

@@ -18,7 +18,7 @@ import { markRaw, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Keyboard from '@novnc-core/input/keyboard.js'
 import { apiBase } from '@/api/vmSidecar'
 import { reconnectDelay } from '@/utils/consoleSocket'
-import { REASONS, STREAM_PRESETS, adaptInit, adaptStep, chooseLane, lossPct, rfbMask, toRemote, watchdog, wheelSteps } from './streamMode'
+import { HIDDEN_GRACE_MS, REASONS, STREAM_PRESETS, adaptInit, adaptStep, chooseLane, lossPct, rfbMask, toRemote, watchdog, wheelSteps } from './streamMode'
 
 const props = defineProps({
 	scaleToFit: { type: Boolean, default: true },
@@ -30,8 +30,11 @@ const props = defineProps({
 	adapt: { type: Boolean, default: true },
 	fps: { type: Number, default: 30 },
 	maxKbps: { type: Number, default: 12000 },
+	// After a long time hidden (stream stopped): resume by itself when shown
+	// again (the app's WebView) instead of waiting for a click.
+	autoResume: { type: Boolean, default: false },
 })
-// state: { state: 'connecting'|'live'|'reconnecting'|'fallback'|'error', reason }
+// state: { state: 'connecting'|'live'|'reconnecting'|'paused'|'fallback'|'error', reason }
 // caps: /host/stream's modes.webrtc; adapt: { preset, dir: 'down'|'up' }
 const emit = defineEmits(['ready', 'state', 'stats', 'size', 'clipboard', 'caps', 'adapt'])
 
@@ -54,6 +57,8 @@ let lastFrameAt = 0
 let framesDecoded = 0
 let attempt = 0
 let retryTimer = null
+let hiddenTimer = null
+let paused = false
 let tickTimer = null
 let statsTimer = null
 let remote = { w: 0, h: 0 }
@@ -224,13 +229,16 @@ async function offer() {
 }
 
 function tick() {
-	if (stopped || retryTimer || document.hidden) return
+	if (stopped || retryTimer || paused) return
+	const now = Date.now()
 	const v = watchdog({
-		now: Date.now(),
+		now,
 		offerAt,
 		firstFrameAt,
 		lastHbAt,
-		lastFrameAt,
+		// Hidden, the browser throttles frame callbacks and decoding: only
+		// the heartbeat says whether the stream is alive.
+		lastFrameAt: document.hidden ? now : lastFrameAt,
 		pcState: pc ? pc.connectionState : 'closed',
 		fallback: props.fallback,
 	})
@@ -299,19 +307,37 @@ async function start() {
 	offer()
 }
 
-// A hidden tab decodes nothing (and the frame watchdog would misfire):
-// drop the peer - the server stops the encoder - and re-offer on return.
+// Switching tabs keeps the peer and the server's encoder: back, the same
+// session goes on at once. Only a tab hidden for HIDDEN_GRACE_MS stops
+// (and says "paused" when shown again; a click resumes).
 function onVisibility() {
 	if (stopped) return
+	clearTimeout(hiddenTimer)
+	hiddenTimer = null
 	if (document.hidden) {
-		clearTimeout(retryTimer)
-		retryTimer = null
-		gen++
-		closePeer()
-	} else if (!pc) {
-		setState('connecting')
-		offer()
+		if (!paused) hiddenTimer = setTimeout(pauseHidden, HIDDEN_GRACE_MS)
+		return
 	}
+	lastFrameAt = Date.now() // frame callbacks were throttled: give them a moment
+	if (paused) props.autoResume ? resume() : setState('paused', REASONS.paused)
+}
+
+function pauseHidden() {
+	hiddenTimer = null
+	if (stopped) return
+	gen++
+	clearTimeout(retryTimer)
+	retryTimer = null
+	closePeer()
+	paused = true
+	setState('paused', REASONS.paused)
+}
+
+function resume() {
+	if (!paused || stopped) return
+	paused = false
+	setState('connecting')
+	offer()
 }
 
 // ── Input ──
@@ -328,6 +354,10 @@ function sendPointer(e, m) {
 }
 
 function onPointer(e) {
+	if (paused) {
+		if (e.type === 'pointerdown') resume()
+		return
+	}
 	if (e.type === 'pointerdown') {
 		root.value.focus({ preventScroll: true })
 		try {
@@ -371,6 +401,7 @@ const rfbLike = markRaw({
 	clipboardPasteFrom: (text) => send({ t: 'clip', text: String(text) }),
 	focus: () => root.value && root.value.focus({ preventScroll: true }),
 	disconnect: stop,
+	resume,
 	// The app's WebView drives input itself (its native console gestures)
 	// and only wants the picture: a pointer in remote pixels with an RFB
 	// mask (wheel bits included), and where to draw the video.
@@ -427,6 +458,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
 	stop()
+	clearTimeout(hiddenTimer)
 	clearInterval(tickTimer)
 	clearInterval(statsTimer)
 	document.removeEventListener('visibilitychange', onVisibility)

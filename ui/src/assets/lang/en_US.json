@@ -3576,5 +3576,6 @@
   "Max bitrate": "Max bitrate",
   "{preset} (network)": "{preset} (network)",
   "The network is slow - switched to {preset}": "The network is slow - switched to {preset}",
-  "The network is stable again - back to {preset}": "The network is stable again - back to {preset}"
+  "The network is stable again - back to {preset}": "The network is stable again - back to {preset}",
+  "Paused while hidden - click to resume": "Paused while hidden - click to resume"
 }

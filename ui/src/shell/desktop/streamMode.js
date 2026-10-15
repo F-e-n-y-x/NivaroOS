@@ -39,6 +39,9 @@ export function presetSummary(spec) {
 export const FIRST_FRAME_MS = 4000
 export const HEARTBEAT_STALE_MS = 6000
 export const FRAME_STALE_MS = 3000
+// A hidden tab keeps its stream this long (switching tabs must not
+// reconnect), then stops it to free the server's encoder.
+export const HIDDEN_GRACE_MS = 10 * 60 * 1000
 
 // Reasons are en_US.json keys (the server's own reason already is one).
 export const REASONS = {
@@ -51,6 +54,7 @@ export const REASONS = {
 	peer: 'The connection dropped',
 	encoder: 'WebRTC video failed to start on this server',
 	route: 'WebRTC video needs your home network or Tailscale - this connection goes through the internet',
+	paused: 'Paused while hidden - click to resume',
 }
 
 const STORAGE_KEY = 'host_desktop_stream'

@@ -40,7 +40,7 @@ function post(obj) {
 
 function onState(e) {
 	// The bridge only knows connecting|live|fallback|error.
-	const s = e.state === 'reconnecting' ? 'connecting' : e.state
+	const s = e.state === 'reconnecting' || e.state === 'paused' ? 'connecting' : e.state
 	state.value = s
 	reason.value = e.reason || ''
 	const msg = JSON.stringify({ state: s, reason: reason.value })
@@ -102,6 +102,7 @@ onBeforeUnmount(() => {
 	<div class="hd-embed">
 		<host-desktop-web-r-t-c
 			:fallback="true"
+			:auto-resume="true"
 			:preset="preset"
 			:adapt="adapt"
 			:fps="fps"

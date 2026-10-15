@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
-import { REASONS } from './streamMode'
+import { HIDDEN_GRACE_MS, REASONS } from './streamMode'
 import HostDesktopWebRTC from './HostDesktopWebRTC.vue'
 
 let pcs = []
@@ -89,6 +89,7 @@ describe('HostDesktopWebRTC', () => {
 		app = null
 		el && el.remove()
 		delete window.__nivaroosToken
+		delete document.hidden // back to jsdom's own (setHidden)
 		vi.unstubAllGlobals()
 		vi.useRealTimers()
 	})
@@ -159,6 +160,58 @@ describe('HostDesktopWebRTC', () => {
 		])
 		expect(events.filter(([n]) => n === 'adapt').at(-1)[1]).toEqual({ preset: 'high', dir: 'up' })
 		expect(pcs).toHaveLength(1) // the same peer throughout
+	})
+
+	// The tab: hidden or shown (jsdom's document.hidden is fixed otherwise).
+	function setHidden(v) {
+		Object.defineProperty(document, 'hidden', { configurable: true, get: () => v })
+		document.dispatchEvent(new Event('visibilitychange'))
+	}
+
+	test('switching tabs keeps the same peer: hidden, no frames (throttled) is not frozen; shown, it goes on', async () => {
+		await mount()
+		const pc = pcs[0]
+		await liveSecond(pc, 1, 0.004)
+		expect(lastState().state).toBe('live')
+		setHidden(true)
+		// 30 s in a background tab: heartbeats arrive, decoded frames don't.
+		for (let i = 0; i < 30; i++) {
+			pc.msg({ t: 'hb' })
+			await vi.advanceTimersByTimeAsync(1000)
+			await flush()
+		}
+		setHidden(false)
+		await flush()
+		await liveSecond(pc, 2, 0.004)
+		expect(pcs).toHaveLength(1)
+		expect(pc.closed).toBe(false)
+		expect(states().filter((s) => s.state !== 'live')).toEqual([{ state: 'connecting', reason: '' }]) // only the first one
+		expect(fetchMock.mock.calls.filter(([u]) => u.endsWith('/offer'))).toHaveLength(1)
+		setHidden(false)
+	})
+
+	test('hidden past the grace: the stream stops, says paused when shown, and a click resumes it', async () => {
+		await mount()
+		const pc = pcs[0]
+		await liveSecond(pc, 1, 0.004)
+		setHidden(true)
+		for (let t = 0; t < HIDDEN_GRACE_MS; t += 2000) {
+			pc.msg({ t: 'hb' }) // the server's, every 2 s
+			await vi.advanceTimersByTimeAsync(2000)
+		}
+		await flush()
+		expect(pc.closed).toBe(true)
+		expect(lastState()).toEqual({ state: 'paused', reason: REASONS.paused })
+		setHidden(false)
+		await flush()
+		expect(lastState()).toEqual({ state: 'paused', reason: REASONS.paused })
+		expect(pcs).toHaveLength(1) // no offer until asked
+		el.querySelector('video').dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, buttons: 1 }))
+		await flush()
+		expect(pcs).toHaveLength(2)
+		expect(lastState().state).toBe('connecting')
+		await liveSecond(pcs[1], 1, 0.004)
+		expect(lastState().state).toBe('live')
 	})
 
 	test('adaptation off, or Custom: the preset never changes', async () => {
