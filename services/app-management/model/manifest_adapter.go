@@ -12,7 +12,7 @@ import (
 )
 
 func (p *PortMap) ServicePortConfig() (types.ServicePortConfig, error) {
-	target, err := strconv.Atoi(p.ContainerPort)
+	target, err := strconv.ParseUint(p.ContainerPort, 10, 16)
 	if err != nil {
 		return types.ServicePortConfig{}, err
 	}

@@ -39,3 +39,13 @@ func TestCompose(t *testing.T) {
 
 	assert.NotNil(t, composeApp)
 }
+
+func TestServicePortConfigRejectsOutOfRangePort(t *testing.T) {
+	for _, p := range []string{"-1", "70000", "4294967297"} {
+		_, err := (&model.PortMap{ContainerPort: p}).ServicePortConfig()
+		assert.Error(t, err, p) // used to wrap to a huge uint32 target
+	}
+	c, err := (&model.PortMap{ContainerPort: "8080"}).ServicePortConfig()
+	assert.NoError(t, err)
+	assert.Equal(t, uint32(8080), c.Target)
+}
