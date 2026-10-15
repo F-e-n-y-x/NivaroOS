@@ -31,3 +31,6 @@ export function watchedSocket(url, onStale, now = () => Date.now()) {
 	timer = setInterval(check, 2000)
 	return { ws, check, stop }
 }
+
+// Backoff between automatic reconnects: 1 s, 2 s, 4 s, 8 s, then 15 s.
+export const reconnectDelay = (attempt) => Math.min(15000, 1000 * 2 ** attempt)

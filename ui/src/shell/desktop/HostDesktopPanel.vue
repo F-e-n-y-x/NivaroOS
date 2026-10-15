@@ -668,7 +668,7 @@ import { windowFitSizes } from '@/utils/windowFit'
 import { apiBase as sidecarApiBase, wsBase as sidecarWsBase } from '@/api/vmSidecar'
 import RemoteClipboardPanel from '@/shared/clipboard/RemoteClipboardPanel.vue'
 import { record as recordClipboard, typeText } from '@/service/remoteClipboard'
-import { watchedSocket } from '@/utils/consoleSocket'
+import { reconnectDelay, watchedSocket } from '@/utils/consoleSocket'
 
 const QUALITY_PRESETS = {
 	high: { qualityLevel: 9, compressionLevel: 1 },
@@ -1293,7 +1293,7 @@ export default {
 		scheduleReconnect() {
 			this.clearReconnectTimer()
 			if (this.authExpired) return
-			const delay = Math.min(15000, 1000 * Math.pow(2, this.reconnectAttempt))
+			const delay = reconnectDelay(this.reconnectAttempt)
 			this.reconnectAttempt += 1
 			this.reconnectTimer = setTimeout(() => {
 				this.reconnectTimer = null

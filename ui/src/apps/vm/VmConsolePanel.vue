@@ -432,12 +432,12 @@
 		</div>
 		<div ref="screen" class="console-screen"></div>
 		<div v-if="status !== 'connected'" class="console-status">
-			<b-icon v-if="status === 'connecting'" icon="loading" custom-class="mdi-spin" custom-size="mdi-36px"></b-icon>
+			<b-icon v-if="status === 'connecting' || reconnecting" icon="loading" custom-class="mdi-spin" custom-size="mdi-36px"></b-icon>
 			<b-icon v-else icon="lan-disconnect" custom-size="mdi-36px"></b-icon>
 			<span>{{ statusText }}</span>
 			<button v-if="status === 'disconnected' && vmState === 'shutoff'" class="reconnect-btn" :disabled="vmBusy" @click="runAction('startVM')">{{ $t('Start VM') }}</button>
 			<button v-else-if="status === 'disconnected' && vmState === 'paused'" class="reconnect-btn" :disabled="vmBusy" @click="runAction('resumeVM')">{{ $t('Resume') }}</button>
-			<button v-else-if="status === 'disconnected'" class="reconnect-btn" @click="connect">{{ $t('Reconnect') }}</button>
+			<button v-else-if="status === 'disconnected' || reconnecting" class="reconnect-btn" @click="manualReconnect">{{ $t('Reconnect') }}</button>
 		</div>
 
 		<div v-show="keyboardOpen && !minimized" ref="keyboard" class="on-screen-keyboard" :style="keyboardStyle">
@@ -528,6 +528,7 @@
 import RFB from '@novnc/novnc'
 import { markRaw } from 'vue'
 import { vmSidecar } from '@/api/vmSidecar'
+import { reconnectDelay, watchedSocket } from '@/utils/consoleSocket'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import VmDropdown from './VmDropdown.vue'
 import VmFilePickerDialog from './VmFilePickerDialog.vue'
@@ -706,6 +707,8 @@ export default {
 		return {
 			rfb: null,
 			status: 'connecting',
+			// Automatic retries since the link dropped (0 = none pending).
+			reconnectAttempt: 0,
 			vmState: null,
 			vm: null,
 			clipboardOpen: false,
@@ -785,10 +788,14 @@ export default {
 		// charset would be rejected server-side anyway; validating it here
 		// too means the button just stays disabled instead of the user
 		// waiting on a round-trip to find out.
+		reconnecting() {
+			return this.reconnectAttempt > 0 && this.status !== 'connected'
+		},
 		statusText() {
 			if (this.status === 'disconnected' && this.vmState && this.vmState !== 'running') {
 				return this.vmState === 'paused' ? this.$t('The VM is paused') : this.$t('The VM is turned off')
 			}
+			if (this.reconnecting) return this.$t('Reconnecting...')
 			return (
 				{
 					connecting: this.$t('Connecting...'),
@@ -892,6 +899,7 @@ export default {
 		document.addEventListener('mousedown', this.onOutsideClick)
 		document.addEventListener('fullscreenchange', this.onFullscreenChange)
 		window.addEventListener('resize', this.clampKeyboardPos)
+		document.addEventListener('visibilitychange', this.onVisibilityChange)
 		// Sized from the panel itself, not the viewport: the console is a
 		// resizable window, so viewport media queries never fired and the
 		// toolbar was cut off (Power unreachable) at the default 960px.
@@ -910,6 +918,7 @@ export default {
 		document.removeEventListener('mousedown', this.onOutsideClick)
 		document.removeEventListener('fullscreenchange', this.onFullscreenChange)
 		window.removeEventListener('resize', this.clampKeyboardPos)
+		document.removeEventListener('visibilitychange', this.onVisibilityChange)
 		if (this.panelResizeObserver) this.panelResizeObserver.disconnect()
 		if (this.$refs.keyboard && this.$refs.keyboard.parentNode) {
 			this.$refs.keyboard.parentNode.removeChild(this.$refs.keyboard)
@@ -917,6 +926,8 @@ export default {
 	},
 	methods: {
 		disconnectRfb() {
+			clearTimeout(this.connectTimer)
+			if (this.sock) this.sock.stop()
 			const old = this.rfb
 			this.rfb = null
 			if (old) {
@@ -939,8 +950,14 @@ export default {
 			if (this.destroyed || !this.$refs.screen) return
 			if (this.rfb) this.disconnectRfb()
 			this.status = 'connecting'
+			// A dead link (slept laptop, new network) ends the session so the
+			// automatic reconnect below runs, instead of a frozen picture.
+			let rfb = null
+			this.sock = watchedSocket(vmSidecar.consoleUrl(this.vmName), () => {
+				if (rfb && rfb === this.rfb) rfb.disconnect()
+			})
 			// markRaw: a reactive proxy in this.rfb would never === rfb.
-			const rfb = markRaw(new RFB(this.$refs.screen, vmSidecar.consoleUrl(this.vmName)))
+			rfb = markRaw(new RFB(this.$refs.screen, this.sock.ws))
 			this.rfb = rfb
 			rfb.scaleViewport = this.scaleToFit
 			const preset = QUALITY_PRESETS[this.qualityMode] || QUALITY_PRESETS.balanced
@@ -952,13 +969,24 @@ export default {
 			rfb.addEventListener('connect', () => {
 				if (rfb !== this.rfb) return
 				this.status = 'connected'
+				this.reconnectAttempt = 0
 				const p = QUALITY_PRESETS[this.qualityMode] || QUALITY_PRESETS.balanced
 				rfb.qualityLevel = p.qualityLevel
 				rfb.compressionLevel = p.compressionLevel
 			})
+			// Our own disconnects (minimise, Reconnect, unmount) clear this.rfb
+			// first and return above; anything else is the link dropping.
 			rfb.addEventListener('disconnect', () => {
 				if (rfb !== this.rfb) return
+				const wasLive = this.status === 'connected' || this.reconnectAttempt > 0
 				this.status = 'disconnected'
+				// A VM that is off or paused has nothing to reconnect to.
+				if (wasLive && this.vmState !== 'shutoff' && this.vmState !== 'paused') {
+					this.scheduleConnect(reconnectDelay(this.reconnectAttempt))
+					this.reconnectAttempt += 1
+				} else {
+					this.reconnectAttempt = 0
+				}
 			})
 			rfb.addEventListener('clipboard', (e) => {
 				if (rfb !== this.rfb) return
@@ -969,6 +997,15 @@ export default {
 					navigator.clipboard.writeText(text).catch(() => {})
 				}
 			})
+		},
+		manualReconnect() {
+			this.reconnectAttempt = 0
+			this.connect()
+		},
+		// Back from a background tab or sleep: a link that died meanwhile
+		// reconnects now, not after the next watch tick.
+		onVisibilityChange() {
+			if (!document.hidden && this.sock) this.sock.check()
 		},
 		async pollState(force) {
 			if (force !== true && (document.hidden || this.minimized)) return
@@ -1597,13 +1634,16 @@ export default {
 		vmState(state, prev) {
 			if (state === 'running' && prev && prev !== 'running' && this.status !== 'connected') {
 				this.scheduleConnect(1500)
+			} else if (state && state !== 'running' && this.reconnectAttempt) {
+				clearTimeout(this.connectTimer)
+				this.reconnectAttempt = 0
 			}
 		},
 		minimized(min) {
 			// Nothing to show while minimised: drop the VNC stream (it keeps
 			// decoding frames otherwise) and reconnect on restore.
 			if (min) {
-				this.pausedByMinimize = this.status !== 'disconnected'
+				this.pausedByMinimize = this.status !== 'disconnected' || this.reconnectAttempt > 0
 				if (this.rfb) this.disconnectRfb()
 			} else if (this.pausedByMinimize) {
 				this.pausedByMinimize = false
