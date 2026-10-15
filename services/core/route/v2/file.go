@@ -58,6 +58,19 @@ func (c *NivaroOS) PostUploadFile(ctx *echo.Context) error {
 		v, err := strconv.ParseInt(ctx.FormValue(k), 10, 64)
 		return v, err == nil
 	}
+	if ctx.FormValue("cancel") != "" {
+		// The upload tray's cancel button: drop the temp file now.
+		totalSize, _ := num("totalSize")
+		if err := c.fileUploadService.Cancel(service.UploadChunk{
+			Path:         ctx.FormValue("path"),
+			RelativePath: uploadRelativePath(ctx.FormValue("relativePath"), ctx.FormValue("filename")),
+			Identifier:   ctx.FormValue("identifier"),
+			TotalSize:    totalSize,
+		}); err != nil {
+			return ctx.JSON(http.StatusBadRequest, uploadError{http.StatusBadRequest, err.Error()})
+		}
+		return ctx.JSON(http.StatusOK, map[string]interface{}{"success": 200})
+	}
 	chunkNumber, ok1 := num("chunkNumber")
 	chunkSize, ok2 := num("chunkSize")
 	currentChunkSize, ok3 := num("currentChunkSize")

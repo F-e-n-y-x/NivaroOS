@@ -205,3 +205,43 @@ func TestUploadResumesAfterRestart(t *testing.T) {
 	}
 	assertNoUploadTemp(t, dest)
 }
+
+// Cancel removes the temp file and chunk record right away, in memory or
+// (after a restart) on disk only; a finished upload stays.
+func TestUploadCancelRemovesTemp(t *testing.T) {
+	dest := t.TempDir()
+	data := randomData(3 * 1024)
+	key := UploadChunk{Path: dest, RelativePath: "c.bin", Identifier: "id", TotalSize: 3 * 1024}
+	for _, restart := range []bool{false, true} {
+		s := NewFileUploadService()
+		if _, err := s.Upload(chunkReq(dest, "c.bin", "id", 1, 1024, 3*1024, data)); err != nil {
+			t.Fatal(err)
+		}
+		if restart {
+			s.Close()
+			s = NewFileUploadService()
+		}
+		if err := s.Cancel(key); err != nil {
+			t.Fatal(err)
+		}
+		assertNoUploadTemp(t, dest)
+		s.Close()
+	}
+
+	s := NewFileUploadService()
+	defer s.Close()
+	for n := int64(1); n <= 3; n++ {
+		if _, err := s.Upload(chunkReq(dest, "c.bin", "id", n, 1024, 3*1024, data)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Cancel(key); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dest, "c.bin")); !bytes.Equal(got, data) {
+		t.Fatal("cancel touched a finished upload")
+	}
+	if s.Cancel(UploadChunk{Path: dest, RelativePath: "../x", Identifier: "id"}) == nil {
+		t.Fatal("path traversal accepted")
+	}
+}

@@ -66,6 +66,7 @@
 import Uploader from 'simple-uploader.js'
 import { formatSize } from '@/utils/formatSize'
 import { uploadIdentifier } from './uploadIdentifier'
+import { cancelUpload } from './uploadCancel'
 import events from '@/events/events'
 
 // Ported from src/components/filebrowser/FilePanel.vue:728-791
@@ -272,7 +273,10 @@ export default {
 		},
 		cancelFile(trackedFile) {
 			const rawFile = this.rawFileMap[trackedFile.uid]
-			if (rawFile) this.uploaderInstance.removeFile(rawFile)
+			if (rawFile) {
+				this.uploaderInstance.removeFile(rawFile)
+				if (!rawFile.isComplete()) cancelUpload(this.uploaderInstance.opts.target, this.uploaderInstance.opts.headers, rawFile)
+			}
 			delete this.rawFileMap[trackedFile.uid]
 			const index = this.trackedFiles.findIndex((f) => f.uid === trackedFile.uid)
 			if (index > -1) this.trackedFiles.splice(index, 1)

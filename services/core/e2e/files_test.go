@@ -486,6 +486,39 @@ func TestUploadResumeAcrossRestart(t *testing.T) {
 	}
 }
 
+// Cancel in the upload tray: the half-sent file's temp goes right away,
+// not after the 6-hour idle cleanup.
+func TestUploadCancelRemovesTemp(t *testing.T) {
+	src := filepath.Join(work, "cancel-src")
+	size := int64(10 << 20)
+	writeRandom(t, src, size, 5)
+	dest := filepath.Join(diskVol, "up-cancel")
+	mkdirs(t, dest)
+	o := uploadOpts{chunk: 4 << 20, identifier: "cancel", only: map[int64]bool{1: true}}
+	if msg := uploadFile(t, dest, "c.bin", src, o); msg != "" {
+		t.Fatal(msg)
+	}
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	for k, v := range uploadFields(dest, "c.bin", size, o, 1) {
+		_ = mw.WriteField(k, v[0])
+	}
+	_ = mw.WriteField("cancel", "1")
+	mw.Close()
+	resp, err := http.Post(core.base+"/v2/casaos/file/upload", mw.FormDataContentType(), &body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("cancel: %d", resp.StatusCode)
+	}
+	noLeftovers(t, dest)
+	if _, err := os.Stat(filepath.Join(dest, "c.bin")); err == nil {
+		t.Fatal("cancelled upload appeared")
+	}
+}
+
 // A chunk whose request dies half way (closed tab, dropped Wi-Fi) is
 // retried; the result must be byte-identical.
 func TestUploadTruncatedChunkRetried(t *testing.T) {

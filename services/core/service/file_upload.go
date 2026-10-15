@@ -219,14 +219,54 @@ func (s *FileUploadService) Upload(c UploadChunk) (UploadResult, error) {
 // the error for the chunks still on their way (see upload.failed). The
 // browser's next attempt starts with a chunk check, which clears it.
 func (s *FileUploadService) fail(u *upload, err error) error {
+	u.discard()
+	u.failed = fmt.Errorf("upload failed: %s", transfer.HumanError(err))
+	return u.failed
+}
+
+// discard closes and deletes an unfinished upload's temp file and chunk
+// record. Caller holds u.mu.
+func (u *upload) discard() {
 	u.f.Close()
 	_ = os.Remove(u.tmp)
 	_ = os.Remove(u.parts)
 	if u.cleanup != "" {
 		_ = os.RemoveAll(u.cleanup)
 	}
-	u.failed = fmt.Errorf("upload failed: %s", transfer.HumanError(err))
-	return u.failed
+}
+
+// Cancel drops an unfinished upload the user cancelled, so its temp file
+// doesn't sit there until the idle cleanup. Only the fields that key an
+// upload (Path, RelativePath, Identifier, TotalSize) are used. A finished
+// upload is not touched.
+// ponytail: a chunk already in flight when the cancel lands can start the
+// upload again; the idle cleanup removes that one.
+func (s *FileUploadService) Cancel(c UploadChunk) error {
+	dest, err := resolveUploadDest(c.Path, c.RelativePath)
+	if err != nil {
+		return err
+	}
+	key := uploadKey(c)
+	s.mu.Lock()
+	u := s.uploads[key]
+	delete(s.uploads, key)
+	s.mu.Unlock()
+	if u != nil {
+		u.mu.Lock()
+		defer u.mu.Unlock()
+		if u.failed == nil && !u.done {
+			u.discard()
+		}
+		// chunks still waiting on u.mu must not write to the closed file
+		u.failed = errors.New("upload cancelled")
+		return nil
+	}
+	// Not in memory (service restarted since): remove what's on disk.
+	_ = os.RemoveAll(filepath.Join(UploadStagingDir, key))
+	dir, name := filepath.Dir(dest), filepath.Base(dest)
+	_ = os.Remove(filepath.Join(dir, transfer.HiddenTempName(name, ".nvupload-"+key[:12])))
+	_ = os.Remove(filepath.Join(dir, transfer.HiddenTempName(name, ".nvupload-"+key[:12]+"p")))
+	return nil
 }
 
 func appendLine(p string, n int64) error {
@@ -409,12 +449,7 @@ func (s *FileUploadService) janitor() {
 		for k, u := range s.uploads {
 			u.mu.Lock()
 			if u.last.Before(cutoff) {
-				u.f.Close()
-				_ = os.Remove(u.tmp)
-				_ = os.Remove(u.parts)
-				if u.cleanup != "" {
-					_ = os.RemoveAll(u.cleanup)
-				}
+				u.discard()
 				delete(s.uploads, k)
 			}
 			u.mu.Unlock()
