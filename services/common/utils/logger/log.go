@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 
 	"github.com/samber/lo"
 	"go.uber.org/zap"
@@ -14,7 +15,8 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-var loggers *zap.Logger
+// Atomic: tests (and anything else) may re-init while goroutines log.
+var loggers atomic.Pointer[zap.Logger]
 
 func getFileLogWriter(logPath string, logFileName string, logFileExt string) (writeSyncer zapcore.WriteSyncer) {
 	// 使用 lumberjack 实现 log rotate
@@ -31,14 +33,14 @@ func getFileLogWriter(logPath string, logFileName string, logFileExt string) (wr
 
 func LogInitWithWriterSyncers(syncers ...zapcore.WriteSyncer) {
 	encoder := getEncoder()
-	loggers = zap.New(
+	loggers.Store(zap.New(
 		zapcore.NewTee(
 			lo.Map(
 				syncers,
 				func(syncer zapcore.WriteSyncer, index int) zapcore.Core {
 					return zapcore.NewCore(encoder, syncer, zapcore.InfoLevel)
 				})...,
-		))
+		)))
 }
 
 // for unit tests
@@ -63,7 +65,7 @@ var (
 // current: the configured logger, or stderr before LogInit* ran (a test
 // calling a handler that logs used to panic on a nil logger).
 func current() *zap.Logger {
-	if l := loggers; l != nil {
+	if l := loggers.Load(); l != nil {
 		return l
 	}
 	fallbackOnce.Do(func() {

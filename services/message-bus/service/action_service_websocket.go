@@ -14,35 +14,36 @@ import (
 type ActionServiceWS struct {
 	typeService *ActionTypeService
 
-	ctx   *context.Context
-	mutex sync.Mutex
-	stop  chan struct{}
+	ctx  *context.Context
+	stop chan struct{}
+
+	// mu guards everything below and ctx/stop: Subscribe and
+	// Unsubscribe run on request goroutines while Start reads the map.
+	mu sync.Mutex
 
 	inboundChannel     chan model.Action
 	subscriberChannels map[string]map[string][]chan model.Action
 }
 
 func (s *ActionServiceWS) Trigger(action model.Action) {
-	if s.inboundChannel == nil {
-		logger.Error("error when triggering action via websocket", zap.Error(ErrInboundChannelNotFound))
+	s.mu.Lock()
+	inbound, ctx := s.inboundChannel, s.ctx
+	s.mu.Unlock()
+	if inbound == nil { // not started yet, or stopped
+		logger.Error("error when sending action via websocket", zap.Error(ErrInboundChannelNotFound))
+		return
 	}
 
 	if action.Timestamp == 0 {
 		action.Timestamp = time.Now().Unix()
 	}
 
-	// As with events, properties aren't checked against the type's list;
-	// the route caps their size (readProperties).
+	// Properties aren't checked against the type's list: publishers send
+	// extra ones. The route caps their size (readProperties).
 
 	select {
-	case s.inboundChannel <- action:
-
-	case <-(*s.ctx).Done():
-		if err := (*s.ctx).Err(); err != nil {
-			logger.Info(err.Error())
-		}
-		return
-
+	case inbound <- action:
+	case <-(*ctx).Done():
 	default: // drop action if no one is listening
 	}
 }
@@ -70,88 +71,98 @@ func (s *ActionServiceWS) Subscribe(sourceID string, names []string) (chan model
 		}
 	}
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.subscriberChannels == nil {
 		s.subscriberChannels = make(map[string]map[string][]chan model.Action)
 	}
-
 	if s.subscriberChannels[sourceID] == nil {
 		s.subscriberChannels[sourceID] = make(map[string][]chan model.Action)
 	}
 
 	c := make(chan model.Action, 1)
-
 	for _, name := range names {
-		if s.subscriberChannels[sourceID][name] == nil {
-			s.subscriberChannels[sourceID][name] = make([]chan model.Action, 0)
-		}
 		s.subscriberChannels[sourceID][name] = append(s.subscriberChannels[sourceID][name], c)
 	}
-
 	return c, nil
 }
 
 func (s *ActionServiceWS) Unsubscribe(sourceID string, name string, c chan model.Action) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.subscriberChannels == nil {
 		return ErrSubscriberChannelsNotFound
 	}
-
 	if s.subscriberChannels[sourceID] == nil {
 		return ErrActionSourceIDNotFound
 	}
-
 	if s.subscriberChannels[sourceID][name] == nil {
 		return ErrActionNameNotFound
 	}
 
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
 	for i, subscriber := range s.subscriberChannels[sourceID][name] {
 		if subscriber == c {
-			if i >= len(s.subscriberChannels[sourceID][name]) {
-				logger.Error("the i-th subscriber is removed before we get here - concurrency issue?", zap.Int("subscriber", i), zap.Int("total", len(s.subscriberChannels[sourceID][name])))
-				return ErrAlreadySubscribed
-			}
 			s.subscriberChannels[sourceID][name] = append(s.subscriberChannels[sourceID][name][:i], s.subscriberChannels[sourceID][name][i+1:]...)
 			return nil
 		}
 	}
-
 	return nil
 }
 
-func (s *ActionServiceWS) Start(ctx *context.Context) {
-	s.ctx = ctx
-	s.mutex = sync.Mutex{}
+// send hands action to every subscriber of sourceID/name (all subscribers when
+// both are empty), dropping it for any that isn't keeping up.
+func (s *ActionServiceWS) send(sourceID, name string, action model.Action) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for sid, source := range s.subscriberChannels {
+		if sourceID != "" && sid != sourceID {
+			continue
+		}
+		for n, subscribers := range source {
+			if name != "" && n != name {
+				continue
+			}
+			for _, c := range subscribers {
+				select {
+				case c <- action:
+				default: // drop action if no one is listening
+				}
+			}
+		}
+	}
+}
 
-	s.inboundChannel = make(chan model.Action)
+func (s *ActionServiceWS) Start(ctx *context.Context) {
+	s.mu.Lock()
+	s.ctx = ctx
+	inbound := make(chan model.Action)
+	s.inboundChannel = inbound
 	s.subscriberChannels = make(map[string]map[string][]chan model.Action)
 	s.stop = make(chan struct{})
+	s.mu.Unlock()
 
 	defer func() {
-		if s.subscriberChannels != nil {
-			for sourceID, source := range s.subscriberChannels {
-				for actionName, subscribers := range source {
-					for _, subscriber := range subscribers {
-						select {
-						case _, ok := <-subscriber:
-							if ok {
-								close(subscriber)
-							}
-						default:
-							continue
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		for _, source := range s.subscriberChannels {
+			for _, subscribers := range source {
+				for _, subscriber := range subscribers {
+					select {
+					case _, ok := <-subscriber:
+						if ok {
+							close(subscriber)
 						}
+					default:
 					}
-					delete(s.subscriberChannels[sourceID], actionName)
 				}
-				delete(s.subscriberChannels, sourceID)
 			}
-			s.subscriberChannels = nil
 		}
-
-		close(s.inboundChannel)
+		s.subscriberChannels = nil
+		// inbound is left open: a concurrent sender holding it must not
+		// panic on a closed channel; nil makes new sends bail out.
 		s.inboundChannel = nil
-
 		close(s.stop)
 		s.stop = nil
 	}()
@@ -161,61 +172,21 @@ func (s *ActionServiceWS) Start(ctx *context.Context) {
 
 	for {
 		select {
-
-		case <-(*s.ctx).Done():
+		case <-(*ctx).Done():
 			return
 
-		case action, ok := <-s.inboundChannel:
-			if !ok {
-				return
+		case action := <-inbound:
+			if action.SourceID == "" || action.Name == "" {
+				continue // "" would mean "everyone" to send
 			}
-
-			if s.subscriberChannels == nil {
-				continue
-			}
-
-			if s.subscriberChannels[action.SourceID] == nil {
-				continue
-			}
-
-			if s.subscriberChannels[action.SourceID][action.Name] == nil {
-				continue
-			}
-
-			for _, c := range s.subscriberChannels[action.SourceID][action.Name] {
-				select {
-				case c <- action:
-				case <-(*s.ctx).Done():
-					return
-				default: // drop event if no one is listening
-					continue
-				}
-			}
+			s.send(action.SourceID, action.Name, action)
 
 		case <-ticker.C:
-			if s.subscriberChannels == nil {
-				continue
-			}
-
-			heartbeat := model.Action{
+			s.send("", "", model.Action{
 				SourceID:  common.MessageBusSourceID,
 				Name:      common.MessageBusHeartbeatName,
 				Timestamp: time.Now().Unix(),
-			}
-
-			for _, source := range s.subscriberChannels {
-				for _, subscribers := range source {
-					for _, subscriber := range subscribers {
-						select {
-						case subscriber <- heartbeat:
-						case <-(*s.ctx).Done():
-							return
-						default: // drop event if no one is listening
-							continue
-						}
-					}
-				}
-			}
+			})
 		}
 	}
 }
