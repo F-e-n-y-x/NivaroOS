@@ -112,8 +112,14 @@ func TestIntegrationWebRTCOfferStreamsAndInjects(t *testing.T) {
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&st)
 	resp.Body.Close()
-	if st.Modes["webrtc"]["available"] != true || st.Modes["webrtc"]["encoder"] != enc {
+	if st.Modes["webrtc"]["available"] != true || st.Modes["webrtc"]["encoder"] != enc || st.Modes["webrtc"]["default_preset"] != "balanced" {
 		t.Fatalf("/host/stream: %v", st.Modes)
+	}
+	if kind := map[bool]string{true: "gpu", false: "cpu"}[enc != "x264enc"]; st.Modes["webrtc"]["encoder_type"] != kind {
+		t.Errorf("encoder_type %v, want %s", st.Modes["webrtc"]["encoder_type"], kind)
+	}
+	if low, _ := st.Modes["webrtc"]["presets"].(map[string]any)["low"].(map[string]any); low == nil || low["max_width"] != 1280.0 {
+		t.Errorf("presets: %v", st.Modes["webrtc"]["presets"])
 	}
 
 	// --- client ---
@@ -160,7 +166,7 @@ func TestIntegrationWebRTCOfferStreamsAndInjects(t *testing.T) {
 		gathered := webrtc.GatheringCompletePromise(pc)
 		_ = pc.SetLocalDescription(offer)
 		<-gathered
-		body, _ := json.Marshal(map[string]any{"sdp": pc.LocalDescription().SDP, "type": "offer", "fps": 30, "max_kbps": 4000})
+		body, _ := json.Marshal(map[string]any{"sdp": pc.LocalDescription().SDP, "type": "offer", "preset": "low"})
 		resp, err := http.Post(srv.URL+"/host/webrtc/offer", "application/json", bytes.NewReader(body))
 		if err != nil {
 			t.Fatal(err)
@@ -191,8 +197,8 @@ func TestIntegrationWebRTCOfferStreamsAndInjects(t *testing.T) {
 		t.Fatalf("timed out waiting for %s", what)
 	}
 	waitForLong("video packets", 15*time.Second, func() bool { return pkts1.Load() > 30 })
-	gotSize, gotHB := false, false
-	waitForLong("size + heartbeat", 6*time.Second, func() bool {
+	gotSize, gotHB, gotEnc := false, false, false
+	waitForLong("size + heartbeat + enc", 6*time.Second, func() bool {
 		for {
 			select {
 			case m := <-msgs1:
@@ -202,12 +208,35 @@ func TestIntegrationWebRTCOfferStreamsAndInjects(t *testing.T) {
 				if m.T == "hb" {
 					gotHB = true
 				}
+				// Low: 1280 wide at most, so the 1280x720 test screen stays as is.
+				if m.T == "enc" && m.Encoder == enc && m.Preset == "low" && m.W == 1280 && m.Kbps > 0 {
+					gotEnc = true
+				}
 				continue
 			default:
 			}
-			return gotSize && gotHB
+			return gotSize && gotHB && gotEnc
 		}
 	})
+
+	// Network adaptation: the client switches preset on the data channel;
+	// the encoder restarts with it and the same peer keeps getting video.
+	_ = dc1.SendText(`{"t":"preset","preset":"high"}`)
+	waitForLong("enc high", 6*time.Second, func() bool {
+		for {
+			select {
+			case m := <-msgs1:
+				if m.T == "enc" && m.Preset == "high" {
+					return true
+				}
+				continue
+			default:
+			}
+			return false
+		}
+	})
+	before := pkts1.Load()
+	waitForLong("video after the preset switch", 10*time.Second, func() bool { return pkts1.Load() > before+30 })
 
 	// Input reaches the RFB socket: x11vnc moves Xvfb's pointer.
 	_ = dc1.SendText(`{"t":"p","x":321,"y":123,"m":0}`)

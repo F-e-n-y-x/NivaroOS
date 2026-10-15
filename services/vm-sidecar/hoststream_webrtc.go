@@ -1,7 +1,7 @@
-// hoststream_webrtc.go: Host Desktop "Smooth (beta)" - the host screen over
-// WebRTC, next to the noVNC lane (console.go), which stays the default and
-// the fallback. Contract: /host/stream + /host/webrtc/offer, data channel
-// "input" (JSON), one H.264 track.
+// hoststream_webrtc.go: Host Desktop over WebRTC - the primary lane (Auto
+// tries it first), with the noVNC lane (console.go) as the fallback and the
+// explicit "Compatible" choice. Contract: /host/stream + /host/webrtc/offer,
+// data channel "input" (JSON), one H.264 track.
 //
 //	capture + encode   gst-launch-1.0 child (ximagesrc on X11; on GNOME
 //	                   Wayland our own mutter ScreenCast session, see
@@ -76,7 +76,7 @@ const (
 // webrtcEncoders in order of preference.
 var webrtcEncoders = []string{"nvh264enc", "vah264enc", "x264enc"}
 
-var gstElements = []string{"nvh264enc", "cudaupload", "cudaconvert", "vah264enc", "x264enc",
+var gstElements = []string{"nvh264enc", "cudaupload", "cudaconvert", "cudaconvertscale", "vah264enc", "x264enc",
 	"ximagesrc", "pipewiresrc", "videorate", "videoscale", "videoconvert", "rtph264pay", "udpsink"}
 
 var gstProbe struct {
@@ -180,53 +180,126 @@ func webrtcAvailability(c captureTarget, vncUp bool) (enc, reason string) {
 
 type encParams struct {
 	Encoder   string
+	Preset    string // streamPresets key; "" = custom (Balanced tuning)
 	FPS, Kbps int
+	MaxW      int   // scale down to at most this wide; 0 = native
+	CudaScale bool  // nvh264enc: scale on the GPU (cudaconvertscale, GStreamer 1.22+)
 	W, H      int   // framebuffer size
 	Seq       int   // first RTP sequence number, -1: random
 	TS        int64 // first RTP timestamp, -1: random
 	Port      int   // loopback RTP port
 }
 
-// encodeSize: even (4:2:0), and at most 1920 wide on x264 (a CPU core
-// per 3398x1220@30 otherwise).
-func encodeSize(enc string, w, h int) (int, int) {
-	if enc == "x264enc" && w > 1920 {
-		h, w = h*1920/w, 1920
+// presetSpec: what a preset streams on one kind of encoder.
+type presetSpec struct {
+	FPS  int `json:"fps"`
+	Kbps int `json:"max_kbps"`
+	MaxW int `json:"max_width"` // 0: native
+}
+
+// streamPresets: the Host Desktop quality presets, for a GPU encoder
+// (nvh264enc, vah264enc) and for x264enc. Measured at 3398x1220 on a Ryzen
+// 5 3600 / GTX 1080 Ti: docs/guides/host-desktop-smooth.md.
+var streamPresets = map[string]struct{ GPU, CPU presetSpec }{
+	"low":      {GPU: presetSpec{24, 2500, 1280}, CPU: presetSpec{20, 2000, 1280}},
+	"balanced": {GPU: presetSpec{30, 8000, 1920}, CPU: presetSpec{30, 8000, 1920}},
+	"high":     {GPU: presetSpec{60, 25000, 0}, CPU: presetSpec{30, 20000, 0}},
+}
+
+var presetOrder = []string{"low", "balanced", "high"}
+
+const defaultPreset = "balanced"
+
+func gpuEncoder(enc string) bool { return enc == "nvh264enc" || enc == "vah264enc" }
+
+// resolvePreset: the fps, bitrate and width cap for one encoder run.
+// preset "" is custom: the client's fps/kbps, x264 capped at 1920 wide
+// (a CPU core per 3398x1220@30 otherwise). fps/kbps > 0 override a preset.
+func resolvePreset(enc, preset string, fps, kbps int) presetSpec {
+	sp, ok := streamPresets[preset]
+	var r presetSpec
+	switch {
+	case ok && gpuEncoder(enc):
+		r = sp.GPU
+	case ok:
+		r = sp.CPU
+	case enc == "x264enc":
+		r = presetSpec{30, 12000, 1920}
+	default:
+		r = presetSpec{30, 12000, 0}
+	}
+	if fps > 0 {
+		r.FPS = fps
+	}
+	if kbps > 0 {
+		r.Kbps = kbps
+	}
+	if enc == "x264enc" {
+		r.FPS = min(r.FPS, 30) // x264 tops out at 30
+	}
+	return r
+}
+
+// encodeSize: even (4:2:0) and at most maxW wide (0: native).
+func encodeSize(maxW, w, h int) (int, int) {
+	if maxW > 0 && w > maxW {
+		h, w = h*maxW/w, maxW
 	}
 	return w &^ 1, h &^ 1
 }
 
-// encodeFPS: x264 tops out at 30.
-func encodeFPS(enc string, fps int) int {
-	if enc == "x264enc" {
-		return min(fps, 30)
-	}
-	return fps
-}
-
 // gstTail: everything after the source's raw frames, ending in RTP to
-// 127.0.0.1:Port.
+// 127.0.0.1:Port. Encoder tuning follows the preset: Low spends encoder
+// time on compression (few pixels, few bits), High on quality, Balanced
+// and custom on latency.
 func gstTail(p encParams) []string {
-	fps := encodeFPS(p.Encoder, p.FPS)
-	gop := strconv.Itoa(2 * fps) // keyframe floor; PLI restarts the encoder
+	gop := strconv.Itoa(2 * p.FPS) // keyframe floor; PLI restarts the encoder
 	kb := strconv.Itoa(p.Kbps)
 	a := []string{"!", "queue", "leaky=downstream", "max-size-buffers=1", "max-size-bytes=0", "max-size-time=0"}
-	if w, h := encodeSize(p.Encoder, p.W, p.H); w > 0 && (w != p.W || h != p.H) {
+	w, h := encodeSize(p.MaxW, p.W, p.H)
+	scale := w > 0 && (w != p.W || h != p.H)
+	gpuScale := scale && p.Encoder == "nvh264enc" && p.CudaScale
+	if scale && !gpuScale {
 		a = append(a, "!", "videoscale", "n-threads=0", "!", fmt.Sprintf("video/x-raw,width=%d,height=%d,pixel-aspect-ratio=1/1", w, h))
 	}
 	switch p.Encoder {
 	case "nvh264enc":
 		// Capped VBR: an idle screen costs ~0.2 Mbit/s instead of the cap.
-		a = append(a, "!", "cudaupload", "!", "cudaconvert", "!", "nvh264enc", "preset=p1", "tune=ultra-low-latency",
-			"rc-mode=vbr", "const-quality=23", "bitrate="+kb, "max-bitrate="+kb, "gop-size="+gop, "bframes=0", "zerolatency=true",
-			"!", "video/x-h264,profile=main")
+		preset, cq := map[string]string{"low": "p4", "high": "p4"}[p.Preset], map[string]string{"low": "28", "high": "19"}[p.Preset]
+		if preset == "" {
+			preset, cq = "p1", "23"
+		}
+		a = append(a, "!", "cudaupload")
+		if gpuScale { // half the CPU of videoscale at 3398 -> 1920
+			a = append(a, "!", "cudaconvertscale", "!", fmt.Sprintf("video/x-raw(memory:CUDAMemory),width=%d,height=%d,pixel-aspect-ratio=1/1", w, h))
+		} else {
+			a = append(a, "!", "cudaconvert")
+		}
+		a = append(a, "!", "nvh264enc", "preset="+preset, "tune=ultra-low-latency",
+			"rc-mode=vbr", "const-quality="+cq, "bitrate="+kb, "max-bitrate="+kb, "gop-size="+gop, "bframes=0", "zerolatency=true")
+		if p.Preset == "high" {
+			a = append(a, "spatial-aq=true")
+		}
+		a = append(a, "!", "video/x-h264,profile=main")
 	case "vah264enc":
+		// target-usage: 1 best quality .. 7 fastest.
+		tu := map[string]string{"low": "4", "high": "4"}[p.Preset]
+		if tu == "" {
+			tu = "7"
+		}
 		a = append(a, "!", "videoconvert", "n-threads=0", "!", "video/x-raw,format=NV12", "!", "vah264enc", "rate-control=vbr",
-			"bitrate="+kb, "key-int-max="+gop, "b-frames=0", "target-usage=7", "!", "video/x-h264,profile=main")
+			"bitrate="+kb, "key-int-max="+gop, "b-frames=0", "target-usage="+tu, "!", "video/x-h264,profile=main")
 	default:
+		// ultrafast is the cheapest per pixel; Low's few pixels can afford
+		// veryfast + CABAC (main), which needs far fewer bits for the same
+		// picture.
+		speed, profile := "ultrafast", "constrained-baseline"
+		if p.Preset == "low" {
+			speed, profile = "veryfast", "main"
+		}
 		a = append(a, "!", "videoconvert", "n-threads=0", "!", "video/x-raw,format=I420", "!", "x264enc", "tune=zerolatency",
-			"speed-preset=ultrafast", "bitrate="+kb, "vbv-buf-capacity=1000", "key-int-max="+gop, "bframes=0",
-			"!", "video/x-h264,profile=constrained-baseline")
+			"speed-preset="+speed, "bitrate="+kb, "vbv-buf-capacity=1000", "key-int-max="+gop, "bframes=0",
+			"!", "video/x-h264,profile="+profile)
 	}
 	a = append(a, "!", "rtph264pay", "config-interval=-1", "pt=96", "mtu=1200", "aggregate-mode=zero-latency")
 	if p.Seq >= 0 {
@@ -240,7 +313,7 @@ func gstTail(p encParams) []string {
 
 func x11Argv(display string, p encParams) []string {
 	a := []string{"-q", "ximagesrc", "display-name=" + display, "use-damage=false", "show-pointer=false",
-		"!", fmt.Sprintf("video/x-raw,framerate=%d/1", encodeFPS(p.Encoder, p.FPS))}
+		"!", fmt.Sprintf("video/x-raw,framerate=%d/1", p.FPS)}
 	return append(a, gstTail(p)...)
 }
 
@@ -256,7 +329,7 @@ func encoderCmd(c captureTarget, p encParams) *exec.Cmd {
 	var cmd *exec.Cmd
 	if c.waylandUID != "" {
 		self, _ := os.Executable()
-		args := append([]string{"host-webrtc-wayland", "--uid", c.waylandUID, "--fps", strconv.Itoa(encodeFPS(p.Encoder, p.FPS)), "--"}, gstTail(p)...)
+		args := append([]string{"host-webrtc-wayland", "--uid", c.waylandUID, "--fps", strconv.Itoa(p.FPS), "--"}, gstTail(p)...)
 		cmd = exec.Command(self, args...)
 	} else {
 		cmd = exec.Command(gstLaunch, x11Argv(c.x11.Display, p)...)
@@ -502,6 +575,11 @@ type dcMsg struct {
 	W    int    `json:"w,omitempty"`
 	H    int    `json:"h,omitempty"`
 	Code string `json:"code,omitempty"`
+	// "preset" (client: switch to it) and "enc" (server: what runs now).
+	Preset  string `json:"preset,omitempty"`
+	Encoder string `json:"encoder,omitempty"`
+	FPS     int    `json:"fps,omitempty"`
+	Kbps    int    `json:"max_kbps,omitempty"`
 }
 
 func clampU16(v int) uint16 { return uint16(max(0, min(v, 0xffff))) }
@@ -539,15 +617,19 @@ type webrtcSession struct {
 	rfb    *rfbConn
 	claims *jwt.Claims
 	cap    captureTarget
-	fps    int
-	kbps   int
 	have   map[string]bool
 	spawn  func(encParams) *exec.Cmd // encoderCmd; tests swap it
 
 	sizeMu sync.Mutex
 	w, h   int
+	// What the client asked for: a preset ("" = custom) and fps/kbps
+	// overrides (0 = the preset's). A "preset" message changes it.
+	preset    string
+	fps, kbps int
+	presetCh  chan struct{}
 
 	dc      atomic.Pointer[webrtc.DataChannel]
+	lastEnc atomic.Pointer[dcMsg] // resent when the channel opens
 	restart chan string
 	stop    chan struct{}
 	once    sync.Once
@@ -567,6 +649,30 @@ func (s *webrtcSession) size() (int, int) {
 	s.sizeMu.Lock()
 	defer s.sizeMu.Unlock()
 	return s.w, s.h
+}
+
+func (s *webrtcSession) stream() (string, int, int) {
+	s.sizeMu.Lock()
+	defer s.sizeMu.Unlock()
+	return s.preset, s.fps, s.kbps
+}
+
+// setPreset: the client's network adaptation (or its menu) picked another
+// preset. The encoder restarts with it; the peer and the picture stay.
+func (s *webrtcSession) setPreset(p string) {
+	if _, ok := streamPresets[p]; !ok {
+		return
+	}
+	s.sizeMu.Lock()
+	changed := p != s.preset || s.fps != 0 || s.kbps != 0
+	s.preset, s.fps, s.kbps = p, 0, 0
+	s.sizeMu.Unlock()
+	if changed {
+		select {
+		case s.presetCh <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func (s *webrtcSession) send(m dcMsg) {
@@ -616,6 +722,10 @@ func (s *webrtcSession) linger() {
 func (s *webrtcSession) onInput(b []byte) {
 	var m dcMsg
 	if json.Unmarshal(b, &m) != nil {
+		return
+	}
+	if m.T == "preset" {
+		s.setPreset(m.Preset)
 		return
 	}
 	if m.T == "release" {
@@ -761,14 +871,21 @@ func (s *webrtcSession) superviseEncoder() {
 			return
 		}
 		w, h := s.size()
+		preset, fps, kbps := s.stream()
+		sp := resolvePreset(enc, preset, fps, kbps)
 		seq, ts, before, _ := rs.next(time.Now())
-		cmd := s.spawn(encParams{Encoder: enc, FPS: s.fps, Kbps: s.kbps, W: w, H: h, Seq: seq, TS: ts, Port: port})
+		cmd := s.spawn(encParams{Encoder: enc, Preset: preset, FPS: sp.FPS, Kbps: sp.Kbps, MaxW: sp.MaxW, CudaScale: s.have["cudaconvertscale"],
+			W: w, H: h, Seq: seq, TS: ts, Port: port})
 		started := time.Now()
 		if err := cmd.Start(); err != nil {
 			log.Printf("host webrtc: %s: %v", enc, err)
 			broken[enc] = true
 			continue
 		}
+		ew, eh := encodeSize(sp.MaxW, w, h)
+		m := &dcMsg{T: "enc", Encoder: enc, Preset: preset, FPS: sp.FPS, Kbps: sp.Kbps, W: ew, H: eh}
+		s.lastEnc.Store(m)
+		s.send(*m)
 		exited := make(chan struct{})
 		go func() { _ = cmd.Wait(); close(exited) }()
 		why := s.waitEncoder(exited, started, &rs)
@@ -797,7 +914,7 @@ func (s *webrtcSession) superviseEncoder() {
 }
 
 // waitEncoder: why the current run ends - "stop", "exit", "hung", "pli",
-// "size".
+// "size", "preset".
 func (s *webrtcSession) waitEncoder(exited <-chan struct{}, started time.Time, rs *rtpState) string {
 	tick := time.NewTicker(webrtcHungAfter / 6)
 	defer tick.Stop()
@@ -807,6 +924,8 @@ func (s *webrtcSession) waitEncoder(exited <-chan struct{}, started time.Time, r
 			return "stop"
 		case <-exited:
 			return "exit"
+		case <-s.presetCh:
+			return "preset"
 		case why := <-s.restart:
 			// A new run starts with a keyframe anyway; PLIs right after
 			// one are the browser still waiting for it.
@@ -901,11 +1020,22 @@ func writeWebRTCUnavailable(w http.ResponseWriter, reason string) {
 func handleHostStream(w http.ResponseWriter, r *http.Request) {
 	vnc := socketListening(webrtcRFBSocket)
 	enc, reason := webrtcAvailability(webrtcCapture(), vnc)
+	kind, presets := "", map[string]presetSpec{}
+	if enc != "" {
+		kind = "cpu"
+		if gpuEncoder(enc) {
+			kind = "gpu"
+		}
+		for _, p := range presetOrder {
+			presets[p] = resolvePreset(enc, p, 0, 0)
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"modes": map[string]any{
-			"vnc":    map[string]any{"available": vnc},
-			"webrtc": map[string]any{"available": reason == "", "encoder": enc, "reason": reason},
-			"nova":   map[string]any{"available": false, "url": ""},
+			"vnc": map[string]any{"available": vnc},
+			"webrtc": map[string]any{"available": reason == "", "encoder": enc, "encoder_type": kind, "reason": reason,
+				"presets": presets, "default_preset": defaultPreset},
+			"nova": map[string]any{"available": false, "url": ""},
 		},
 		"udp_port": webrtcUDPPort,
 	})
@@ -915,6 +1045,7 @@ func handleWebRTCOffer(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		SDP     string `json:"sdp"`
 		Type    string `json:"type"`
+		Preset  string `json:"preset"`
 		FPS     int    `json:"fps"`
 		MaxKbps int    `json:"max_kbps"`
 	}
@@ -922,13 +1053,7 @@ func handleWebRTCOffer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("body must be {\"sdp\":...,\"type\":\"offer\"}"))
 		return
 	}
-	if req.FPS != 60 {
-		req.FPS = 30
-	}
-	if req.MaxKbps <= 0 {
-		req.MaxKbps = 12000
-	}
-	req.MaxKbps = max(500, min(req.MaxKbps, 100000))
+	req.Preset, req.FPS, req.MaxKbps = offerStream(req.Preset, req.FPS, req.MaxKbps)
 
 	c := webrtcCapture()
 	if _, reason := webrtcAvailability(c, true); reason != "" {
@@ -945,7 +1070,7 @@ func handleWebRTCOffer(w http.ResponseWriter, r *http.Request) {
 		old.close()
 	}
 
-	s, err := newWebRTCSession(c, req.FPS, req.MaxKbps, requestClaims(r))
+	s, err := newWebRTCSession(c, req.Preset, req.FPS, req.MaxKbps, requestClaims(r))
 	if err != nil {
 		log.Printf("host webrtc: %v", err)
 		writeWebRTCUnavailable(w, reasonVncDown)
@@ -970,15 +1095,34 @@ func handleWebRTCOffer(w http.ResponseWriter, r *http.Request) {
 
 var errNoICEPort = errors.New("ICE port")
 
-func newWebRTCSession(c captureTarget, fps, kbps int, claims *jwt.Claims) (*webrtcSession, error) {
+// offerStream: an offer's preset with fps/max_kbps as overrides (0 = the
+// preset's); without a known preset (custom, or an older client) the raw
+// values as before: 30|60 fps, 12000 kbps by default.
+func offerStream(preset string, fps, kbps int) (string, int, int) {
+	if _, ok := streamPresets[preset]; !ok {
+		preset = ""
+	}
+	if (fps != 0 && fps != 60) || (fps == 0 && preset == "") {
+		fps = 30
+	}
+	if kbps < 0 || (kbps == 0 && preset == "") {
+		kbps = 12000
+	}
+	if kbps > 0 {
+		kbps = max(500, min(kbps, 100000))
+	}
+	return preset, fps, kbps
+}
+
+func newWebRTCSession(c captureTarget, preset string, fps, kbps int, claims *jwt.Claims) (*webrtcSession, error) {
 	rfb, err := dialHostRFB(webrtcRFBSocket)
 	if err != nil {
 		return nil, fmt.Errorf("VNC socket: %w", err)
 	}
 	hostConsoleSessions.Add(1)
 	noteHostConsoleInput()
-	s := &webrtcSession{rfb: rfb, claims: claims, cap: c, fps: fps, kbps: kbps, have: probeGst(),
-		w: rfb.w, h: rfb.h, restart: make(chan string, 1), stop: make(chan struct{})}
+	s := &webrtcSession{rfb: rfb, claims: claims, cap: c, preset: preset, fps: fps, kbps: kbps, have: probeGst(),
+		w: rfb.w, h: rfb.h, restart: make(chan string, 1), presetCh: make(chan struct{}, 1), stop: make(chan struct{})}
 	s.spawn = func(p encParams) *exec.Cmd { return encoderCmd(s.cap, p) }
 	return s, nil
 }
@@ -1030,6 +1174,9 @@ func (s *webrtcSession) answer(offer webrtc.SessionDescription) (*webrtc.Session
 			s.dc.Store(dc)
 			w, h := s.size()
 			s.send(dcMsg{T: "size", W: w, H: h})
+			if m := s.lastEnc.Load(); m != nil {
+				s.send(*m)
+			}
 		})
 		dc.OnMessage(func(m webrtc.DataChannelMessage) { s.onInput(m.Data) })
 		dc.OnClose(func() {

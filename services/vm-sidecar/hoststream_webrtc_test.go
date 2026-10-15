@@ -19,22 +19,84 @@ import (
 
 func TestEncodeSize(t *testing.T) {
 	for _, c := range []struct {
-		enc          string
-		w, h, ow, oh int
+		maxW, w, h, ow, oh int
 	}{
-		{"x264enc", 3398, 1220, 1920, 688}, // <=1920 wide, even
-		{"x264enc", 1280, 720, 1280, 720},
-		{"nvh264enc", 3398, 1220, 3398, 1220}, // GPU: full size
-		{"vah264enc", 1365, 767, 1364, 766},   // odd: even
+		{1920, 3398, 1220, 1920, 688}, // <= maxW wide, even
+		{1920, 1280, 720, 1280, 720},
+		{1280, 3398, 1220, 1280, 458},
+		{0, 3398, 1220, 3398, 1220}, // native
+		{0, 1365, 767, 1364, 766},   // odd: even
 	} {
-		if w, h := encodeSize(c.enc, c.w, c.h); w != c.ow || h != c.oh {
-			t.Errorf("%s %dx%d -> %dx%d, want %dx%d", c.enc, c.w, c.h, w, h, c.ow, c.oh)
+		if w, h := encodeSize(c.maxW, c.w, c.h); w != c.ow || h != c.oh {
+			t.Errorf("max %d %dx%d -> %dx%d, want %dx%d", c.maxW, c.w, c.h, w, h, c.ow, c.oh)
+		}
+	}
+}
+
+func TestResolvePreset(t *testing.T) {
+	for _, c := range []struct {
+		enc, preset string
+		fps, kbps   int
+		want        presetSpec
+	}{
+		{"nvh264enc", "low", 0, 0, presetSpec{24, 2500, 1280}},
+		{"x264enc", "low", 0, 0, presetSpec{20, 2000, 1280}},
+		{"vah264enc", "balanced", 0, 0, presetSpec{30, 8000, 1920}},
+		{"x264enc", "balanced", 0, 0, presetSpec{30, 8000, 1920}},
+		{"nvh264enc", "high", 0, 0, presetSpec{60, 25000, 0}},
+		{"x264enc", "high", 0, 0, presetSpec{30, 20000, 0}},
+		{"x264enc", "high", 60, 0, presetSpec{30, 20000, 0}},      // x264 tops out at 30
+		{"nvh264enc", "low", 0, 4000, presetSpec{24, 4000, 1280}}, // override
+		// custom (no preset, an older client): the raw values, as before
+		{"nvh264enc", "", 60, 12000, presetSpec{60, 12000, 0}},
+		{"x264enc", "", 60, 8000, presetSpec{30, 8000, 1920}},
+	} {
+		if got := resolvePreset(c.enc, c.preset, c.fps, c.kbps); got != c.want {
+			t.Errorf("%s %q %d/%d: %+v, want %+v", c.enc, c.preset, c.fps, c.kbps, got, c.want)
+		}
+	}
+}
+
+// argv: the gst-launch line one encoder run gets for a preset.
+func argv(enc, preset string, w, h int) string {
+	sp := resolvePreset(enc, preset, 0, 0)
+	return strings.Join(x11Argv(":5", encParams{Encoder: enc, Preset: preset, FPS: sp.FPS, Kbps: sp.Kbps, MaxW: sp.MaxW,
+		W: w, H: h, Seq: -1, TS: -1, Port: 5004}), " ")
+}
+
+func TestPresetArgv(t *testing.T) {
+	for _, c := range []struct {
+		enc, preset string
+		want        []string
+		not         []string
+	}{
+		{"x264enc", "low", []string{"framerate=20/1", "width=1280,height=458", "x264enc tune=zerolatency speed-preset=veryfast bitrate=2000",
+			"key-int-max=40", "profile=main"}, nil},
+		{"x264enc", "balanced", []string{"framerate=30/1", "width=1920,height=688", "speed-preset=ultrafast bitrate=8000", "profile=constrained-baseline"}, nil},
+		{"x264enc", "high", []string{"framerate=30/1", "speed-preset=ultrafast bitrate=20000"}, []string{"videoscale"}},
+		{"nvh264enc", "low", []string{"framerate=24/1", "width=1280,height=458", "nvh264enc preset=p4 tune=ultra-low-latency rc-mode=vbr const-quality=28",
+			"max-bitrate=2500", "gop-size=48"}, []string{"spatial-aq"}},
+		{"nvh264enc", "balanced", []string{"framerate=30/1", "width=1920,height=688", "preset=p1", "const-quality=23", "max-bitrate=8000"}, nil},
+		{"nvh264enc", "high", []string{"framerate=60/1", "preset=p4", "const-quality=19", "max-bitrate=25000", "gop-size=120", "spatial-aq=true"}, []string{"videoscale"}},
+		{"vah264enc", "low", []string{"framerate=24/1", "target-usage=4", "bitrate=2500"}, nil},
+		{"vah264enc", "balanced", []string{"target-usage=7", "bitrate=8000"}, nil},
+	} {
+		a := argv(c.enc, c.preset, 3398, 1220)
+		for _, w := range c.want {
+			if !strings.Contains(a, w) {
+				t.Errorf("%s %s lacks %q:\n%s", c.enc, c.preset, w, a)
+			}
+		}
+		for _, w := range c.not {
+			if strings.Contains(a, w) {
+				t.Errorf("%s %s has %q:\n%s", c.enc, c.preset, w, a)
+			}
 		}
 	}
 }
 
 func TestGstArgv(t *testing.T) {
-	p := encParams{Encoder: "x264enc", FPS: 60, Kbps: 8000, W: 3398, H: 1220, Seq: -1, TS: -1, Port: 5004}
+	p := encParams{Encoder: "x264enc", FPS: 30, Kbps: 8000, MaxW: 1920, W: 3398, H: 1220, Seq: -1, TS: -1, Port: 5004}
 	a := strings.Join(x11Argv(":5", p), " ")
 	for _, want := range []string{
 		"ximagesrc display-name=:5 use-damage=false show-pointer=false ! video/x-raw,framerate=30/1",
@@ -62,6 +124,13 @@ func TestGstArgv(t *testing.T) {
 	}
 	if strings.Contains(a, "videoscale") {
 		t.Errorf("GPU at an even size must not scale: %s", a)
+	}
+	// GPU scaling when the GStreamer has it.
+	p = encParams{Encoder: "nvh264enc", Preset: "balanced", FPS: 30, Kbps: 8000, MaxW: 1920, CudaScale: true, W: 3398, H: 1220, Seq: -1, TS: -1, Port: 1}
+	a = strings.Join(x11Argv(":0", p), " ")
+	if !strings.Contains(a, "cudaupload ! cudaconvertscale ! video/x-raw(memory:CUDAMemory),width=1920,height=688,pixel-aspect-ratio=1/1 ! nvh264enc") ||
+		strings.Contains(a, "videoscale") {
+		t.Errorf("GPU scale: %s", a)
 	}
 
 	w := strings.Join(waylandSource(42, 30), " ")
@@ -280,7 +349,7 @@ func supervised(t *testing.T, feed func(p encParams, stop <-chan struct{})) (*we
 	var runs []encParams
 	s := &webrtcSession{track: &countWriter{}, fps: 30, kbps: 1000, w: 1920, h: 1080,
 		have:    map[string]bool{"nvh264enc": true, "cudaupload": true, "cudaconvert": true, "x264enc": true},
-		restart: make(chan string, 1), stop: make(chan struct{})}
+		restart: make(chan string, 1), presetCh: make(chan struct{}, 1), stop: make(chan struct{})}
 	s.spawn = func(p encParams) *exec.Cmd {
 		mu.Lock()
 		runs = append(runs, p)
@@ -312,9 +381,10 @@ func TestSupervisorRestartsHungAndDemotes(t *testing.T) {
 	}
 }
 
-func TestSupervisorPLIAndSize(t *testing.T) {
+// rtpFeed: a fake encoder that sends an RTP packet every 20 ms.
+func rtpFeed() func(p encParams, stop <-chan struct{}) {
 	var seq uint16 = 500
-	feed := func(p encParams, stop <-chan struct{}) {
+	return func(p encParams, stop <-chan struct{}) {
 		c, err := net.Dial("udp", net.JoinHostPort("127.0.0.1", strconv.Itoa(p.Port)))
 		if err != nil {
 			return
@@ -333,7 +403,10 @@ func TestSupervisorPLIAndSize(t *testing.T) {
 			}
 		}
 	}
-	s, runs := supervised(t, feed)
+}
+
+func TestSupervisorPLIAndSize(t *testing.T) {
+	s, runs := supervised(t, rtpFeed())
 	waitFor(t, "first run", func() bool { return len(runs()) == 1 })
 	s.requestRestart("pli") // right after the start: ignored
 	time.Sleep(webrtcHungAfter * 2)
@@ -352,6 +425,55 @@ func TestSupervisorPLIAndSize(t *testing.T) {
 	waitFor(t, "size restart", func() bool { return len(runs()) == 3 })
 	if r := runs()[2]; r.W != 1280 || r.Encoder != "nvh264enc" {
 		t.Errorf("after resize: %+v", r)
+	}
+}
+
+func TestOfferStream(t *testing.T) {
+	for _, c := range []struct {
+		preset           string
+		fps, kbps        int
+		wp               string
+		wantFPS, wantKbp int
+	}{
+		{"low", 0, 0, "low", 0, 0},     // the preset's own values
+		{"high", 60, 0, "high", 60, 0}, // fps override
+		{"balanced", 24, 900000, "balanced", 30, 100000},
+		{"", 0, 0, "", 30, 12000},         // older client: as before
+		{"turbo", 60, 8000, "", 60, 8000}, // unknown preset: custom
+		{"", 45, -1, "", 30, 12000},
+	} {
+		p, f, k := offerStream(c.preset, c.fps, c.kbps)
+		if p != c.wp || f != c.wantFPS || k != c.wantKbp {
+			t.Errorf("%q %d %d -> %q %d %d", c.preset, c.fps, c.kbps, p, f, k)
+		}
+	}
+}
+
+// Network adaptation: a "preset" message restarts the encoder with that
+// preset (same peer, RTP continues), clearing custom overrides.
+func TestSupervisorPresetSwitch(t *testing.T) {
+	s, runs := supervised(t, rtpFeed())
+	waitFor(t, "first run", func() bool { return len(runs()) == 1 })
+	if r := runs()[0]; r.Preset != "" || r.FPS != 30 || r.Kbps != 1000 || r.MaxW != 0 {
+		t.Fatalf("custom run: %+v", r)
+	}
+	cw := s.track.(*countWriter)
+	waitFor(t, "packets", func() bool { cw.mu.Lock(); defer cw.mu.Unlock(); return cw.n > 2 })
+	s.onInput([]byte(`{"t":"preset","preset":"low"}`))
+	waitFor(t, "low run", func() bool { return len(runs()) == 2 })
+	if r := runs()[1]; r.Encoder != "nvh264enc" || r.Preset != "low" || r.FPS != 24 || r.Kbps != 2500 || r.MaxW != 1280 || r.Seq <= 0 {
+		t.Errorf("after preset low: %+v", r)
+	}
+	s.onInput([]byte(`{"t":"preset","preset":"low"}`))   // same: nothing
+	s.onInput([]byte(`{"t":"preset","preset":"turbo"}`)) // unknown: ignored
+	time.Sleep(webrtcHungAfter * 2)
+	if n := len(runs()); n != 2 {
+		t.Fatalf("%d runs: a repeated or unknown preset restarted the encoder", n)
+	}
+	s.onInput([]byte(`{"t":"preset","preset":"high"}`))
+	waitFor(t, "high run", func() bool { return len(runs()) == 3 })
+	if r := runs()[2]; r.Preset != "high" || r.FPS != 60 || r.Kbps != 25000 {
+		t.Errorf("after preset high: %+v", r)
 	}
 }
 
