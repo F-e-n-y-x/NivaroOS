@@ -21,7 +21,7 @@ const needInit = async () => {
 		let userStatusRes = await api.users.getUserStatus();
 		if (userStatusRes.data.success === 200) {
 			const data = userStatusRes.data.data
-			if (!data.initialized) {
+			if (data.initialized === false) {
 				store.commit('SET_NEED_INITIALIZATION', true)
 				store.commit('SET_INIT_KEY', data.key)
 				localStorage.removeItem("access_token");
@@ -44,7 +44,6 @@ router.beforeEach(async (to, from, next) => {
 	// Embedded viewers bring their own token and have no login page to go to.
 	if (to.meta.embed) return next();
 	const accessToken = localStorage.getItem("access_token");
-	const version = localStorage.getItem("version");
 	const requireAuth = to.matched.some(record => record.meta.requireAuth);
 
 	// 判断是否需要初始化
@@ -72,14 +71,6 @@ router.beforeEach(async (to, from, next) => {
 						localStorage.removeItem("user");
 						next('/login');
 						return;
-
-					default:
-						if (version == null) {
-							localStorage.removeItem("access_token");
-							next('/login');
-							return;
-						}
-						break;
 				}
 				next();
 			}

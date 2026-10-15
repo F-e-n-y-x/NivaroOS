@@ -24,6 +24,8 @@ const state = {
 	existingAppsSwitch: true,
 
 	siteLoading: true,
+	// The server isn't answering (service/reconnect.js).
+	serverDown: false,
 	needInitialization: false,
 	hardwareInfo: {},
 	// isMobile (viewport width < 480, an existing App Store-only concept -

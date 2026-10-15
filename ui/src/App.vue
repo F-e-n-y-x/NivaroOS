@@ -7,6 +7,8 @@
 
 		</template>
 
+		<div v-if="$store.state.serverDown" class="reconnect-banner" role="status">{{ $t('Reconnecting to your server…') }}</div>
+
 		<!-- Router View Start -->
 		<router-view/>
 		<!-- Router View End -->
@@ -203,6 +205,22 @@ _____             _____ _____
 	&.is-dark-bg {
 		background-color: #000;
 	}
+}
+
+.reconnect-banner {
+	position: fixed;
+	top: var(--space-3, 0.75rem);
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 10000;
+	max-width: calc(100vw - 2rem);
+	padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
+	border-radius: var(--radius-pill, 999px);
+	background: var(--theme-desktop-glass-bg, rgba(15, 23, 42, 0.85));
+	color: var(--theme-desktop-glass-text, #fff);
+	box-shadow: var(--theme-desktop-glass-shadow);
+	backdrop-filter: blur(10px);
+	pointer-events: none;
 }
 </style>
 

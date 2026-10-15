@@ -165,11 +165,6 @@ export default {
 				syncRememberedAvatar(userRes.data.data.user)
 				this.$store.commit("SET_ACCESS_TOKEN", userRes.data.data.token.access_token);
 				this.$store.commit("SET_REFRESH_TOKEN", userRes.data.data.token.refresh_token);
-
-				const versionRes = await this.$api.sys.getVersion();
-				if (versionRes.data.success == 200) {
-					localStorage.setItem("version", versionRes.data.data.current_version);
-				}
 				await this.$router.push("/");
 				// The desktop is loaded on demand. A tab opened before an update
 				// asks for files the server no longer has, and the router drops

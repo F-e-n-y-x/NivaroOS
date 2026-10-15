@@ -176,11 +176,6 @@ export default {
 				this.$store.commit("SET_USER", userRes.data.data.user);
 				this.$store.commit("SET_ACCESS_TOKEN", userRes.data.data.token.access_token);
 				this.$store.commit("SET_REFRESH_TOKEN", userRes.data.data.token.refresh_token);
-
-				const versionRes = await this.$api.sys.getVersion();
-				if (versionRes.data.success == 200) {
-					localStorage.setItem("version", versionRes.data.data.current_version);
-				}
 				sessionStorage.setItem("fromWelcome", true);
 				this.isLogin = true
 

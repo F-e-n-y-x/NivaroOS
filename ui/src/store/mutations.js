@@ -51,6 +51,9 @@ const mutations = {
 	SET_SITE_LOADING(state, loading) {
 		state.siteLoading = loading
 	},
+	SET_SERVER_DOWN(state, down) {
+		state.serverDown = down
+	},
 
 	SET_NEED_INITIALIZATION(state, need) {
 		state.needInitialization = need

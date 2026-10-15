@@ -3,6 +3,7 @@ import router from '@/router'
 import store from '@/store'
 import { makeUnauthorizedHandler } from './authRefresh'
 import { createRefreshCoordinator, AUTH_CHANNEL, TOKEN_KEYS } from './tokenCoordinator'
+import { createReconnect, isOutage } from './reconnect'
 // import { ToastProgrammatic as Toast } from 'buefy'
 
 
@@ -109,9 +110,21 @@ const handleUnauthorized = makeUnauthorizedHandler({
 })
 
 
+// Server restarting or out of reach: the session stays, a banner says so
+// (App.vue) and the server is asked again with backoff.
+const reconnect = createReconnect({
+	probe: () => instance.get('/v1/users/status'),
+	onChange: (down) => store.commit('SET_SERVER_DOWN', down),
+})
+
 instance.interceptors.response.use(
-	(response) => response,
+	(response) => {
+		reconnect.ok()
+		return response
+	},
 	(error) => {
+		if (isOutage(error)) reconnect.failed()
+		else if (error && error.response) reconnect.ok()
 		const config = error && error.config
 		if (config && config.url !== "/users/register" && error.response && error.response.status === 401) {
 			return handleUnauthorized(error)
