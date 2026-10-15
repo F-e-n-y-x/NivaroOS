@@ -3,6 +3,7 @@ package route
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,13 +12,10 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/repository"
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/service"
-	jsoniter "github.com/json-iterator/go"
 	"github.com/labstack/echo/v5"
 	"go.uber.org/goleak"
 	"gotest.tools/assert"
 )
-
-var json2 = jsoniter.ConfigCompatibleWithStandardLibrary
 
 func TestEventRoute(t *testing.T) {
 	defer goleak.VerifyNone(t)
@@ -31,7 +29,7 @@ func TestEventRoute(t *testing.T) {
 		PropertyTypeList: []model.PropertyType{{Name: "Property1"}, {Name: "Property2"}},
 	}}
 
-	eventTypesJSON, err := json2.Marshal(expectedEventTypes)
+	eventTypesJSON, err := json.Marshal(expectedEventTypes)
 	assert.NilError(t, err)
 
 	repository, err := repository.NewDatabaseRepositoryInMemory()
@@ -66,7 +64,7 @@ func TestEventRoute(t *testing.T) {
 	assert.Equal(t, rec.Code, http.StatusOK)
 
 	var actualEventTypes []model.EventType
-	err = json2.UnmarshalFromString(rec.Body.String(), &actualEventTypes)
+	err = json.Unmarshal(rec.Body.Bytes(), &actualEventTypes)
 	assert.NilError(t, err)
 	assert.DeepEqual(t, actualEventTypes, expectedEventTypes)
 
@@ -79,7 +77,7 @@ func TestEventRoute(t *testing.T) {
 	assert.Equal(t, rec.Code, http.StatusOK)
 
 	var actualEventType model.EventType
-	err = json2.UnmarshalFromString(rec.Body.String(), &actualEventType)
+	err = json.Unmarshal(rec.Body.Bytes(), &actualEventType)
 	assert.NilError(t, err)
 	assert.DeepEqual(t, actualEventType, expectedEventTypes[0])
 }

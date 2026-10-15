@@ -15,8 +15,6 @@ import (
 	"strings"
 	"time"
 
-	jsoniter "github.com/json-iterator/go"
-
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/constants"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
@@ -111,7 +109,6 @@ const (
 
 var (
 	ErrVolumeWithEmptyUUID = errors.New("cannot save volume with empty uuid")
-	json2                  = jsoniter.ConfigCompatibleWithStandardLibrary
 )
 
 func (d *diskService) EnsureDefaultMergePoint() bool {
@@ -346,7 +343,7 @@ func (d *diskService) SmartCTL(path string) model.SmartctlA {
 		return m
 	}
 
-	if err := json2.Unmarshal(buf, &m); err != nil {
+	if err := json.Unmarshal(buf, &m); err != nil {
 		logger.Error("failed to unmarshal json", zap.Error(err), zap.String("json", string(buf)))
 	}
 
@@ -378,7 +375,7 @@ func (d *diskService) SmartCTLFull(path string) model.SmartctlA {
 		logger.Error("failed to exec shell - smartctl exec error")
 		return m
 	}
-	if err := json2.Unmarshal(buf, &m); err != nil {
+	if err := json.Unmarshal(buf, &m); err != nil {
 		logger.Error("failed to unmarshal json", zap.Error(err), zap.String("json", string(buf)))
 	}
 	return m
@@ -1171,8 +1168,12 @@ func WalkDisk(rootBlk model.LSBLKModel, depth uint, shouldStopAt func(blk model.
 }
 
 func ParseBlockDevices(str []byte) ([]model.LSBLKModel, error) {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(str, &top); err != nil {
+		return nil, err
+	}
 	var blkList []model.LSBLKModel
-	if err := json2.Unmarshal([]byte(jsoniter.Get(str, "blockdevices").ToString()), &blkList); err != nil {
+	if err := json.Unmarshal(top["blockdevices"], &blkList); err != nil {
 		return nil, err
 	}
 

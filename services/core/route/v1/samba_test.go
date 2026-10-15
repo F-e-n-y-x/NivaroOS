@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	v1 "github.com/F-e-n-y-x/NivaroOS/services/core/route/v1"
-	"github.com/golang/mock/gomock"
 	"gotest.tools/assert"
 )
 
@@ -51,10 +50,6 @@ func performRequest(r http.Handler, method, path string) *httptest.ResponseRecor
 
 func TestGetSambaSharesList(t *testing.T) {
 	t.Skip("This test is always failing. Skipped to unblock releasing - MUST FIX!")
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
 
 	executeWithContext := func() *httptest.ResponseRecorder {
 		response := httptest.NewRecorder()

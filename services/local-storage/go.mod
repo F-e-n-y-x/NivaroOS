@@ -13,7 +13,6 @@ require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/glebarez/sqlite v1.8.0
 	github.com/go-resty/resty/v2 v2.17.2
-	github.com/json-iterator/go v1.1.12
 	github.com/labstack/echo-jwt/v5 v5.0.2
 	github.com/labstack/echo/v5 v5.4.0
 	github.com/maruel/natural v1.1.0
@@ -81,6 +80,7 @@ require (
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.8 // indirect
+	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/lanrat/extsort v1.4.2 // indirect
 	github.com/mattn/go-runewidth v0.0.24 // indirect

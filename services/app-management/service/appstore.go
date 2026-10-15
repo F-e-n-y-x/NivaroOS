@@ -2,6 +2,7 @@ package service
 
 import (
 	"crypto/md5" // nolint: gosec
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"

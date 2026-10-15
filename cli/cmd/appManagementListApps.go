@@ -25,7 +25,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/F-e-n-y-x/NivaroOS/cli/codegen/app_management"
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )

@@ -1,6 +1,7 @@
 package op
 
 import (
+	"encoding/json"
 	"regexp"
 	"strings"
 
@@ -8,7 +9,6 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/internal/conf"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/internal/driver"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/model"
-	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -72,8 +72,7 @@ var settingItemHooks = map[string]SettingItemHook{
 		return nil
 	},
 	conf.FilenameCharMapping: func(item *model.SettingItem) error {
-		var json = jsoniter.ConfigCompatibleWithStandardLibrary
-		err := json.UnmarshalFromString(item.Value, &conf.FilenameCharMap)
+		err := json.Unmarshal([]byte(item.Value), &conf.FilenameCharMap)
 		if err != nil {
 			return err
 		}

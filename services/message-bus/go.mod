@@ -5,7 +5,6 @@ go 1.26.0
 require (
 	github.com/glebarez/sqlite v1.7.0
 	github.com/gobwas/ws v1.1.0
-	github.com/json-iterator/go v1.1.12
 	github.com/labstack/echo-jwt/v5 v5.0.2
 	github.com/labstack/echo/v5 v5.4.0
 	go.uber.org/goleak v1.2.1
@@ -27,8 +26,6 @@ require (
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
-	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
-	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
 	github.com/pkg/errors v0.9.1 // indirect

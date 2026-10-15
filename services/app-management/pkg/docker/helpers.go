@@ -9,7 +9,7 @@ import (
 	url2 "net/url"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/patrickmn/go-cache"
 	"github.com/samber/lo"
 

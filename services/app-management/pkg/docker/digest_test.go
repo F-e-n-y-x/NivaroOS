@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/docker"
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/moby/moby/client"
 	"github.com/samber/lo"
 	"go.uber.org/goleak"

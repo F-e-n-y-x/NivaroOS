@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -24,7 +25,6 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/wsterm"
 	"github.com/containerd/errdefs"
 	"github.com/gorilla/websocket"
-	jsoniter "github.com/json-iterator/go"
 	"github.com/labstack/echo/v5"
 	dockercontainer "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/mount"
@@ -37,8 +37,6 @@ const (
 	dockerRootDirFilePath             = "/var/lib/nivaroos/docker_root"
 	dockerDaemonConfigurationFilePath = "/etc/docker/daemon.json"
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
