@@ -32,8 +32,8 @@
 		     (not just when nothing is selected) - the selection-specific actions
 		     (Rename/Copy/Cut/Download/New Window/Delete) are added alongside
 		     them, not swapped in for them. -->
-		<!-- Trash has its own Restore / Delete forever / Empty Trash in its header; folder actions don't apply there. -->
-		<div v-if="!inTrash" class="actions" :class="{ overflow: filesController.breakpoints.toolbarCollapsed }">
+		<!-- Trash and Shared have their own actions in their headers; folder actions don't apply there. -->
+		<div v-if="!sectionTitle" class="actions" :class="{ overflow: filesController.breakpoints.toolbarCollapsed }">
 			<template v-if="filesController.breakpoints.toolbarCollapsed">
 				<b-dropdown aria-role="list" position="is-bottom-left">
 					<template #trigger>
@@ -193,11 +193,12 @@ export default {
 		return { hiddenCount: 0, resizeObserver: null }
 	},
 	computed: {
-		inTrash() {
-			return this.filesController.activeSection === 'trash'
+		// Title of a non-folder section (Trash, Shared), '' while browsing.
+		sectionTitle() {
+			return { trash: 'Trash', shared: 'FilesShare' }[this.filesController.activeSection] || ''
 		},
 		hasSelection() {
-			return !this.inTrash && !!(this.selectionSummary && this.selectionSummary.count > 0)
+			return !this.sectionTitle && !!(this.selectionSummary && this.selectionSummary.count > 0)
 		},
 		hasClipboard() {
 			const c = this.$store.state.operateObject
@@ -241,7 +242,7 @@ export default {
 			return this.selectedItems.length === 1 && isArchive(this.selectedItems[0])
 		},
 		crumbs() {
-			if (this.inTrash) return [{ name: 'Trash', path: '' }]
+			if (this.sectionTitle) return [{ name: this.sectionTitle, path: '' }]
 			return buildBreadcrumb(this.filesController.currentPath)
 		},
 		visibleCrumbs() {
@@ -255,7 +256,7 @@ export default {
 		},
 	},
 	watch: {
-		'inTrash': 'resetCrumbs',
+		'sectionTitle': 'resetCrumbs',
 		'filesController.currentPath': 'resetCrumbs',
 		// The breadcrumb bar (and its ResizeObserver target) is torn down and
 		// recreated by the v-if/v-else toggle whenever the toolbar switches in

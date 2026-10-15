@@ -10,7 +10,10 @@ globalThis.ResizeObserver ??= class {
 }
 
 describe('files toolbar', () => {
-	test('Trash shows no folder actions, even with a folder selection left over', async () => {
+	test.each([
+		['trash', 'Trash'],
+		['shared', 'FilesShare'],
+	])('%s shows no folder actions, even with a folder selection left over', async (section, title) => {
 		const controller = reactive({ activeSection: 'browser', currentPath: '/DATA/Photos', breakpoints: { toolbarCollapsed: false }, navigate() {} })
 		const el = document.createElement('div')
 		document.body.appendChild(el)
@@ -23,7 +26,7 @@ describe('files toolbar', () => {
 		app.mount(el)
 		expect(el.textContent).toContain('Upload')
 
-		controller.activeSection = 'trash'
+		controller.activeSection = section
 		// the folder view's selection is still there behind Trash
 		props.selectionSummary = { count: 1 }
 		props.selectedItems = [{ name: 'a.jpg' }]
@@ -31,7 +34,7 @@ describe('files toolbar', () => {
 		for (const word of ['New Folder', 'Upload', 'Paste', 'Copy', 'Cut', 'Rename', 'Delete']) expect(el.textContent).not.toContain(word)
 		expect(el.querySelector('.selection-bar')).toBeNull()
 		expect(el.querySelector('.actions')).toBeNull()
-		expect(el.textContent).toContain('Trash')
+		expect(el.querySelector('.crumb.current').textContent).toBe(title)
 		app.unmount()
 	})
 })
