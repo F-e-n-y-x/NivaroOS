@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:nivaroos_mobile/models/file_entry.dart';
+import 'package:nivaroos_mobile/screens/files/resumable_pull.dart';
 import 'package:nivaroos_mobile/screens/files/resumable_upload.dart';
 import 'package:nivaroos_mobile/screens/files/transfers.dart';
 import 'package:nivaroos_mobile/services/api_client.dart';
@@ -81,7 +82,7 @@ void main() {
     final routes = <String?>[];
     final p = peers();
     Future<TransferOutcome> pull() => http.runWithClient(
-          () => DownloadTask(items: const [DownloadItem(entry, 'x.mp4')], destDir: dir.path, peers: p).run((pr) => routes.add(pr.route), TransferCancel()),
+          () => DownloadTask(items: const [DownloadItem(entry, 'x.mp4')], destDir: dir.path, puller: ResumablePull(peers: p, backoff: (_) => Duration.zero)).run((pr) => routes.add(pr.route), TransferCancel()),
           () => world(direct: (req) {
             if (req.method == 'HEAD') return ok('');
             if (!drop) return ok('from-phone');

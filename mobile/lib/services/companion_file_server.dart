@@ -508,10 +508,16 @@ class CompanionFileServer {
     req.response.headers.set('Accept-Ranges', 'bytes');
     req.response.headers.set('Content-Disposition', disposition);
     req.response.headers.contentType = _getContentTypeForFile(fileName);
+    // A resumed pull sends this back as If-Range: a file that changed in
+    // between is sent whole instead of glued onto the old bytes.
+    final etag = fileETag(totalSize, stat.modified);
+    req.response.headers.set('ETag', etag);
+    req.response.headers.set('Last-Modified', HttpDate.format(stat.modified));
 
     // Support HTTP Range requests (crucial for video streaming & seekable audio/PDFs)
     final rangeHeader = req.headers.value('range');
-    if (rangeHeader != null && rangeHeader.startsWith('bytes=')) {
+    final ifRange = req.headers.value('if-range');
+    if (rangeHeader != null && rangeHeader.startsWith('bytes=') && (ifRange == null || ifRange == etag)) {
       final rangeValue = rangeHeader.substring(6).trim();
       final parts = rangeValue.split('-');
       int start = 0;
@@ -555,6 +561,11 @@ class CompanionFileServer {
     }
     await file.openRead().pipe(req.response);
   }
+
+  /// A strong validator for a file's current content: its size and
+  /// modification time.
+  @visibleForTesting
+  static String fileETag(int size, DateTime modified) => '"$size-${modified.microsecondsSinceEpoch.toRadixString(36)}"';
 
   /// Writes the body to a hidden temporary file next to the target and
   /// renames it over the target only once every byte arrived (and the

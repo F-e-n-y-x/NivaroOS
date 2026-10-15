@@ -11,6 +11,7 @@ import 'device_sync_service.dart';
 import 'home_widgets.dart';
 import 'notification_feed.dart';
 import 'server_trust.dart';
+import 'pull_job.dart' show runPullJob;
 import 'share_upload.dart' show runShareUploadJob;
 import 'storage_service.dart';
 
@@ -101,6 +102,14 @@ Future<void> phoneBackupMain() async {
   await StorageService.instance.init();
   await ServerTrust.instance.init();
   await runPhoneBackupJob();
+}
+
+/// One run of a large download to this phone (PullJobService), signed in
+/// with the app's session.
+@pragma('vm:entry-point')
+Future<void> pullMain() async {
+  await _bootHeadless();
+  await runPullJob();
 }
 
 /// One run of a shared-files upload (ShareUploadJobService), signed in

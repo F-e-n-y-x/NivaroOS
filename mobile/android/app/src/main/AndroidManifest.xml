@@ -115,6 +115,16 @@
             android:name=".ShareUploadJobService$CancelReceiver"
             android:exported="false" />
 
+        <!-- Large downloads to this phone (PullJobService): one job per
+             batch, and its notification's Cancel button. -->
+        <service
+            android:name=".PullJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false" />
+        <receiver
+            android:name=".PullJobService$CancelReceiver"
+            android:exported="false" />
+
         <!-- The four parts Android requires of a default SMS app, used only
              while restoring messages (SmsRestoreRole.kt). Each is protected
              by a system-only permission; none sends anything. -->

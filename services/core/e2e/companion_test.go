@@ -9,8 +9,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -88,9 +90,21 @@ func (f *fakePhone) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte{0})
 			return
 		}
-		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+		// Like the app: a resumed pull's Range counts only while If-Range
+		// still matches this ETag.
+		etag := `"` + strconv.FormatInt(size, 10) + `-e2e"`
+		w.Header().Set("ETag", etag)
+		var from int64
+		if rg := r.Header.Get("Range"); strings.HasPrefix(rg, "bytes=") && strings.HasSuffix(rg, "-") && (r.Header.Get("If-Range") == "" || r.Header.Get("If-Range") == etag) {
+			from, _ = strconv.ParseInt(rg[6:len(rg)-1], 10, 64)
+		}
+		w.Header().Set("Content-Length", strconv.FormatInt(size-from, 10))
+		if from > 0 {
+			w.Header().Set("Content-Range", "bytes "+strconv.FormatInt(from, 10)+"-"+strconv.FormatInt(size-1, 10)+"/"+strconv.FormatInt(size, 10))
+			w.WriteHeader(http.StatusPartialContent)
+		}
 		drop := f.dropAt.Load()
-		for off := int64(0); off < size; {
+		for off := from; off < size; {
 			if drop > 0 && off >= drop {
 				panic(http.ErrAbortHandler) // the phone dropped off mid-file
 			}
@@ -309,5 +323,44 @@ func TestCompanionPeerTicket(t *testing.T) {
 	lanOnly := newPhone(t, "e2e-peer-lan", false)
 	if r := call(t, "POST", "/v1/companion/e2e-peer-lan/peer-ticket", map[string]string{"path": lanOnly.storage + "/x", "op": "read"}); r.status != http.StatusConflict {
 		t.Fatalf("no Tailscale on the phone: %d, want 409", r.status)
+	}
+}
+
+// Phase 2 through the relay: a resumed pull (Range + If-Range with the
+// phone's ETag) gets only the rest; a stale validator gets the whole file.
+func TestCompanionRelayResume(t *testing.T) {
+	a := newPhone(t, "e2e-resume-a", false)
+	const size = 8 << 20
+	a.files[phoneRoot+"/v.mp4"] = size
+	get := func(h map[string]string) (*http.Response, []byte) {
+		req, _ := http.NewRequest("GET", core.base+"/v1/file?path="+url.QueryEscape(a.storage+"/v.mp4"), nil)
+		for k, v := range h {
+			req.Header.Set(k, v)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		return resp, body
+	}
+	full, body := get(nil)
+	etag := full.Header.Get("ETag")
+	if full.StatusCode != 200 || len(body) != size || etag == "" {
+		t.Fatalf("full: %d, %d bytes, etag %q", full.StatusCode, len(body), etag)
+	}
+	const from = 3<<20 + 7
+	rest, body := get(map[string]string{"Range": "bytes=" + strconv.Itoa(from) + "-", "If-Range": etag})
+	ok := len(body) == size-from
+	for i := 0; ok && i < len(body); i++ {
+		ok = body[i] == byte((from+i)%251)
+	}
+	if rest.StatusCode != 206 || !ok {
+		t.Fatalf("resume: %d, %d bytes", rest.StatusCode, len(body))
+	}
+	stale, body := get(map[string]string{"Range": "bytes=" + strconv.Itoa(from) + "-", "If-Range": `"other"`})
+	if stale.StatusCode != 200 || len(body) != size {
+		t.Fatalf("stale validator: %d, %d bytes, want the whole file", stale.StatusCode, len(body))
 	}
 }

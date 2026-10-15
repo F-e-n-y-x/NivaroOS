@@ -5,8 +5,10 @@
 //   polled through `GET /v1/batch/tasks`), with the conflict style the user
 //   picked (plan M-29) instead of a forced overwrite;
 // - phone → server: the resumable v2 upload (resumable_upload.dart, M-12);
-// - server → phone: a streamed download of every file, checked against the
-//   server's size, and for a move the originals are deleted only when every
+// - server → phone: a resumable download of every file (resumable_pull.dart:
+//   straight from another phone over Tailscale when it can; 512 MB or more
+//   as an Android job, pull_job.dart), checked against the server's size,
+//   and for a move the originals are deleted only when every
 //   file matched, with `DELETE /v1/batch`; a failed delete is reported
 //   (M-11: it used to call a route that doesn't exist and say it moved);
 // - phone → phone: plain file-system copies and renames.
@@ -14,12 +16,13 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 
 import '../../models/file_entry.dart';
 import '../../services/api_client.dart';
-import '../../services/peer_direct.dart';
+import '../../services/peer_direct.dart' show peerRouteLabel;
+import '../../services/pull_job.dart';
 import 'file_ops.dart';
+import 'resumable_pull.dart';
 import 'resumable_upload.dart';
 
 /// What the strip shows while a transfer runs.
@@ -426,23 +429,34 @@ class DownloadItem {
 /// server's. For a move the originals are deleted from the server only when
 /// every file matched, and a failed delete is reported (plan M-11).
 class DownloadTask extends TransferTask {
-  DownloadTask({required this.items, required this.destDir, this.move = false, this.listFolder, this.download, this.deleteRemote, PeerDirect? peers})
-      : peers = peers ?? PeerDirect.instance;
+  DownloadTask({
+    required this.items,
+    required this.destDir,
+    this.move = false,
+    this.listFolder,
+    this.download,
+    this.deleteRemote,
+    ResumablePull? puller,
+    Future<bool> Function(PullBatch b)? background,
+  })  : puller = puller ?? ResumablePull(),
+        background = background ?? (Platform.isAndroid ? PullJob.start : null);
+
+  /// Hands a large copy ([PullJob.minBytes] or more) to an Android job,
+  /// which carries on with the app closed; false: it refused, pull here.
+  final Future<bool> Function(PullBatch b)? background;
 
   final List<DownloadItem> items;
   final String destDir;
   final bool move;
 
-  /// Another phone's files come straight from it over Tailscale when it can.
-  final PeerDirect peers;
+  /// Resumes after a drop, and takes another phone's files straight from
+  /// it over Tailscale when it can.
+  final ResumablePull puller;
 
   /// Seams for tests; default to the server.
   final Future<RemoteListing> Function(String path)? listFolder;
   final Future<void> Function(String remotePath, File target, void Function(int received) onProgress)? download;
   final Future<void> Function(List<String> paths)? deleteRemote;
-
-  /// Set by each file's download: how it travelled.
-  bool _lastDirect = false;
 
   @override
   String get title => '${move ? 'Moving' : 'Downloading'} ${describeItems(items.map((i) => i.entry.path).toList())} to this phone';
@@ -453,55 +467,9 @@ class DownloadTask extends TransferTask {
     return RemoteListing.fromResponse(res['data']);
   }
 
-  Future<void> _download(String remote, File target, void Function(int) onProgress, TransferCancel cancel) async {
-    if (download != null) return download!(remote, target, onProgress);
-    final direct = await peers.resolve(remote);
-    if (direct != null) {
-      try {
-        _lastDirect = true;
-        return await _get(direct.uri, direct.headers, remote, target, onProgress, cancel, auth: false);
-      } on TransferCancelled {
-        rethrow;
-      } catch (_) {
-        cancel.throwIfCancelled();
-        // The other phone stopped answering directly: through the server.
-        peers.failed(direct);
-      }
-    }
-    _lastDirect = false;
-    await _get(ApiClient.instance.buildUri('/file', {'path': remote}), const {}, remote, target, onProgress, cancel, auth: true);
-  }
-
-  /// One GET of [uri] into [target], from the start.
-  Future<void> _get(Uri uri, Map<String, String> headers, String remote, File target, void Function(int) onProgress, TransferCancel cancel,
-      {required bool auth}) async {
-    // Our own client, so Cancel can close it mid-file.
-    final client = http.Client();
-    final detach = cancel.onCancel(client.close);
-    IOSink? sink;
-    try {
-      http.BaseRequest build() => http.Request('GET', uri)..headers.addAll(headers);
-      final res = auth ? await ApiClient.instance.send(build, client: client) : await client.send(build());
-      if (res.statusCode != 200) {
-        await res.stream.drain<void>();
-        throw ApiException("Couldn't download “${baseName(remote)}” (HTTP ${res.statusCode})", statusCode: res.statusCode);
-      }
-      sink = target.openWrite();
-      var received = 0;
-      await for (final chunk in res.stream) {
-        sink.add(chunk);
-        received += chunk.length;
-        onProgress(received);
-      }
-      await sink.flush();
-    } catch (_) {
-      cancel.throwIfCancelled();
-      rethrow;
-    } finally {
-      await sink?.close();
-      detach();
-      client.close();
-    }
+  Future<void> _download(FileEntry entry, File part, void Function(int) onProgress, TransferCancel cancel) async {
+    if (download != null) return download!(entry.path, part, onProgress);
+    await puller.fetch(entry.path, part, entry.size, onProgress, cancel);
   }
 
   Future<void> _delete(List<String> paths) async {
@@ -555,36 +523,51 @@ class DownloadTask extends TransferTask {
     for (final dir in folders) {
       await Directory(dir).create(recursive: true);
     }
+    final what = items.length == 1 ? '1 item' : '${items.length} items';
+    if (!move && background != null && total >= PullJob.minBytes) {
+      final batch = PullBatch(
+        id: PullBatch.newId(),
+        server: ApiClient.instance.baseUrl,
+        destDir: destDir,
+        files: [for (final (e, target) in files) PullFile(remote: e.path, size: e.size, target: target)],
+      );
+      if (await background!(batch)) {
+        return TransferOutcome(message: 'Downloading $what in the background. The notification shows how far it is.', affectedDirs: {destDir});
+      }
+    }
     var done = 0;
     final mismatched = <String>[];
-    final stamp = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
     for (var i = 0; i < files.length; i++) {
       cancel.throwIfCancelled();
       final (entry, target) = files[i];
-      final part = File(partPath(target, '$stamp$i'));
+      final part = File(ResumablePull.partPath(target, entry.path, entry.size));
       final before = done;
       report(progress = progress.copyWith(current: entry.name, doneItems: i));
       try {
-        await _download(entry.path, part, (received) => report(progress = progress.copyWith(doneBytes: before + received, route: _routeLabel())), cancel);
+        await _download(entry, part, (received) => report(progress = progress.copyWith(doneBytes: before + received, route: _routeLabel())), cancel);
         cancel.throwIfCancelled();
         final got = await part.length();
         if (got != entry.size) {
           mismatched.add(entry.name);
-          await part.delete();
+          await ResumablePull.discard(part);
         } else {
           final dest = File(target);
           if (await dest.exists()) await dest.delete();
           await part.rename(target);
+          await ResumablePull.discard(part);
         }
+      } on TransferCancelled {
+        await ResumablePull.discard(part);
+        rethrow;
       } catch (e) {
-        if (await part.exists()) await part.delete();
+        // Kept: pulling it again resumes from here.
+        if (download != null) await ResumablePull.discard(part);
         rethrow;
       }
       done = before + entry.size;
     }
     report(progress.copyWith(doneBytes: total, doneItems: files.length));
 
-    final what = items.length == 1 ? '1 item' : '${items.length} items';
     if (mismatched.isNotEmpty) {
       return TransferOutcome(
         message: '${mismatched.length == 1 ? '“${mismatched.first}” didn’t' : '${mismatched.length} files didn’t'} arrive complete${move ? ', so nothing was removed from the server' : ''}. Try again.',
@@ -639,13 +622,7 @@ class DownloadTask extends TransferTask {
 
   /// The strip's route line: said only while a file comes straight from
   /// another phone ("" clears it).
-  String _routeLabel() => _lastDirect ? peerRouteLabel(true) : '';
-
-  /// The temporary file [target] is downloaded to before its size is
-  /// checked: hidden, next to it, and short, so a name of up to 255 bytes
-  /// still fits (the real name is used only for the final rename).
-  @visibleForTesting
-  static String partPath(String target, String tag) => joinPath(parentOf(target), '.nvpart-$tag');
+  String _routeLabel() => download == null && puller.lastDirect ? peerRouteLabel(true) : '';
 }
 
 /// One server folder listing: what it shows, and how many entries it

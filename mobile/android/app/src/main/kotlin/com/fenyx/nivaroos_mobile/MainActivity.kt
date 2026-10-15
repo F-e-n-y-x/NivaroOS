@@ -170,6 +170,11 @@ class MainActivity : FlutterActivity() {
                         call.argument<List<String>>("uris") ?: emptyList(),
                         (call.argument<Number>("bytes") ?: 0).toLong(),
                     ))
+                    "startPull" -> result.success(PullJobService.start(
+                        this,
+                        call.argument<String>("batch") ?: "",
+                        (call.argument<Number>("bytes") ?: 0).toLong(),
+                    ))
                     "shareText" -> {
                         val send = Intent(Intent.ACTION_SEND).setType("text/plain")
                             .putExtra(Intent.EXTRA_TEXT, call.argument<String>("text") ?: "")
