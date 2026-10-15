@@ -2,16 +2,23 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../services/api_client.dart';
 import '../services/rfb_client.dart';
 import '../services/vm_client.dart';
 import '../ui/ui.dart';
+import '../widgets/console_toolbar.dart';
 import '../widgets/rfb_view.dart';
+import 'host_desktop_smooth.dart';
 import 'host_display_fit.dart';
 
 /// The NivaroOS server's own desktop (x11vnc on X11, host-vnc-wayland on
 /// Wayland), through the same console as a VM
 /// (`/v1/vm-sidecar/host/console`). Only the host has a display resolution,
 /// and - on Wayland - a locked screen or a sharing prompt to get past.
+///
+/// With the stream mode on Auto or Smooth (beta) it opens
+/// [SmoothHostDesktop] (WebRTC in a WebView) instead, where that can work,
+/// and falls back to the native console, saying why, where it can't.
 class HostDesktopScreen extends StatefulWidget {
   const HostDesktopScreen({super.key, this.client, this.rfb, this.history});
 
@@ -33,6 +40,8 @@ class _HostDesktopScreenState extends State<HostDesktopScreen> {
   HostDisplay? _display;
   HostDesktopStatus? _blocked;
   bool _unblocking = false;
+  HostStreamMode _mode = HostStreamMode.compatible;
+  bool _smooth = false;
 
   @override
   void initState() {
@@ -61,10 +70,7 @@ class _HostDesktopScreenState extends State<HostDesktopScreen> {
         _installed = installed;
         _checking = false;
       });
-      if (installed) {
-        unawaited(_rfb.connect());
-        unawaited(_loadDisplay());
-      }
+      if (installed) unawaited(_start());
     } on VmException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -74,8 +80,65 @@ class _HostDesktopScreenState extends State<HostDesktopScreen> {
     }
   }
 
+  Future<void> _start() async {
+    _mode = HostStreamMode.values.asNameMap()[await consolePref(HostStreamMode.pref)] ?? HostStreamMode.compatible;
+    unawaited(_loadDisplay());
+    if (!mounted) return;
+    if (_mode == HostStreamMode.compatible || !await _trySmooth()) unawaited(_rfb.connect());
+  }
+
+  /// Opens Smooth when it can work here; otherwise says why and returns
+  /// false (the native console, if running, stays).
+  Future<bool> _trySmooth() async {
+    final why = await _smoothBlocker();
+    if (!mounted) return false;
+    if (why != null) {
+      _compatibleNote(why);
+      return false;
+    }
+    _smooth = true;
+    if (_rfb.status.value != RfbStatus.idle) _rfb.close();
+    setState(() {});
+    return true;
+  }
+
+  Future<String?> _smoothBlocker() async {
+    final route = smoothBlockedByRoute(ApiClient.instance.baseUrl);
+    if (route != null) return route;
+    try {
+      final s = await _client.hostStream();
+      if (s.webrtc) return null;
+      return s.reason.isEmpty ? "The server can't stream its screen as video yet." : s.reason;
+    } on VmException {
+      return "This server doesn't offer Smooth mode yet.";
+    }
+  }
+
+  void _fallback(String reason) {
+    setState(() => _smooth = false);
+    _compatibleNote(reason);
+    unawaited(_rfb.connect());
+  }
+
+  void _compatibleNote(String why) =>
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('Using Compatible mode. $why')));
+
+  Future<void> _pickMode(BuildContext sheetContext) async {
+    final m = await pickHostStreamMode(sheetContext, _mode);
+    if (m == null || m == _mode || !mounted) return;
+    setState(() => _mode = m);
+    unawaited(saveConsolePref(HostStreamMode.pref, m.name));
+    if (m == HostStreamMode.compatible && _smooth) {
+      setState(() => _smooth = false);
+      unawaited(_rfb.connect());
+    } else if (m != HostStreamMode.compatible && !_smooth) {
+      await _trySmooth();
+    }
+  }
+
   // A failed connect may be a locked screen or a sharing prompt: ask why.
   void _onRfbStatus() {
+    if (_smooth) return;
     final s = _rfb.status.value;
     if (s == RfbStatus.failed || s == RfbStatus.disconnected) unawaited(_loadBlocked());
   }
@@ -202,6 +265,13 @@ class _HostDesktopScreenState extends State<HostDesktopScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final menu = [
+      if (_installed == true) ...[
+        ConsoleMenuItem(icon: Icons.aspect_ratio_outlined, label: 'Screen resolution', onPressed: _resolution),
+        ConsoleMenuItem(icon: Icons.speed_outlined, label: 'Stream mode', onPressed: _pickMode),
+      ],
+    ];
+    if (_smooth) return SmoothHostDesktop(onFallback: _fallback, menuItems: menu);
     return RemoteConsoleFrame(
       client: _rfb,
       title: 'Host desktop',
@@ -210,10 +280,7 @@ class _HostDesktopScreenState extends State<HostDesktopScreen> {
       history: widget.history,
       placeholder: _placeholder(),
       onMatchPhone: _installed == true ? _matchPhone : null,
-      menuItems: [
-        if (_installed == true)
-          ConsoleMenuItem(icon: Icons.aspect_ratio_outlined, label: 'Screen resolution', onPressed: _resolution),
-      ],
+      menuItems: menu,
     );
   }
 }

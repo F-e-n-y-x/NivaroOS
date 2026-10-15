@@ -758,6 +758,14 @@ class VmClient {
     }
   }
 
+  /// `GET /host/stream`: whether the server can stream its desktop over
+  /// WebRTC (Smooth), and if not, why (an English sentence, may be empty).
+  Future<({bool webrtc, String reason})> hostStream() async {
+    final j = _json(await _send('GET', '/host/stream'));
+    final w = j is Map && j['modes'] is Map ? (j['modes'] as Map)['webrtc'] : null;
+    return (webrtc: w is Map && w['available'] == true, reason: w is Map ? '${w['reason'] ?? ''}'.trim() : '');
+  }
+
   /// Restarts host desktop streaming - on a portal desktop that asks the
   /// host user to allow sharing again.
   Future<void> restartHostDesktop() => _send('POST', '/host/desktop/restart');

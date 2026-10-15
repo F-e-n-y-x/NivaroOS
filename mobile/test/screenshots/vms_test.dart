@@ -10,6 +10,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nivaroos_mobile/screens/host_desktop_screen.dart';
+import 'package:nivaroos_mobile/screens/host_desktop_smooth.dart';
 import 'package:nivaroos_mobile/screens/vm_console_screen.dart';
 import 'package:nivaroos_mobile/screens/vm_form_screen.dart';
 import 'package:nivaroos_mobile/screens/vm_list_screen.dart';
@@ -20,6 +21,7 @@ import 'package:nivaroos_mobile/ui/ui.dart';
 import 'package:nivaroos_mobile/widgets/rfb_view.dart';
 
 import '../vm/vm_fakes.dart';
+import '../widgets/fake_webview.dart';
 import 'harness.dart';
 
 const _api = '/v1/vm-sidecar';
@@ -77,6 +79,7 @@ final _snapshots = [
 ];
 
 late Uint8List _png;
+late FakeWebViewPlatform _web;
 
 RfbClient _rfb(String? vm, {bool extended = true}) {
   final c = RfbClient(vmName: vm, channelFactory: FakeRfbServer(width: 1280, height: 720, extendedClipboard: extended).factory);
@@ -226,6 +229,27 @@ final Map<String, _Shot> _shots = {
     dark: false,
     before: (tester) => _menu(tester, 'Screen resolution'),
   ),
+  'host_desktop_stream_mode': _Shot(
+    () => HostDesktopScreen(client: VmClient(), rfb: _rfb(null, extended: false), history: RemoteClipboardHistory()),
+    dark: false,
+    before: (tester) => _menu(tester, 'Stream mode'),
+  ),
+  // Smooth (beta): the WebRTC embed in a WebView (here a stand-in picture).
+  'host_desktop_smooth_connecting': _Shot(
+    () => SmoothHostDesktop(onFallback: (_) {}),
+    dark: false,
+    overrides: {'GET /': const FakeResponse('<html><head></head><body></body></html>')},
+  ),
+  'host_desktop_smooth_live': _Shot(
+    () => SmoothHostDesktop(onFallback: (_) {}),
+    dark: false,
+    overrides: {'GET /': const FakeResponse('<html><head></head><body></body></html>')},
+    extra: {'2x'},
+    before: (tester) async {
+      _web.last.post('{"state":"live"}');
+      await tester.pump(const Duration(milliseconds: 300));
+    },
+  ),
   'host_desktop_not_set_up': _Shot(
     () => HostDesktopScreen(client: VmClient(), rfb: _rfb(null)),
     dark: false,
@@ -256,6 +280,7 @@ void main() {
     _png = await fakeDesktopPng(640, 360);
   });
   setUp(() async {
+    _web = FakeWebViewPlatform.install();
     VmListScreen.clearCache();
     await signIn();
   });
