@@ -484,7 +484,7 @@
 				<span v-else-if="(status === 'disconnected' || hostBlocker) && serviceStatus && serviceStatus.reason" class="console-status-reason">
 					{{ serviceStatus.reason }}
 				</span>
-				<div v-if="status === 'disconnected' || hostBlocker" class="console-status-actions">
+				<div v-if="status === 'disconnected' || hostBlocker || reconnectAttempt > 0" class="console-status-actions">
 					<button
 						v-if="hostBlocker === 'denied'"
 						type="button"
@@ -1122,7 +1122,8 @@ export default {
 			}
 			this.intentionalDisconnect = false
 			this.status = 'connecting'
-			this.connectError = ''
+			// An automatic retry keeps saying why the last attempt failed.
+			if (this.reconnectAttempt === 0) this.connectError = ''
 			this.connectedThisAttempt = false
 
 			// A cheap authenticated call first: if the access token is stale,

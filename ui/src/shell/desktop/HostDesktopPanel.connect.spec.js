@@ -72,6 +72,9 @@ describe('Host Desktop connect watchdog', () => {
 		await vi.advanceTimersByTimeAsync(1000)
 		await flush()
 		expect(sockets.length).toBe(2)
+		// The retry still says why and keeps the buttons.
+		expect(el.querySelector('.console-status').textContent).toContain('did not answer')
+		expect(el.querySelector('.console-status-actions')).not.toBeNull()
 	})
 
 	test('waiting for a Wayland "Allow" at the server is not timed out', async () => {
