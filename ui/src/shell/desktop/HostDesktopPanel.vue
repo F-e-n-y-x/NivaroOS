@@ -668,6 +668,7 @@ import { windowFitSizes } from '@/utils/windowFit'
 import { apiBase as sidecarApiBase, wsBase as sidecarWsBase } from '@/api/vmSidecar'
 import RemoteClipboardPanel from '@/shared/clipboard/RemoteClipboardPanel.vue'
 import { record as recordClipboard, typeText } from '@/service/remoteClipboard'
+import { watchedSocket } from '@/utils/consoleSocket'
 
 const QUALITY_PRESETS = {
 	high: { qualityLevel: 9, compressionLevel: 1 },
@@ -1158,7 +1159,14 @@ export default {
 			try {
 				// markRaw: a reactive proxy in this.rfb would never === rfb, so the
 				// connect handler bailed and the overlay sat on "Connecting..." forever.
-				const rfb = markRaw(new RFB(this.$refs.screen, url))
+				// A dead link (slept laptop, new network) ends the session so
+				// the reconnect below runs, instead of a frozen picture.
+				let rfb = null
+				const sock = watchedSocket(url, () => {
+					if (rfb && this.rfb === rfb) rfb.disconnect()
+				})
+				this.sock = sock
+				rfb = markRaw(new RFB(this.$refs.screen, sock.ws))
 				this.rfb = rfb
 				rfb.scaleViewport = this.scaleToFit
 				rfb.resizeSession = false
@@ -1714,7 +1722,12 @@ export default {
 		onVisibilityChange() {
 			if (document.hidden) {
 				this.stopCapsLockPoll()
-			} else if (this.status === 'connected' && !this.minimized) {
+				return
+			}
+			// Back from a background tab or sleep: a link that died meanwhile
+			// reconnects now, not after the next watchdog tick.
+			if (this.sock) this.sock.check()
+			if (this.status === 'connected' && !this.minimized) {
 				this.startCapsLockPoll()
 			}
 		},
