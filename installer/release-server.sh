@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # release-server.sh - build, sign and publish a NivaroOS server release.
 # Run on the release server (the only place the signing key exists), from
-# a clean checkout of the commit to release. docs/server-updates.md.
+# a clean checkout of the commit to release. docs/guides/server-updates.md.
 #
 #   installer/release-server.sh 1.5.0            stable: GitHub release server-v1.5.0
 #   installer/release-server.sh 1.6.0-beta.1     beta: a GitHub pre-release

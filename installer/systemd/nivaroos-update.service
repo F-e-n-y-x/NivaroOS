@@ -1,6 +1,6 @@
 [Unit]
 Description=NivaroOS server update (check, download, verify, install)
-Documentation=https://github.com/F-e-n-y-x/NivaroOS/blob/master/docs/server-updates.md
+Documentation=https://github.com/F-e-n-y-x/NivaroOS/blob/master/docs/guides/server-updates.md
 After=network-online.target nivaroos-gateway.service
 Wants=network-online.target
 

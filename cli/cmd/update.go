@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// nivaroos update: the server self-updater (docs/server-updates.md). With
+// nivaroos update: the server self-updater (docs/guides/server-updates.md). With
 // no subcommand it shows the status.
 var updateCmd = &cobra.Command{
 	Use:     "update",
