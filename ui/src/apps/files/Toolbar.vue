@@ -32,7 +32,8 @@
 		     (not just when nothing is selected) - the selection-specific actions
 		     (Rename/Copy/Cut/Download/New Window/Delete) are added alongside
 		     them, not swapped in for them. -->
-		<div class="actions" :class="{ overflow: filesController.breakpoints.toolbarCollapsed }">
+		<!-- Trash has its own Restore / Delete forever / Empty Trash in its header; folder actions don't apply there. -->
+		<div v-if="!inTrash" class="actions" :class="{ overflow: filesController.breakpoints.toolbarCollapsed }">
 			<template v-if="filesController.breakpoints.toolbarCollapsed">
 				<b-dropdown aria-role="list" position="is-bottom-left">
 					<template #trigger>
@@ -192,8 +193,11 @@ export default {
 		return { hiddenCount: 0, resizeObserver: null }
 	},
 	computed: {
+		inTrash() {
+			return this.filesController.activeSection === 'trash'
+		},
 		hasSelection() {
-			return !!(this.selectionSummary && this.selectionSummary.count > 0)
+			return !this.inTrash && !!(this.selectionSummary && this.selectionSummary.count > 0)
 		},
 		hasClipboard() {
 			const c = this.$store.state.operateObject
@@ -237,6 +241,7 @@ export default {
 			return this.selectedItems.length === 1 && isArchive(this.selectedItems[0])
 		},
 		crumbs() {
+			if (this.inTrash) return [{ name: 'Trash', path: '' }]
 			return buildBreadcrumb(this.filesController.currentPath)
 		},
 		visibleCrumbs() {
@@ -250,10 +255,8 @@ export default {
 		},
 	},
 	watch: {
-		'filesController.currentPath'() {
-			this.hiddenCount = 0
-			this.$nextTick(this.measure)
-		},
+		'inTrash': 'resetCrumbs',
+		'filesController.currentPath': 'resetCrumbs',
 		// The breadcrumb bar (and its ResizeObserver target) is torn down and
 		// recreated by the v-if/v-else toggle whenever the toolbar switches in
 		// and out of selection mode - re-attach the observer to the fresh DOM
@@ -278,6 +281,10 @@ export default {
 		this.resizeObserver && this.resizeObserver.disconnect()
 	},
 	methods: {
+		resetCrumbs() {
+			this.hiddenCount = 0
+			this.$nextTick(this.measure)
+		},
 		go(crumb) {
 			this.filesController.navigate(crumb.path)
 		},
