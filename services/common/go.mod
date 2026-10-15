@@ -13,7 +13,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/samber/lo v1.38.1
-	github.com/sirupsen/logrus v1.9.0
+	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.17.0
 	go.uber.org/zap v1.24.0

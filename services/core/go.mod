@@ -48,7 +48,7 @@ require (
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
-	github.com/sirupsen/logrus v1.9.3 // indirect
+	github.com/sirupsen/logrus v1.9.4 // indirect
 )
 
 require (
@@ -92,7 +92,7 @@ require (
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/lufia/plan9stats v0.0.0-20230110061619-bbe2e5e100de // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect

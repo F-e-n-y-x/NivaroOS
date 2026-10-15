@@ -48,7 +48,7 @@ require (
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2
-	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.5.0 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
@@ -75,7 +75,7 @@ require (
 	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
-	google.golang.org/protobuf v1.30.0 // indirect
+	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.22.4 // indirect
