@@ -27,29 +27,3 @@ Disks, mounts, USB drives, storage pools, SMB/NFS shares and cloud drives
   `cloud-vfs.json`.
 - Disk/USB status goes to core every 5 s only when it changed (otherwise
   once a minute); `lsblk` for USB runs only while a USB drive is attached.
-
-
-
-
-## publish api to npm
-
-### edit version in package.json
-
-### run
-```bash
-yarn
-
-yarn start
-```
-
-### publish
-
-Manual publish
-```bash
-yarn publish
-```
-
-Auto publish
-```bash 
-git push origin dev**
-```
