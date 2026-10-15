@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 )
 
 // TestMain points every host path this package touches at temp dirs and
@@ -24,6 +26,9 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
+	// Never this host's /etc/nivaroos/local-automation-strict: the loopback
+	// trust tests would pass or fail with the box's setting.
+	middleware.LocalStrictPath = filepath.Join(base, "local-automation-strict")
 	defaultStorageDir = tmpRoot
 	defaultISODir = tmpRoot
 	shareAllowedRoot = base
