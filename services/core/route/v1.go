@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
 	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
@@ -16,11 +17,25 @@ import (
 	echo_middleware "github.com/labstack/echo/v5/middleware"
 )
 
+// isDownload: file bodies go out as they are. Gzipping them dropped
+// Content-Length (no size or progress in the browser, no resume) and made
+// a resumed Range request come back compressed; media is incompressible.
+func isDownload(c *echo.Context) bool {
+	r := c.Request()
+	if r.Header.Get("Range") != "" {
+		return true
+	}
+	p := r.URL.Path
+	return r.Method == http.MethodGet && (p == "/v1/file" || p == "/v1/batch" || p == "/v1/file/stream" || p == "/v1/image" ||
+		strings.HasPrefix(p, "/v1/qs/") || (strings.HasPrefix(p, "/v1/companion/devices/") && strings.HasSuffix(p, "/file"))) ||
+		r.Method == http.MethodPost && strings.HasPrefix(p, "/v1/qs/")
+}
+
 func InitV1Router() http.Handler {
 	e := v1.NewEcho()
 
 	e.Use(nivaroos_middleware.Cors())
-	e.Use(echo_middleware.Gzip())
+	e.Use(echo_middleware.GzipWithConfig(echo_middleware.GzipConfig{Skipper: isDownload}))
 	e.Use(echo_middleware.Recover())
 	// path-only request log: WebSocket URLs carry ?token=
 	e.Use(nivaroos_middleware.RequestLogger())
