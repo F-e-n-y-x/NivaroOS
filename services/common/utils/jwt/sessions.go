@@ -30,7 +30,7 @@ import (
 //
 // Every token now carries its account's token generation ("gen"). The user
 // service owns the generations (o_users.token_generation) and publishes all
-// of them in a root-owned file in the runtime directory. Revoking an
+// of them in a root-owned file in /var/lib/nivaroos (PersistentSessionsPath). Revoking an
 // account's sessions increments its generation and rewrites the file, and
 // Validate - the check every service's auth middleware runs - rejects a
 // token whose account isn't listed (deleted) or whose generation is older.
@@ -46,8 +46,15 @@ const (
 	RefreshTokenLifetime = 7 * 24 * time.Hour
 )
 
-// SessionsFilename is the published session state, in the runtime path.
+// SessionsFilename is the published session state.
 const SessionsFilename = "user-sessions.json"
+
+// PersistentSessionsPath is where the state is published. Not the runtime
+// directory: that is tmpfs, and after a reboot every service accepted the
+// tokens of ended sessions until the user service published again (or for
+// their whole life if it didn't come up). Missing only before the user
+// service ever ran here; then only the signature counts (no lockout).
+var PersistentSessionsPath = filepath.Join(constants.DefaultDataPath, SessionsFilename)
 
 // Reasons an account's sessions ended (UserSession.Reason, and the reason
 // of the *SessionRevokedError Validate returns).
@@ -103,7 +110,7 @@ func defaultSessionsPath() string {
 	if testing.Testing() {
 		return ""
 	}
-	return filepath.Join(constants.DefaultRuntimePath, SessionsFilename)
+	return PersistentSessionsPath
 }
 
 // SetSessionsPath points Validate at another session file (tests, or a

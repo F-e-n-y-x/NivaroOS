@@ -1,6 +1,7 @@
 package service
 
 import (
+	"os"
 	"path/filepath"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
@@ -32,7 +33,8 @@ func NewService(db *gorm.DB, RuntimePath string) Repository {
 	user := NewUserService(db)
 	// Every service checks tokens against the session state published
 	// here; it is there before this service answers anything.
-	SetSessionsFile(filepath.Join(RuntimePath, jwt.SessionsFilename))
+	SetSessionsFile(jwt.PersistentSessionsPath)
+	_ = os.Remove(filepath.Join(RuntimePath, jwt.SessionsFilename)) // where it was before
 	if err := user.PublishSessions(); err != nil {
 		logger.Error("publishing session state", zap.Error(err))
 	}

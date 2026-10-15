@@ -2,6 +2,9 @@ package jwt
 
 import (
 	"crypto/ecdsa"
+	"strings"
+
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/constants"
 	"os"
 	"path/filepath"
 	"sync"
@@ -181,4 +184,12 @@ func TestWriteSessionStateIsAtomicAndSkipsNoChange(t *testing.T) {
 	}
 	close(stop)
 	wg.Wait()
+}
+
+// L4: the state lived on tmpfs; after a reboot every service accepted the
+// tokens of ended sessions until the user service published it again.
+func TestSessionStateIsNotOnTmpfs(t *testing.T) {
+	if strings.HasPrefix(PersistentSessionsPath, constants.DefaultRuntimePath) || strings.HasPrefix(PersistentSessionsPath, "/run/") {
+		t.Fatalf("session state at %s is forgotten on reboot", PersistentSessionsPath)
+	}
 }
