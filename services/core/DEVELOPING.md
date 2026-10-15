@@ -31,3 +31,8 @@ The following must be installed in order to get started. The details of how to i
 3. `yarn build`
 4. `cd ..`
 5. `go get`  
+
+## Files end-to-end tests
+`installer/tests/files-e2e.sh` (as root) builds this service and runs the
+Files suite in `e2e/` against a throwaway instance - see
+docs/specs/2026-09-23-files-reliability.md §5.

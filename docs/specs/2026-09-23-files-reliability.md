@@ -179,3 +179,56 @@ Known limits / follow-ups
   "Delete permanently" there. Shift+Delete skips the Trash.
 - The mobile app's own copy/paste screen doesn't show engine job progress
   yet (it can now: POST /v1/batch/task returns the job id).
+
+## 5. End-to-end suite (2026-10-15)
+
+`services/core/e2e` runs the real core binary on a throwaway loopback port
+with its own config, database and data volumes, and drives it the way the
+Files app does (simple-uploader chunk protocol, `/v1/batch/task`,
+`/v1/batch/tasks`, downloads, rename, delete). One command, as root:
+
+    installer/tests/files-e2e.sh            # or services/core/e2e/run.sh
+    installer/tests/files-e2e.sh -run Upload
+    NV_E2E_LARGE_MB=300 installer/tests/files-e2e.sh   # smaller "large" file
+
+It re-runs itself in a private mount namespace (`unshare -m`) and masks
+`/etc/nivaroos`, `/var/lib/nivaroos` and `/tmp` there, so the test core
+can't see or touch the live server's state; it gets a bind-mounted disk
+volume (big files, Trash), a 1 GB tmpfs (second volume: cross-device
+moves) and a 4 MB tmpfs (disk full). A fake gateway/message bus records
+every `nivaroos:file:operate` event, and every job is checked to reach a
+terminal state with the events the UI received agreeing with the API
+(progress monotonic, bytes and file counters adding up). Contents are
+verified by SHA-256. Without root it skips. About 2 minutes with the
+default 3 GiB file. Work files live in `services/core/e2e/.work`
+(gitignored, removed after the run; `NV_E2E_KEEP=1` keeps them).
+
+Covered: uploads (small, unicode/space/`#` names, empty, 3 GiB sparse,
+600-file folder, same name into two folders at once, resume after a crash
+and after a restart, short chunk, disk full, read-only folder); downloads
+(full, Range resume, as a browser asks, folder zip); copy, move (same and
+cross volume, back again, with an uncopyable item), conflict policies,
+duplicate in place, two transfers into one folder at once, cancel
+mid-copy/move, crash mid-move + Retry, copy/move onto a full disk and into
+a read-only folder, 255-byte names (incl. Backup encrypted-folder style
+names), symlinks (relative, dangling, loop), rename, delete (Trash and
+permanent, partial failure).
+
+Bugs it found (all fixed, tests kept):
+
+| Bug | Commit |
+|---|---|
+| A copy/move job running when the service died vanished (saved only when finished) instead of showing interrupted + Retry | 0b281b1 |
+| Two "keep both" pastes at once picked the same `name (2)`; the second replaced the first | 0b281b1 |
+| Names near 255 bytes failed to copy/upload (temp name too long) | 0b281b1, be6dac8 |
+| Upload interrupted by a service restart: browser showed Done, file never assembled (chunk state was memory-only) | be6dac8 |
+| Upload hitting a full disk: the retried chunk started a fresh upload, so the file could "finish" without existing; temp file kept the disk full for 6 h | be6dac8 |
+| File downloads were gzipped: no size/progress in the browser, no resume, resumed Range came back compressed | 793deb7 |
+| Rename failure showed "Fail"; renaming onto a dangling symlink replaced it | d52bb0b |
+| Uploading the same file again (or same-size non-ASCII names) was silently ignored until the window closed | 13e5f73 |
+| A late event could put a finished transfer back to "in progress" | 670809e |
+
+Not covered (needs hardware/accounts): companion devices, cloud (rclone)
+and SMB destinations, real power loss. Known limits: a cancelled upload's
+temp file stays until the 6 h idle cleanup; per-chunk upload state is not
+fsynced (survives a service restart, not a power cut mid-upload).
