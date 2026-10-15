@@ -281,18 +281,24 @@ void main() {
       c.status.value = RfbStatus.disconnected;
       await tester.pump();
       expect(find.text('Reconnecting to mint'), findsOneWidget);
-      expect(find.text('Try 1 of 3'), findsOneWidget);
+      expect(find.text('Try 1 of 6'), findsOneWidget);
       expect(find.byTooltip('Show keyboard'), findsNothing, reason: 'no toolbar while not connected');
       await tester.pump(const Duration(seconds: 1));
       expect(c.connects, 1);
-      for (var i = 0; i < 3; i++) {
+      for (var i = 0; i < 6; i++) {
         c.status.value = RfbStatus.failed;
-        await tester.pump(const Duration(seconds: 5));
+        await tester.pump(const Duration(seconds: 16));
       }
-      expect(c.connects, 3);
+      expect(c.connects, 6);
       expect(find.text('Connection lost'), findsOneWidget);
+      // Coming back to the app tries again by itself.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      expect(c.connects, 7);
+      c.status.value = RfbStatus.failed;
+      await tester.pump();
       await tester.tap(find.text('Reconnect'));
-      expect(c.connects, 4);
+      expect(c.connects, 8);
       c.live = true;
       c.status.value = RfbStatus.connected;
       await tester.pump();

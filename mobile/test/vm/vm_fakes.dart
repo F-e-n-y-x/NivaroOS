@@ -174,6 +174,11 @@ class FakeWebSocketChannel implements WebSocketChannel {
     if (!_incoming.isClosed) _incoming.add(Uint8List.fromList(bytes));
   }
 
+  /// A text frame, like vm-sidecar's still-screen heartbeat.
+  void sendText(String text) {
+    if (!_incoming.isClosed) _incoming.add(text);
+  }
+
   /// The server hangs up with [code].
   void serverClose(int code) {
     closeCode = code;

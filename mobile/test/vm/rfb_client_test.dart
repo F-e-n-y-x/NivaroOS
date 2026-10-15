@@ -84,6 +84,24 @@ void main() {
     });
   });
 
+  testWidgets('a link that goes silent after heartbeats is reported lost; without them it never is', (tester) async {
+    final server = FakeRfbServer(sendFrame: false);
+    final client = await connected(server, vm: null);
+    expect(client.status.value, RfbStatus.connected);
+    await tester.pump(const Duration(seconds: 60));
+    expect(client.status.value, RfbStatus.connected, reason: 'an older sidecar sends no heartbeats');
+    server.channel!.sendText('');
+    await tester.pump(const Duration(seconds: 10));
+    expect(client.status.value, RfbStatus.connected);
+    server.send([0, 0, 0, 0]); // any traffic counts as alive
+    await tester.pump(const Duration(seconds: 10));
+    expect(client.status.value, RfbStatus.connected);
+    await tester.pump(const Duration(seconds: 6));
+    expect(client.status.value, RfbStatus.disconnected);
+    expect(client.error.value, 'The connection to the server was lost.');
+    client.dispose();
+  });
+
   test('keys and pointer go out as RFB messages', () async {
     final server = FakeRfbServer(sendFrame: false);
     final client = await connected(server);

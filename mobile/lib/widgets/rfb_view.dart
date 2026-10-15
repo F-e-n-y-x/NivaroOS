@@ -845,7 +845,7 @@ class RemoteConsoleFrame extends StatefulWidget {
   State<RemoteConsoleFrame> createState() => RemoteConsoleFrameState();
 }
 
-class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
+class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBindingObserver {
   final _viewKey = GlobalKey<RfbViewState>();
   final _pillKey = GlobalKey();
   final _sessionFocus = FocusNode(debugLabel: 'remote session');
@@ -871,10 +871,12 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
   static const toolbarHideAfter = Duration(seconds: 4);
 
   // Reconnecting after a lost connection: up to [_maxReconnects] tries,
-  // 1, 2 then 4 seconds apart, over the last picture dimmed.
+  // 1, 2, 4, 8, then 15 seconds apart (about 45 s in all, long enough for
+  // a phone to switch networks or Tailscale to come back), over the last
+  // picture dimmed. Coming back to the app tries again as well.
   int _reconnects = 0;
   Timer? _reconnectTimer;
-  static const _maxReconnects = 3;
+  static const _maxReconnects = 6;
 
   static const keysRowHeight = 56.0;
 
@@ -892,6 +894,7 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _client.status.addListener(_statusChanged);
     _clipSub = _client.remoteClipboard.listen(_remoteCopied);
     _keyboardFocus.addListener(() => setState(() {}));
@@ -917,7 +920,21 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Back in the app after the tries ran out (the phone slept, the
+    // network was gone): connect again without a tap.
+    final s = _client.status.value;
+    if (state == AppLifecycleState.resumed &&
+        _session &&
+        !_reconnecting &&
+        (s == RfbStatus.disconnected || s == RfbStatus.failed)) {
+      _retry();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _client.status.removeListener(_statusChanged);
     _clipSub?.cancel();
     _hideTimer?.cancel();
@@ -986,7 +1003,7 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
         _reconnects < _maxReconnects) {
       _reconnects++;
       _reconnectTimer?.cancel();
-      _reconnectTimer = Timer(Duration(seconds: 1 << (_reconnects - 1)), () {
+      _reconnectTimer = Timer(Duration(seconds: _reconnects > 4 ? 15 : 1 << (_reconnects - 1)), () {
         if (mounted && _session) _client.connect();
       });
     }

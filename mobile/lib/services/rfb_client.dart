@@ -106,6 +106,19 @@ class RfbClient {
 
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _sub;
+
+  // Dead-link watch. vm-sidecar sends an empty text frame when the session
+  // starts and whenever the screen has been still for 4 s; once it has, [staleTicks] ticks with
+  // nothing at all mean the link is gone (the phone slept or changed
+  // networks) even though the socket never reported it - the screen would
+  // otherwise freeze on its last picture. An older sidecar never sends
+  // one, so the watch never fires there.
+  static const watchdogTick = Duration(seconds: 2);
+  static const staleTicks = 6;
+  Timer? _watchdog;
+  bool _heard = false;
+  bool _heartbeats = false;
+  int _silentTicks = 0;
   _ByteQueue _reader = _ByteQueue();
   Uint8List? _framebuffer;
 
@@ -178,9 +191,26 @@ class RfbClient {
     }
     _channel = channel;
     final reader = _reader;
+    _heard = true;
+    _heartbeats = false;
+    _silentTicks = 0;
+    _watchdog = Timer.periodic(watchdogTick, (_) {
+      if (gen != _generation) return;
+      if (_heard) {
+        _heard = false;
+        _silentTicks = 0;
+      } else if (_heartbeats && ++_silentTicks >= staleTicks) {
+        _fail(gen, 'The connection to the server was lost.', connected: isConnected);
+      }
+    });
     _sub = channel.stream.listen(
       (event) {
-        if (event is List<int>) reader.add(event);
+        _heard = true;
+        if (event is List<int>) {
+          reader.add(event);
+        } else {
+          _heartbeats = true; // vm-sidecar's empty text frame on a still screen
+        }
       },
       onError: (Object e) => _fail(gen, 'The console connection was lost.', connected: isConnected),
       onDone: () {
@@ -229,6 +259,8 @@ class RfbClient {
   }
 
   void _teardown() {
+    _watchdog?.cancel();
+    _watchdog = null;
     _sub?.cancel();
     _sub = null;
     _channel?.sink.close();
