@@ -114,6 +114,15 @@ const sys = {
 		return api.put(`/gateway/port`, data);
 	},
 
+	// https on the home network (gateway; docs/specs/2026-10-16-lan-https.md)
+	getLanHttps() {
+		return api.get(`/gateway/tls`);
+	},
+
+	setLanHttps(data) {
+		return api.put(`/gateway/tls`, data);
+	},
+
 	// get usb status
 	getUsbStatus() {
 		return api.get(`/usb/usb-auto-mount`);

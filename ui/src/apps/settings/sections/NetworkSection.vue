@@ -24,6 +24,9 @@
 			<network-shares-panel></network-shares-panel>
 		</div>
 
+		<h3 class="setting-card-title">{{ $t('HTTPS on your network') }}</h3>
+		<lan-https-panel></lan-https-panel>
+
 		<h3 class="setting-card-title">{{ $t('Remote Access') }}</h3>
 		<remote-access-panel></remote-access-panel>
 	</section>
@@ -33,6 +36,7 @@
 import NetworkSharesPanel from '@/apps/settings/NetworkSharesPanel.vue'
 import NetworkConnectionsPanel from '@/apps/settings/NetworkConnectionsPanel.vue'
 import RemoteAccessPanel from '@/apps/settings/RemoteAccessPanel.vue'
+import LanHttpsPanel from '@/apps/settings/LanHttpsPanel.vue'
 
 // Search index: labels are the titles this section renders (the search
 // jumps to them); keywords are other words people type for them.
@@ -40,12 +44,13 @@ export const ROWS = [
 	{ label: 'This Device', keywords: 'ip address network interface' },
 	{ label: 'Connect to a Network Share', keywords: 'smb cifs nas windows share mount' },
 	{ label: 'Share a Folder from This Device', keywords: 'samba smb share folder' },
+	{ label: 'HTTPS on your network', keywords: 'https tls ssl certificate secure encrypt lan' },
 	{ label: 'Remote Access', keywords: 'tailscale vpn remote' }
 ]
 
 export default {
 	name: 'network-section',
-	components: { NetworkSharesPanel, NetworkConnectionsPanel, RemoteAccessPanel },
+	components: { NetworkSharesPanel, NetworkConnectionsPanel, RemoteAccessPanel, LanHttpsPanel },
 	data() {
 		return {
 			interfaces: []
