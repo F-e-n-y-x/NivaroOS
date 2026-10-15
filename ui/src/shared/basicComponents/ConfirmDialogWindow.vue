@@ -5,7 +5,7 @@
 				<b-icon :icon="resolvedIcon" :pack="iconPack" custom-size="mdi-24px"></b-icon>
 			</div>
 			<div class="confirm-dialog-main">
-				<div class="confirm-dialog-message" v-html="message"></div>
+				<div class="confirm-dialog-message" v-dompurify-html="message"></div>
 				<!-- Optional real checkbox (confirmWindow({ checkbox: { label, checked,
 				     checkedHint, uncheckedHint } })). Its state is scoped to this
 				     window and handed to onConfirm(checked) - no global DOM ids. -->

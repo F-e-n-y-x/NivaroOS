@@ -11,7 +11,7 @@
 				</div>
 				<div class="confirm-window-title">{{ title }}</div>
 			</div>
-			<div class="confirm-window-message" v-html="message"></div>
+			<div class="confirm-window-message" v-dompurify-html="message"></div>
 			<div class="confirm-window-actions">
 				<b-button @click="$emit('cancel')">{{ cancelText }}</b-button>
 				<b-button :type="type" @click="$emit('confirm')">{{ confirmText }}</b-button>

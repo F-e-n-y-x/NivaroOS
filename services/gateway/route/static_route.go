@@ -159,6 +159,9 @@ func (s *StaticRoute) GetRoute() http.Handler {
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			h := c.Response().Header()
+			// No other site may frame the UI (clickjacking a root session).
+			h.Set("X-Frame-Options", "SAMEORIGIN")
+			h.Set("Content-Security-Policy", "frame-ancestors 'self'")
 			h.Set("Cache-Control", cacheControl(c.Request().URL.Path))
 			if strings.HasPrefix(h.Get("Cache-Control"), "no-cache, no-store") {
 				h.Set("Pragma", "no-cache")

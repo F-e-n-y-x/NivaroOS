@@ -1,7 +1,7 @@
 <template>
 	<div class="prompt-dialog-window">
 		<div class="prompt-dialog-body">
-			<div class="prompt-dialog-message" v-html="message"></div>
+			<div class="prompt-dialog-message" v-dompurify-html="message"></div>
 			<b-input ref="input" v-model="value" :type="inputType" :placeholder="placeholder" :maxlength="maxlength"
 				size="is-small" expanded @keyup.enter="handleConfirm"></b-input>
 		</div>

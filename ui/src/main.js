@@ -15,6 +15,7 @@ import BusSockets from '@/plugins/busSockets'
 import animateCss from '@/plugins/animateCss'
 import VueDOMPurifyHTML from 'vue-dompurify-html'
 import { purifyConfig } from '@/utils/purifyConfig'
+import { sanitizeBuefyMessages } from '@/utils/buefySanitize'
 import { createEventBus } from '@/utils/eventBus'
 import ConfirmWindow from '@/shared/basicComponents/ConfirmWindow.vue'
 
@@ -67,6 +68,7 @@ app.use(router)
 app.use(store)
 app.use(i18n)
 app.use(Buefy)
+sanitizeBuefyMessages(app.config.globalProperties.$buefy)
 app.use(A11yLabels)
 app.component('ConfirmWindow', ConfirmWindow)
 app.directive('animate-css', animateCss)

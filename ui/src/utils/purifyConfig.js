@@ -1,7 +1,8 @@
 // Config for every v-dompurify-html in the app (registered in main.js).
-// Only links survive: no src, style or event-handler attributes.
+// Only links and classes survive: no src, style or event-handler
+// attributes. Also used for Buefy messages (utils/buefySanitize.js).
 export const purifyConfig = {
 	default: {
-		ALLOWED_ATTR: ['target', 'href'],
+		ALLOWED_ATTR: ['target', 'href', 'class'],
 	},
 }

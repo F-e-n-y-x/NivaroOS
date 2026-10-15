@@ -97,3 +97,16 @@ func TestStaticCachingAndPrecompressed(t *testing.T) {
 		t.Errorf("fallback gzip: %v", w.Header())
 	}
 }
+
+// L6: no anti-framing header - any site could frame the UI.
+func TestStaticRouteRefusesFraming(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html>ui</html>"), 0o644)
+	state := service.NewState()
+	state.SetWWWPath(dir)
+	w := httptest.NewRecorder()
+	NewStaticRoute(state).GetRoute().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", nil))
+	if w.Header().Get("X-Frame-Options") != "SAMEORIGIN" || w.Header().Get("Content-Security-Policy") != "frame-ancestors 'self'" {
+		t.Fatalf("headers %v", w.Header())
+	}
+}
