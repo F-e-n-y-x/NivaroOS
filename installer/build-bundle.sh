@@ -251,7 +251,7 @@ done
 
 # glibc_min: the newest GLIBC_x.y symbol version any binary needs (cgo ones).
 GLIBC_MIN="$(for b in "$OUT"/.bin/*; do objdump -T "$b" 2>/dev/null; done |
-	grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -n1)"
+	grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -n1 || true)"
 
 {
 	echo "version ${VERSION:-source}"
