@@ -553,7 +553,10 @@ func DeleteUser(c *gin.Context) {
 		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.USER_NOT_EXIST, Message: common_err.GetMsg(common_err.USER_NOT_EXIST)})
 		return
 	}
-	if service.MyService.User().GetUserCount() <= 1 {
+	if n, err := service.MyService.User().GetUserCount(); err != nil {
+		c.JSON(http.StatusServiceUnavailable, model.Result{Success: common_err.SERVICE_ERROR, Message: "couldn't read the accounts - try again"})
+		return
+	} else if n <= 1 {
 		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: "this is the only account - it can't be deleted"})
 		return
 	}
@@ -957,7 +960,13 @@ func GetPublicAppearance(c *gin.Context) {
 func GetUserStatus(c *gin.Context) {
 	data := make(map[string]interface{}, 4)
 
-	if service.MyService.User().GetUserCount() > 0 {
+	n, err := service.MyService.User().GetUserCount()
+	if err != nil {
+		logger.Error("reading the user count", zap.Error(err))
+		c.JSON(http.StatusServiceUnavailable, model.Result{Success: common_err.SERVICE_ERROR, Message: "couldn't read the accounts - try again"})
+		return
+	}
+	if n > 0 {
 		data["initialized"] = true
 		data["key"] = ""
 	} else {

@@ -33,7 +33,7 @@ import (
 type UserService interface {
 	UpLoadFile(file multipart.File, name string) error
 	CreateUser(m model.UserDBModel) model.UserDBModel
-	GetUserCount() (userCount int64)
+	GetUserCount() (int64, error)
 	UpdateUser(m model.UserDBModel)
 	UpdateUserPassword(m model.UserDBModel)
 	SetTokensValidAfter(id int, unix int64)
@@ -144,9 +144,12 @@ func (u *userService) CreateUser(m model.UserDBModel) model.UserDBModel {
 	return m
 }
 
-func (u *userService) GetUserCount() (userCount int64) {
-	u.db.Find(&model.UserDBModel{}).Count(&userCount)
-	return
+// GetUserCount fails rather than answer 0 when the database can't be read:
+// 0 means "fresh server, hand out a registration key".
+func (u *userService) GetUserCount() (int64, error) {
+	var n int64
+	err := u.db.Model(&model.UserDBModel{}).Count(&n).Error
+	return n, err
 }
 
 func (u *userService) UpdateUser(m model.UserDBModel) {
