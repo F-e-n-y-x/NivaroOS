@@ -322,4 +322,72 @@ describe('#/host-desktop/embed', () => {
 		el.remove()
 		expect(window.nivaroosEmbed).toBeUndefined()
 	})
+
+	test('the app drives pointer, clipboard, stream settings and placement; size and stats go back', async () => {
+		vi.useFakeTimers()
+		const posted = []
+		window.NivaroosBridge = { postMessage: (m) => posted.push(JSON.parse(m)) }
+		window.__nivaroosStream = { fps: 60, maxKbps: 8000 }
+		vi.stubGlobal('RTCPeerConnection', FakePC)
+		const offers = []
+		vi.stubGlobal('fetch', async (url, init) => {
+			if (!String(url).includes('/offer')) return json(200, { modes: { webrtc: { available: true, encoder: 'x264enc' } } })
+			offers.push(JSON.parse(init.body))
+			return json(200, { type: 'answer', sdp: 'v=0 answer' })
+		})
+		const { default: Embed } = await import('@/views/HostDesktopEmbed.vue')
+		const el = document.createElement('div')
+		document.body.appendChild(el)
+		const app = createApp({ render: () => h(Embed) })
+		app.config.globalProperties.$t = (s) => s
+		app.mount(el)
+		await flush()
+		// The app's settings win over this browser's, from the first offer.
+		expect(offers.at(-1)).toMatchObject({ fps: 60, max_kbps: 8000 })
+		const pc = pcs.at(-1)
+		const e = window.nivaroosEmbed
+
+		e.pointer(10.4, 20.6, 1)
+		e.pointer(-5, 3, 16)
+		e.clip('héllo')
+		expect(pc.dc.sent.slice(-3)).toEqual([
+			{ t: 'p', x: 10, y: 21, m: 1 },
+			{ t: 'p', x: 0, y: 3, m: 16 },
+			{ t: 'clip', text: 'héllo' },
+		])
+
+		pc.msg({ t: 'size', w: 2400, h: 1080 })
+		pc.frames(1)
+		await vi.advanceTimersByTimeAsync(1000)
+		await flush()
+		expect(posted).toContainEqual({ t: 'size', w: 2400, h: 1080 })
+		expect(posted).toContainEqual({ t: 'stats', encoder: 'x264enc', fps: 30, rttMs: 4 })
+		// Unchanged stats aren't posted again.
+		await vi.advanceTimersByTimeAsync(2000)
+		await flush()
+		expect(posted.filter((m) => m.t === 'stats')).toHaveLength(1)
+
+		// The app's fit / zoom / pan: the video goes where it says.
+		const video = el.querySelector('video')
+		e.view({ x: -100, y: 12, w: 1600, h: 720 })
+		expect(video.style.cssText).toContain('left: -100px')
+		expect(video.style.width).toBe('1600px')
+		expect(video.style.objectFit).toBe('fill')
+		e.view(null)
+		expect(video.getAttribute('style')).toBeNull()
+
+		// New fps / bitrate: offered again with them; a value it doesn't know changes nothing.
+		e.setStream({ fps: 30, maxKbps: 20000 })
+		await flush()
+		expect(offers.at(-1)).toMatchObject({ fps: 30, max_kbps: 20000 })
+		expect(pcs.at(-2).closed).toBe(true)
+		const n = offers.length
+		e.setStream({ fps: 45, maxKbps: 'lots' })
+		await flush()
+		expect(offers.at(-1)).toMatchObject({ fps: 30, max_kbps: 20000 })
+		expect(offers).toHaveLength(n)
+		app.unmount()
+		el.remove()
+		delete window.__nivaroosStream
+	})
 })

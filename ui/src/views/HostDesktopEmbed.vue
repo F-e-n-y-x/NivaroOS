@@ -5,16 +5,34 @@
 	window.NivaroosBridge for {"state":"connecting|live|fallback|error","reason"}.
 	On "fallback" (no WebRTC here, or no first frame within 4 s) the app
 	switches to its own VNC client.
+	The app draws its own console over the page and drives everything
+	through window.nivaroosEmbed (key, pointer, clip, setStream, view); the
+	page renders the video and posts {t:"size"}, {t:"stats"} and {t:"clip"}
+	back. Contract: /root/nivaroos-wip/webrtc-contract.md (Embedding).
 -->
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import HostDesktopWebRTC from '@/shell/desktop/HostDesktopWebRTC.vue'
-import { loadPrefs } from '@/shell/desktop/streamMode'
+import { STREAM_FPS, STREAM_KBPS, loadPrefs, normalizePrefs } from '@/shell/desktop/streamMode'
 
-const prefs = loadPrefs()
+// The app sets its own fps / bitrate before load (window.__nivaroosStream).
+const prefs = window.__nivaroosStream ? normalizePrefs(window.__nivaroosStream) : loadPrefs()
+const fps = ref(prefs.fps)
+const maxKbps = ref(prefs.maxKbps)
 const state = ref('connecting')
 const reason = ref('')
 let posted = ''
+let postedStats = ''
+
+function post(obj) {
+	try {
+		if (!window.NivaroosBridge) return false
+		window.NivaroosBridge.postMessage(JSON.stringify(obj))
+		return true
+	} catch {
+		return false
+	}
+}
 
 function onState(e) {
 	// The bridge only knows connecting|live|fallback|error.
@@ -24,23 +42,43 @@ function onState(e) {
 	const msg = JSON.stringify({ state: s, reason: reason.value })
 	if (msg === posted) return
 	posted = msg
-	try {
-		if (window.NivaroosBridge) window.NivaroosBridge.postMessage(msg)
-	} catch {}
+	post({ state: s, reason: reason.value })
+}
+
+const onSize = (s) => post({ t: 'size', w: s.w, h: s.h })
+
+function onStats(s) {
+	const msg = JSON.stringify(s)
+	if (msg === postedStats) return
+	postedStats = msg
+	post({ t: 'stats', ...s })
 }
 
 // The host copied text. Android's WebView has no navigator.clipboard on
 // plain http, so the app copies it to the phone.
 function onClipboard(text) {
-	try {
-		if (window.NivaroosBridge) return window.NivaroosBridge.postMessage(JSON.stringify({ t: 'clip', text }))
-	} catch {}
+	if (post({ t: 'clip', text })) return
 	if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(() => {})
 }
 
-// The app's soft keyboard types through window.nivaroosEmbed.key(keysym, down).
+// The app's input and settings. key: X keysym, down; pointer: remote
+// pixels and an RFB button mask (8/16/32/64 = wheel); clip: text to the
+// host's clipboard; setStream({fps, maxKbps}): offers again with them;
+// view({x, y, w, h} | null): where the video goes, in CSS pixels (the
+// app's fit / zoom / pan), null = fit.
 function onReady(rfb) {
-	window.nivaroosEmbed = { key: (ks, down) => rfb.sendKey(ks, null, down) }
+	window.nivaroosEmbed = {
+		key: (ks, down) => rfb.sendKey(ks, null, down),
+		pointer: (x, y, m) => rfb.pointer(x, y, m),
+		clip: (text) => rfb.clipboardPasteFrom(text),
+		// A value it doesn't know leaves that setting as it is.
+		setStream(o) {
+			const v = o || {}
+			if (STREAM_FPS.includes(Number(v.fps))) fps.value = Number(v.fps)
+			if (STREAM_KBPS.includes(Number(v.maxKbps))) maxKbps.value = Number(v.maxKbps)
+		},
+		view: (r) => rfb.place(r),
+	}
 }
 
 onMounted(() => {
@@ -54,7 +92,7 @@ onBeforeUnmount(() => {
 
 <template>
 	<div class="hd-embed">
-		<host-desktop-web-r-t-c :fallback="true" :fps="prefs.fps" :max-kbps="prefs.maxKbps" @ready="onReady" @state="onState" @clipboard="onClipboard"></host-desktop-web-r-t-c>
+		<host-desktop-web-r-t-c :fallback="true" :fps="fps" :max-kbps="maxKbps" @ready="onReady" @state="onState" @clipboard="onClipboard" @size="onSize" @stats="onStats"></host-desktop-web-r-t-c>
 		<div v-if="state !== 'live'" class="hd-embed-status" role="status" aria-live="polite">
 			<span v-if="state === 'connecting'">{{ $t('Connecting...') }}</span>
 			<span v-else-if="state === 'fallback'">{{ $t('Compatible mode') }}</span>

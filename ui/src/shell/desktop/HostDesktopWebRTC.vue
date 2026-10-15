@@ -11,7 +11,7 @@
 	work unchanged.
 -->
 <script setup>
-import { markRaw, onBeforeUnmount, onMounted, ref } from 'vue'
+import { markRaw, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Keyboard from '@novnc-core/input/keyboard.js'
 import { apiBase } from '@/api/vmSidecar'
 import { reconnectDelay } from '@/utils/consoleSocket'
@@ -343,7 +343,38 @@ const rfbLike = markRaw({
 	clipboardPasteFrom: (text) => send({ t: 'clip', text: String(text) }),
 	focus: () => root.value && root.value.focus({ preventScroll: true }),
 	disconnect: stop,
+	// The app's WebView drives input itself (its native console gestures)
+	// and only wants the picture: a pointer in remote pixels with an RFB
+	// mask (wheel bits included), and where to draw the video.
+	pointer(x, y, m) {
+		const n = (v) => Math.max(0, Math.round(Number(v)) || 0)
+		send({ t: 'p', x: n(x), y: n(y), m: n(m) & 0x7f })
+	},
+	// r: { x, y, w, h } in CSS pixels of this page, or null for "fit".
+	place(r) {
+		const v = video.value
+		if (!v) return
+		const ok = r && ['x', 'y', 'w', 'h'].every((k) => Number.isFinite(Number(r[k])))
+		if (!ok) return v.removeAttribute('style')
+		Object.assign(v.style, { position: 'absolute', left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px`, objectFit: 'fill' })
+	},
 })
+
+// New fps / bitrate: they go with the offer, so offer again.
+watch(
+	() => [props.fps, props.maxKbps],
+	() => {
+		if (stopped || !pc) return
+		setState('reconnecting')
+		offer()
+	},
+)
+
+// Before the server's `size` message, the video's own size stands in.
+function onVideoResize() {
+	const v = video.value
+	if (!remote.w && v && v.videoWidth) emit('size', { w: v.videoWidth, h: v.videoHeight })
+}
 
 onMounted(() => {
 	keyboard = new Keyboard(root.value)
@@ -379,6 +410,7 @@ onBeforeUnmount(() => {
 			@pointerup="onPointer"
 			@pointercancel="onPointer"
 			@wheel.prevent="onWheel"
+			@resize="onVideoResize"
 		></video>
 	</div>
 </template>
