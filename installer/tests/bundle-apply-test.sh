@@ -73,6 +73,7 @@ mkbundle() {
 	echo "x = 1" >"$rr/etc/nivaroos/casaos.conf.sample"
 	echo "<html>$v</html>" >"$rr/var/lib/nivaroos/www/index.html"
 	echo "[Service]" >"$rr/usr/local/lib/nivaroos/10-nivaroos-resilience.conf"
+	echo "[Service]" >"$rr/usr/lib/systemd/system/nivaroos-update-resume.service"
 	[ "$v" = source ] || printf '{"version":"%s","channel":"stable","commit":"c","built":"b"}\n' "$v" >"$rr/usr/share/nivaroos/release.json"
 	cp "$HERE/bundle/apply.sh" "$d/apply.sh"
 	cp "$HERE/nivaroos-safety-lib.sh" "$d/lib/safety-lib.sh"
@@ -119,6 +120,7 @@ check '[ -f "$FAKE_SD/nivaroos-backup.service/enabled" ]' "install enables a cho
 check 'grep -q "1.0.0" "$NV_ROOT/usr/share/nivaroos/release.json"' "install writes release.json"
 check 'grep -qx /usr/bin/nivaroos "$NV_ROOT/var/lib/nivaroos/manifest"' "install records files in the uninstall manifest"
 check '[ "$(cat "$SNAP/state")" = committed ]' "install commits"
+check '[ -f "$FAKE_SD/nivaroos-update-resume.service/enabled" ] && ! grep -qE "^(start|restart) nivaroos-update-resume" "$FAKE_SD/calls"' "the resume unit is enabled for boot, never started"
 
 # 2. Re-applying the same bundle changes nothing and stops nothing.
 : >"$FAKE_SD/calls"

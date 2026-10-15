@@ -458,6 +458,11 @@ do_apply() {
 	for u in "${restart[@]}"; do
 		[ -n "${WAS_ACTIVE[$u]:-}" ] || "$NV_SYSTEMCTL" enable "$u" >/dev/null 2>&1 || true
 	done
+	# Runs at boot to finish or undo an update a reboot cut off: enabled,
+	# never started here.
+	if [ -f "$UNIT_DIR/nivaroos-update-resume.service" ]; then
+		"$NV_SYSTEMCTL" enable nivaroos-update-resume.service >/dev/null 2>&1 || true
+	fi
 	for u in $(ordered "${restart[@]}"); do
 		nv_restart "$u" || say "start of $u failed"
 	done
