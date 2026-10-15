@@ -250,6 +250,19 @@ final Map<String, _Shot> _shots = {
       await tester.pump(const Duration(milliseconds: 300));
     },
   ),
+  // Its Display menu: the console's own, frame rate and bitrate in place of the VNC qualities.
+  'host_desktop_smooth_display': _Shot(
+    () => SmoothHostDesktop(onFallback: (_) {}),
+    dark: false,
+    overrides: {'GET /': const FakeResponse('<html><head></head><body></body></html>')},
+    before: (tester) async {
+      _web.last.post('{"t":"size","w":1920,"h":1080}');
+      _web.last.post('{"t":"stats","encoder":"nvh264enc","fps":60,"rttMs":3}');
+      _web.last.post('{"state":"live"}');
+      await tester.pump(const Duration(milliseconds: 300));
+      await _tapTooltip(tester, 'Display');
+    },
+  ),
   'host_desktop_not_set_up': _Shot(
     () => HostDesktopScreen(client: VmClient(), rfb: _rfb(null)),
     dark: false,

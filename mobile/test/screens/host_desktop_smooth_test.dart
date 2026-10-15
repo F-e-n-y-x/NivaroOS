@@ -64,7 +64,10 @@ void main() {
 
   test('the token goes first in <head>, escaped; a page without <head> gets it first', () {
     final html = injectNivaroosToken(_index, 'a.b</script>c');
-    expect(html, contains(r'<head><script>window.__nivaroosToken="a.b</script>c";</script><meta'));
+    // A "</script>" in the value can't end the tag early.
+    expect(html, contains(r'<head><script>window.__nivaroosToken="a.b\u003c/script>c";</script><meta'));
+    expect(injectNivaroosToken('<head>', 't', stream: {'fps': 60, 'maxKbps': 8000}),
+        '<head><script>window.__nivaroosToken="t";window.__nivaroosStream={"fps":60,"maxKbps":8000};</script>');
     expect(html.indexOf('__nivaroosToken'), lessThan(html.indexOf('index.js')));
     expect(injectNivaroosToken('<p>x</p>', 't'), startsWith('<script>window.__nivaroosToken="t";</script><p>'));
   });
@@ -109,15 +112,25 @@ void main() {
       final load = web.last.loads.single;
       expect(load.baseUrl, '$_lan/#/host-desktop/embed?mode=smooth');
       expect(load.baseUrl, isNot(contains('jwt')));
-      expect(load.html, contains('<head><script>window.__nivaroosToken="jwt-1";</script>'));
+      expect(load.html, contains('<head><script>window.__nivaroosToken="jwt-1";window.__nivaroosStream={"fps":30,"maxKbps":12000};</script>'));
       expect(find.text('Connecting to Host desktop'), findsOneWidget);
       expect(find.byTooltip('Pin toolbar'), findsNothing);
 
-      // Live: the console's own toolbar, Pin and Hide and all.
+      // Live: the native console's toolbar, every button of it.
       web.last.post('{"state":"live","reason":""}');
       await tester.pump();
       expect(find.text('Connecting to Host desktop'), findsNothing);
-      for (final t in ['Show keyboard', 'More options', 'Pin toolbar', 'Hide toolbar', 'Disconnect']) {
+      for (final t in [
+        'Show keyboard',
+        'Input: touch. Switch to mouse pointer',
+        'Display',
+        'Extra keys',
+        'Clipboard',
+        'More options',
+        'Pin toolbar',
+        'Hide toolbar',
+        'Disconnect',
+      ]) {
         expect(find.byTooltip(t), findsOneWidget, reason: t);
       }
       await tester.tap(find.byTooltip('Pin toolbar'));
@@ -250,7 +263,162 @@ void main() {
       await tester.tap(find.byTooltip('Show keyboard'));
       await tester.pump();
       await tester.enterText(find.byType(TextField), '​​a');
-      expect(web.last.scripts.last, contains('nivaroosEmbed.key(97,true),nivaroosEmbed.key(97,false)'));
+      expect(web.last.scripts.reversed.take(2).toList().reversed, [
+        'window.nivaroosEmbed&&nivaroosEmbed.key(97,true);',
+        'window.nivaroosEmbed&&nivaroosEmbed.key(97,false);',
+      ]);
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
+  // What the app sends the page: the calls after [from].
+  List<String> calls(FakeWebViewController c, int from) =>
+      [for (final s in c.scripts.skip(from)) s.replaceFirst('window.nivaroosEmbed&&nivaroosEmbed.', '').replaceFirst(RegExp(r';$'), '')];
+
+  Future<FakeWebViewController> live(WidgetTester tester) async {
+    await open(tester);
+    final c = web.last;
+    c.post('{"t":"size","w":1920,"h":1080}');
+    c.post('{"state":"live"}');
+    await tester.pump();
+    return c;
+  }
+
+  testWidgets("the native console's gestures drive the page; it only draws the video where the app says", (tester) async {
+    await withServer(() async {
+      final c = await live(tester);
+      // 800 x 600 test screen, 1920 x 1080 fitted: 800 x 450 from y 75.
+      expect(c.scripts, contains('window.nivaroosEmbed&&nivaroosEmbed.view({x:0.0,y:75.0,w:800.0,h:450.0});'));
+
+      // Touch mode. Tap: click there.
+      var n = c.scripts.length;
+      await tester.tapAt(const Offset(400, 300));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(calls(c, n), ['pointer(960,540,0)', 'pointer(960,540,1)', 'pointer(960,540,0)']);
+
+      // Hold: right-click.
+      n = c.scripts.length;
+      final hold = await tester.startGesture(const Offset(200, 175));
+      await tester.pump(const Duration(milliseconds: 600));
+      await hold.up();
+      expect(calls(c, n), ['pointer(480,240,0)', 'pointer(480,240,4)', 'pointer(480,240,0)']);
+
+      // Two fingers up: the wheel, natural scrolling.
+      n = c.scripts.length;
+      final a = await tester.startGesture(const Offset(380, 400), pointer: 7);
+      final b = await tester.startGesture(const Offset(420, 400), pointer: 8);
+      await tester.pump(const Duration(milliseconds: 300));
+      for (var i = 0; i < 6; i++) {
+        await a.moveBy(const Offset(0, -10));
+        await b.moveBy(const Offset(0, -10));
+      }
+      await a.up();
+      await b.up();
+      expect(calls(c, n).where((s) => s.endsWith(',16)')), hasLength(greaterThanOrEqualTo(2)));
+      expect(calls(c, n).where((s) => s.startsWith('pointer(')).every((s) => s.endsWith(',16)') || s.endsWith(',0)')), isTrue);
+
+      // Pinch: the app zooms, the page moves the video.
+      n = c.scripts.length;
+      final p = await tester.startGesture(const Offset(350, 300), pointer: 9);
+      final q = await tester.startGesture(const Offset(450, 300), pointer: 10);
+      for (var i = 0; i < 5; i++) {
+        await p.moveBy(const Offset(-20, 0));
+        await q.moveBy(const Offset(20, 0));
+        await tester.pump();
+      }
+      await p.up();
+      await q.up();
+      await tester.pump(const Duration(milliseconds: 400));
+      final views = calls(c, n).where((s) => s.startsWith('view(')).toList();
+      expect(views, isNotEmpty);
+      final w = double.parse(RegExp(r'w:([\d.]+)').firstMatch(views.last)!.group(1)!);
+      expect(w, greaterThan(1600));
+      expect(calls(c, n).where((s) => s.startsWith('pointer(')), isEmpty);
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
+  testWidgets('Display: frame rate and bitrate go to the page and are remembered; stats in the header', (tester) async {
+    await withServer(() async {
+      final c = await live(tester);
+      c.post('{"t":"stats","encoder":"nvh264enc","fps":59,"rttMs":4}');
+      await tester.tap(find.byTooltip('Display'));
+      await tester.pumpAndSettle();
+      expect(find.text('1920 × 1080 · 59 fps · 4 ms'), findsOneWidget);
+      for (final t in ['Fit to screen', 'Fill screen', '1:1 pixels', 'Match this phone', 'Stay in landscape', '30 fps · lighter']) {
+        expect(find.text(t), findsOneWidget, reason: t);
+      }
+      // No VNC picture qualities: they don't apply to a video stream.
+      expect(find.text('Best picture'), findsNothing);
+      await tester.tap(find.text('60 fps · smoothest'));
+      await tester.pumpAndSettle();
+      expect(c.scripts.last, 'window.nivaroosEmbed&&nivaroosEmbed.setStream({fps:60,maxKbps:12000});');
+      await tester.tap(find.byTooltip('Display'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Max bitrate · 12 Mbps'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('40 Mbps'));
+      await tester.pumpAndSettle();
+      expect(c.scripts.last, 'window.nivaroosEmbed&&nivaroosEmbed.setStream({fps:60,maxKbps:40000});');
+      expect(await StorageService.instance.getConsolePref(SmoothHostDesktop.fpsPref), '60');
+      expect(await StorageService.instance.getConsolePref(SmoothHostDesktop.kbpsPref), '40000');
+
+      // Next time the page starts with them.
+      await tester.tap(find.byTooltip('More options'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Reconnect'));
+      for (var i = 0; i < 5; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+        await tester.pump();
+      }
+      expect(c.loads.last.html, contains('window.__nivaroosStream={"fps":60,"maxKbps":40000}'));
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
+  testWidgets('clipboard both ways, extra keys with latches and Ctrl+Alt+Del', (tester) async {
+    await withServer(() async {
+      final c = await live(tester);
+      await tester.tap(find.byTooltip('Extra keys'));
+      await tester.pump();
+      var n = c.scripts.length;
+      await tester.tap(find.text('Ctrl'));
+      await tester.pump();
+      await tester.tap(find.text('Esc'));
+      await tester.pump();
+      expect(calls(c, n), ['key(65507,true)', 'key(65307,true)', 'key(65307,false)', 'key(65507,false)']);
+      n = c.scripts.length;
+      final keyRow = find.descendant(
+          of: find.byWidgetPredicate((w) => w is ListView && w.scrollDirection == Axis.horizontal), matching: find.byType(Scrollable));
+      await tester.scrollUntilVisible(find.text('Ctrl+Alt+Del'), 150, scrollable: keyRow);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ctrl+Alt+Del'));
+      await tester.pump();
+      expect(calls(c, n), [
+        'key(65507,true)', 'key(65513,true)', 'key(65535,true)',
+        'key(65535,false)', 'key(65513,false)', 'key(65507,false)',
+      ]);
+
+
+      // Phone -> host: the clipboard sheet, lossless.
+      await tester.tap(find.byTooltip('Clipboard'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Or type the text to send'), 'héllo "x" </script>');
+      await tester.pump();
+      await tester.tap(find.text('Send to clipboard'));
+      await tester.pumpAndSettle();
+      expect(c.scripts.last, r'window.nivaroosEmbed&&nivaroosEmbed.clip("héllo \"x\" \u003c/script>");');
+      expect(find.text('Sent to the clipboard on the server'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+
+      // Host -> phone: the console's own "copied" note.
+      c.post(jsonEncode({'t': 'clip', 'text': 'from host'}));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('The server copied text'), findsOneWidget);
+      expect(find.text('Copy here'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
   });

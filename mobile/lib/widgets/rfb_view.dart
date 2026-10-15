@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:clock/clock.dart';
 import 'package:flutter/gestures.dart';
@@ -400,11 +399,18 @@ class RfbView extends StatefulWidget {
     this.fit = RfbFit.fit,
     this.bottomInset = 0,
     this.label,
+    this.onPicture,
   });
 
   final RfbClient client;
   final RfbInputMode inputMode;
   final RfbFit fit;
+
+  /// Where the picture is drawn (fit, zoom, pan and the slide above the
+  /// keyboard), each time it moves: for a picture drawn by someone else
+  /// under this view, the Smooth stream's video. Called during build, so
+  /// it must not set state.
+  final ValueChanged<Rect>? onPicture;
 
   /// How much of the view is covered from below (the keyboard and the
   /// keys row): the view slides up so the cursor stays above it.
@@ -432,6 +438,7 @@ class RfbViewState extends State<RfbView> {
   Offset _scroll = Offset.zero;
   Offset? _edgeAt;
   double _lift = 0;
+  Rect? _picture;
 
   static const _slop = 10.0;
   static const _trackpadSpeed = 1.6;
@@ -714,13 +721,21 @@ class RfbViewState extends State<RfbView> {
   @override
   Widget build(BuildContext context) {
     final dpr = MediaQuery.devicePixelRatioOf(context);
-    return ValueListenableBuilder<ui.Image?>(
-      valueListenable: _c.frame,
-      builder: (context, image, _) => LayoutBuilder(builder: (context, constraints) {
+    // frameCount too: a client without frames of its own (Smooth) bumps it
+    // when the remote size changes.
+    return ListenableBuilder(
+      listenable: Listenable.merge([_c.frame, _c.frameCount]),
+      builder: (context, _) => LayoutBuilder(builder: (context, constraints) {
+        final image = _c.frame.value;
         final remote = Size((_c.width > 0 ? _c.width : 1280).toDouble(), (_c.height > 0 ? _c.height : 720).toDouble());
         viewport.layout(box: constraints.biggest, remote: remote, dpr: dpr, fit: widget.fit);
         final caret = viewport.toLocal(_cursor);
         _lift = widget.bottomInset > 0 ? viewport.keepInSight(_lift, caret, viewport.box.height - widget.bottomInset) : 0;
+        final picture = viewport.rect.shift(Offset(0, -_lift));
+        if (picture != _picture) {
+          _picture = picture;
+          widget.onPicture?.call(picture);
+        }
         return Semantics(
           label: widget.label,
           hint: widget.inputMode == RfbInputMode.trackpad
@@ -749,6 +764,12 @@ class RfbViewState extends State<RfbView> {
                         filterQuality: viewport.scale < 1 ? FilterQuality.medium : FilterQuality.low,
                       ),
                     ),
+                  if (_c.localCursor && _c.isConnected)
+                    Positioned(
+                      left: caret.dx - 1,
+                      top: caret.dy - 1,
+                      child: const IgnorePointer(child: CustomPaint(size: Size(14, 21), painter: _CursorPainter())),
+                    ),
                 ]),
               ),
             ),
@@ -759,6 +780,36 @@ class RfbViewState extends State<RfbView> {
   }
 }
 
+/// The remote pointer, for a picture without one in it: the usual white
+/// arrow with a dark edge, its tip at the top left.
+class _CursorPainter extends CustomPainter {
+  const _CursorPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final arrow = Path()
+      ..moveTo(1, 1)
+      ..lineTo(1, 17)
+      ..lineTo(5, 13)
+      ..lineTo(8, 20)
+      ..lineTo(10.5, 19)
+      ..lineTo(7.5, 12.5)
+      ..lineTo(13, 12.5)
+      ..close();
+    canvas
+      ..drawPath(arrow, Paint()..color = const Color(0xFFFFFFFF))
+      ..drawPath(
+          arrow,
+          Paint()
+            ..color = const Color(0xFF000000)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.2
+            ..strokeJoin = StrokeJoin.round);
+  }
+
+  @override
+  bool shouldRepaint(_CursorPainter oldDelegate) => false;
+}
 
 // ---------------------------------------------------------------------------
 // The session
@@ -817,6 +868,9 @@ class RemoteConsoleFrame extends StatefulWidget {
     this.screenLabel,
     this.history,
     this.onMatchPhone,
+    this.underlay,
+    this.onPicture,
+    this.qualityItems,
   });
 
   final RfbClient client;
@@ -841,6 +895,16 @@ class RemoteConsoleFrame extends StatefulWidget {
   /// Resizes the remote screen to this phone's shape, for "Match this
   /// phone". Null where the remote screen can't be resized from here.
   final Future<void> Function(BuildContext context)? onMatchPhone;
+
+  /// Drawn under the session's input layer, for a client whose picture
+  /// isn't its frames (the Smooth stream's WebView); see
+  /// [RfbView.onPicture], which says where to put it.
+  final Widget? underlay;
+  final ValueChanged<Rect>? onPicture;
+
+  /// The Display menu's quality choices, for a stream they don't fit
+  /// (Smooth: frame rate and bitrate). Null: [RfbQuality].
+  final List<Widget> Function(BuildContext context)? qualityItems;
 
   @override
   State<RemoteConsoleFrame> createState() => RemoteConsoleFrameState();
@@ -1219,6 +1283,7 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
       child: Stack(
         fit: StackFit.expand,
         children: [
+          ?widget.underlay,
           RfbView(
             key: _viewKey,
             client: _client,
@@ -1226,6 +1291,7 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
             fit: _fit,
             bottomInset: keyboard + (keysShown ? keysRowHeight : 0),
             label: widget.screenLabel ?? 'Screen of ${widget.title}',
+            onPicture: widget.onPicture,
           ),
           RemoteKeyboardField(focusNode: _keyboardFocus, onKey: _key),
           if (!connected) _overlay(context),
@@ -1336,7 +1402,11 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
       menuChildren: [
         MenuItemButton(
           onPressed: null,
-          child: Text('${_client.width} × ${_client.height}', style: Theme.of(context).textTheme.labelMedium?.tabular),
+          // Built with the toolbar: kept current while it is open.
+          child: ListenableBuilder(
+            listenable: _client.frameCount,
+            builder: (context, _) => Text(_client.displayInfo, style: Theme.of(context).textTheme.labelMedium?.tabular),
+          ),
         ),
         for (final f in RfbFit.values)
           if (f != RfbFit.matchPhone || widget.onMatchPhone != null)
@@ -1353,13 +1423,16 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> with WidgetsBind
             child: const Text('Reset zoom'),
           ),
         const Divider(),
-        for (final q in RfbQuality.values)
-          RadioMenuButton<RfbQuality>(
-            value: q,
-            groupValue: _quality,
-            onChanged: (v) => _setQuality(v!),
-            child: Text(q.label),
-          ),
+        if (widget.qualityItems != null)
+          ...widget.qualityItems!(context)
+        else
+          for (final q in RfbQuality.values)
+            RadioMenuButton<RfbQuality>(
+              value: q,
+              groupValue: _quality,
+              onChanged: (v) => _setQuality(v!),
+              child: Text(q.label),
+            ),
         const Divider(),
         CheckboxMenuButton(
           value: _landscapeLocked,

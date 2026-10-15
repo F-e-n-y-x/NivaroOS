@@ -271,7 +271,9 @@ class _HostDesktopScreenState extends State<HostDesktopScreen> {
         ConsoleMenuItem(icon: Icons.speed_outlined, label: 'Stream mode', onPressed: _pickMode),
       ],
     ];
-    if (_smooth) return SmoothHostDesktop(onFallback: _fallback, menuItems: menu);
+    if (_smooth) {
+      return SmoothHostDesktop(onFallback: _fallback, menuItems: menu, onMatchPhone: _matchPhone, history: widget.history);
+    }
     return RemoteConsoleFrame(
       client: _rfb,
       title: 'Host desktop',

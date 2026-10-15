@@ -78,8 +78,22 @@ class RfbClient {
   /// Text the remote machine copied (ServerCutText).
   Stream<String> get remoteClipboard => _clipboard.stream;
 
+  /// For a client with its own transport (the Smooth stream): the remote
+  /// machine copied [text].
+  @protected
+  void remoteCopied(String text) {
+    if (text.isNotEmpty && !_clipboard.isClosed) _clipboard.add(text);
+  }
+
   int width = 0;
   int height = 0;
+
+  /// What the console's Display menu says about the stream.
+  String get displayInfo => '$width × $height';
+
+  /// Whether the picture comes without the remote cursor in it, so the
+  /// console draws one where the pointer is.
+  bool get localCursor => false;
 
   /// The most pictures a second to ask for; 0 is as many as the server
   /// sends. Lower saves data on a slow or metered connection.
