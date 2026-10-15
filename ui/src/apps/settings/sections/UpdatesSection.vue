@@ -241,6 +241,7 @@ export default {
 			return { behind: 'cloud-download-outline', up_to_date: 'check-circle-outline', unknown: 'help-circle-outline' }[this.updateState] || 'help-circle-outline'
 		},
 		statusTitle() {
+			if (this.hasNivaroUpdate && this.update.latest_version) return `NivaroOS ${this.update.latest_version} ${this.$t('is available')}`
 			if (this.hasNivaroUpdate) {
 				const n = this.update.ahead_by
 				return `${n} ${n === 1 ? this.$t('new change on GitHub since your build') : this.$t('new changes on GitHub since your build')}`
@@ -256,7 +257,8 @@ export default {
 			try {
 				if (b.date) d = ', ' + new Date(b.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 			} catch { /* bad date: no date */ }
-			return `${this.$t('Build')} ${b.short}${d}`
+			const label = `${this.$t('Build')} ${b.short}${d}`
+			return b.release ? `NivaroOS ${b.version} (${label})` : label
 		},
 		compareUrl() {
 			return `https://github.com/F-e-n-y-x/NivaroOS/compare/${this.build.commit}...master`
@@ -304,11 +306,15 @@ export default {
 		// with the server.
 		async loadAndroidRelease() {
 			try {
-				const { data } = await axios.get('https://api.github.com/repos/F-e-n-y-x/NivaroOS/releases/latest')
-				const apk = (data.assets || []).find(a => /\.apk$/i.test(a.name || ''))
+				// The newest release with an APK; server-v tags are the server's.
+				const { data: list } = await axios.get('https://api.github.com/repos/F-e-n-y-x/NivaroOS/releases', { params: { per_page: 30 } })
+				const apkOf = r => (r.assets || []).find(a => /\.apk$/i.test(a.name || ''))
+				const data = (list || []).find(r => !r.draft && !r.prerelease && !(r.tag_name || '').startsWith('server-') && apkOf(r))
+				if (!data) return
+				const apk = apkOf(data)
 				this.androidRelease = {
 					version: String(data.tag_name || data.name || '').replace(/^v/i, ''),
-					url: apk ? apk.browser_download_url : data.html_url,
+					url: apk.browser_download_url,
 					notes: data.body || ''
 				}
 			} catch {

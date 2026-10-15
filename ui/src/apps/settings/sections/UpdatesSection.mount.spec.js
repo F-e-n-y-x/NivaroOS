@@ -43,7 +43,11 @@ describe('Settings › Updates', () => {
 	test('a newer Android release is not a server update', async () => {
 		const el = await mount(
 			{ build, update: { state: 'up_to_date', ahead_by: 0 }, current_version: build.version, need_update: false },
-			{ tag_name: 'v1.4.16', assets: [{ name: 'NivaroOS.apk', browser_download_url: 'https://x/NivaroOS.apk' }] }
+			[
+				{ tag_name: 'server-v1.5.0', assets: [] },
+				{ tag_name: 'v1.4.17', prerelease: true, assets: [{ name: 'NivaroOS.apk', browser_download_url: 'https://x/beta.apk' }] },
+				{ tag_name: 'v1.4.16', assets: [{ name: 'NivaroOS.apk', browser_download_url: 'https://x/NivaroOS.apk' }] }
+			]
 		)
 		expect(text(el, 'nivaro-status')).toBe('NivaroOS is up to date')
 		expect(text(el, 'nivaro-build')).toMatch(/^Build abc1234, /)
@@ -57,6 +61,13 @@ describe('Settings › Updates', () => {
 		expect(text(el, 'nivaro-status')).toBe('3 new changes on GitHub since your build')
 		expect(text(el, 'nivaro-latest')).toBe('fix the thing')
 		expect(el.querySelector('[data-test="nivaro-update"]')).not.toBeNull()
+		expect(text(el, 'android-release')).toBeUndefined()
+	})
+
+	test('a release install names the newer server release', async () => {
+		const el = await mount({ build: { ...build, version: '1.5.0', release: true }, update: { state: 'behind', ahead_by: 0, latest_version: '1.5.1' } }, [{ tag_name: 'server-v1.5.1', assets: [] }])
+		expect(text(el, 'nivaro-status')).toBe('NivaroOS 1.5.1 is available')
+		expect(text(el, 'nivaro-build')).toMatch(/^NivaroOS 1\.5\.0 \(Build abc1234, /)
 		expect(text(el, 'android-release')).toBeUndefined()
 	})
 
