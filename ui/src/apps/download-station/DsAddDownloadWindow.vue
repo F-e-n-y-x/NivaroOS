@@ -11,11 +11,6 @@
 			<label class="ds-field-label">{{ isBatch ? $t('Links (one per line)') : $t('Link') }}</label>
 			<textarea v-if="isBatch || (!captureId && !rbCapture)" ref="urlInput" v-model="urlText" class="ds-input url-area" :rows="isBatch ? 5 : 2"
 				spellcheck="false" :aria-label="isBatch ? $t('Links (one per line)') : $t('Link')" :placeholder="'https://example.com/file.zip'" @input="onUrlInput"></textarea>
-			<ul v-if="batchErrors.length" class="batch-errors" role="alert">
-				<li v-for="(b, i) in batchErrors" :key="i" class="ds-error-text">
-					<span class="one-line mono" :title="b.url">{{ b.url }}</span> {{ b.error }}
-				</li>
-			</ul>
 			<div v-else class="captured-link">
 				<b-icon icon="web" custom-size="mdi-16px"></b-icon>
 				<span class="one-line" :title="urlText">{{ urlText }}</span>
@@ -23,6 +18,11 @@
 					<b-icon icon="lock-outline" custom-size="mdi-12px"></b-icon>{{ $t('Cookies') }}
 				</span>
 			</div>
+			<ul v-if="batchErrors.length" class="batch-errors" role="alert">
+				<li v-for="(b, i) in batchErrors" :key="i" class="ds-error-text">
+					<span class="one-line mono" :title="b.url">{{ b.url }}</span> {{ b.error }}
+				</li>
+			</ul>
 
 			<div v-if="!isBatch" class="probe-card" :class="{ 'is-error': probeError }">
 				<div class="probe-icon" :class="'cat-' + category">
@@ -162,8 +162,8 @@ export default {
 	async created() {
 		try {
 			const s = await downloadSidecar.getSettings()
-			this.dir = s.default_dir
-			this.connections = s.default_connections
+			this.dir = s.default_dir || '/DATA/Downloads'
+			this.connections = s.default_connections || 8
 		} catch (e) {
 			this.dir = '/DATA/Downloads'
 		}
