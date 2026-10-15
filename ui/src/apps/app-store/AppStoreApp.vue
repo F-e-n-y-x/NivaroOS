@@ -189,7 +189,9 @@
 				</div>
 
 				<!-- Discover Tab: Featured Hero Carousel & Curated Categories -->
-				<section v-else-if="activeTab === 'discover' && !searchQuery" class="discover-section">
+				<!-- Discover needs a catalog: while it loads, or when the sources
+				     have no apps, the catalog view below shows skeletons / why. -->
+				<section v-else-if="activeTab === 'discover' && !searchQuery && (allAppsList.length || recommendList.length)" class="discover-section">
 					<!-- Hero Swiper Carousel -->
 					<div v-if="recommendList.length > 0" class="hero-carousel-wrapper">
 						<div class="hero-carousel" @mouseenter="heroPaused = true" @mouseleave="heroPaused = false" @focusin="heroPaused = true" @focusout="heroPaused = false">
@@ -369,6 +371,12 @@
 					</div>
 
 					<!-- Empty State -->
+					<div v-else-if="!allAppsList.length && !searchQuery" class="empty-state">
+						<i class="mdi mdi-package-variant empty-icon" aria-hidden="true"></i>
+						<h4 class="empty-title">{{ $t('No apps in your app sources yet') }}</h4>
+						<p class="empty-desc">{{ $t('Add an app source to see apps here, or install your own container.') }}</p>
+						<button type="button" class="empty-action-btn" @click="showSourcesModal = true">{{ $t('App Sources') }}</button>
+					</div>
 					<div v-else-if="displayAppsList.length === 0" class="empty-state">
 						<i class="mdi mdi-package-variant empty-icon"></i>
 						<h4 class="empty-title">{{ $t('No applications found') }}</h4>
