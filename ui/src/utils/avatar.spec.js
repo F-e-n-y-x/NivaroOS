@@ -1,5 +1,5 @@
-import { describe, test, expect, beforeEach } from 'vitest'
-import { avatarUrl, initials, checkAvatarFile, clampOffset, cropRect, currentUser, rememberedAvatar, forgetAvatar } from './avatar'
+import { describe, test, expect, beforeEach, vi } from 'vitest'
+import { avatarUrl, initials, checkAvatarFile, clampOffset, cropRect, currentUser, rememberedAvatar, forgetAvatar, createAvatarLookup } from './avatar'
 
 function fakeStorage() {
 	const data = {}
@@ -59,5 +59,51 @@ describe('avatar', () => {
 		expect(rememberedAvatar('bob')).toBe('')
 		forgetAvatar()
 		expect(rememberedAvatar('alice')).toBe('')
+	})
+})
+
+describe('login avatar lookup', () => {
+	test('debounced: one request per pause in typing, the last name wins', async () => {
+		vi.useFakeTimers()
+		const asked = []
+		const shown = []
+		const lookup = createAvatarLookup(s => shown.push(s), {
+			load: (url) => {
+				asked.push(url)
+				return url.endsWith('=owner') ? Promise.resolve() : Promise.reject(new Error('404'))
+			}
+		})
+		for (const n of ['o', 'ow', 'own', 'owne', 'owner']) {
+			lookup(n)
+			vi.advanceTimersByTime(100)
+		}
+		await vi.advanceTimersByTimeAsync(300)
+		expect(asked).toEqual(['/v1/users/login-avatar?username=owner'])
+		expect(shown).toEqual(['/v1/users/login-avatar?username=owner'])
+
+		lookup('ghost')
+		await vi.advanceTimersByTimeAsync(300)
+		expect(shown.at(-1)).toBe('') // unknown name: back to the placeholder, no error
+		lookup('  ')
+		expect(shown.at(-1)).toBe('') // empty: at once, no request
+		expect(asked).toHaveLength(2)
+		vi.useRealTimers()
+	})
+
+	test('a slow answer for an earlier name is dropped', async () => {
+		vi.useFakeTimers()
+		const shown = []
+		let finishSlow
+		const lookup = createAvatarLookup(s => shown.push(s), {
+			load: url => url.endsWith('=slow') ? new Promise(r => { finishSlow = r }) : Promise.reject(new Error('404'))
+		})
+		lookup('slow')
+		await vi.advanceTimersByTimeAsync(300)
+		lookup('other')
+		await vi.advanceTimersByTimeAsync(300)
+		finishSlow()
+		await vi.advanceTimersByTimeAsync(0)
+		expect(shown).toEqual([''])
+		vi.useRealTimers()
 	})
 })

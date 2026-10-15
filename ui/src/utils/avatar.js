@@ -71,9 +71,44 @@ export function cropRect(x, y, w, h, view, zoom) {
 	return { sx: w / 2 - x / s - side / 2, sy: h / 2 - y / s - side / 2, side }
 }
 
-// The login screen shows the picture of the last account signed in on
-// this browser from a small copy kept here - the server has no public
-// avatar route (it would show anyone's photo to anyone who can reach it).
+// The login screen asks the server for the typed name's picture (public,
+// rate-limited; 404 = unknown name or none). The last account signed in on
+// this browser also keeps a small copy here, so its picture shows at once.
+export const LOGIN_AVATAR_PATH = '/v1/users/login-avatar'
+
+export function loginAvatarUrl(username) {
+	const name = String(username || '').trim()
+	return name ? `${LOGIN_AVATAR_PATH}?${new URLSearchParams({ username: name })}` : ''
+}
+
+// Resolves to url once the browser has the picture, rejects on 404/error.
+export function preloadImage(url) {
+	return new Promise((resolve, reject) => {
+		const img = new Image()
+		img.onload = () => resolve(url)
+		img.onerror = reject
+		img.src = url
+	})
+}
+
+// lookup(name): `wait` ms after the last call, show(picture URL or '').
+// A slow answer for an earlier name never replaces a later one.
+export function createAvatarLookup(show, { wait = 300, load = preloadImage } = {}) {
+	let timer
+	let seq = 0
+	return (name) => {
+		clearTimeout(timer)
+		const mine = ++seq
+		const url = loginAvatarUrl(name)
+		if (!url) return show('')
+		timer = setTimeout(() => {
+			load(url).then(() => url, () => '').then(src => {
+				if (mine === seq) show(src)
+			})
+		}, wait)
+	}
+}
+
 const REMEMBER_KEY = 'avatar_thumb'
 
 export function rememberedAvatar(username) {

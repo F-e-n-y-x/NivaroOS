@@ -6,9 +6,10 @@
 				<img :src="$assetUrl('img/logo/logo-white.svg')" alt="NivaroOS" class="login-brand-img is-on-dark"/>
 			</div>
 			<div class="is-flex is-justify-content-center pb-3 ">
-				<div class="has-text-centered">
-					<user-avatar v-if="username" :username="username" :src="rememberedPicture" version="" size="96px"></user-avatar>
-					<b-image v-else :src="$assetUrl('img/account/default-avatar.svg')" class="is-128x128" rounded></b-image>
+				<!-- The typed account's picture fades in over the placeholder; same box, nothing moves. -->
+				<div class="login-avatar" aria-hidden="true">
+					<img :src="$assetUrl('img/account/default-avatar.svg')" alt="" draggable="false" />
+					<img v-if="photoSrc" :class="{ 'is-shown': photo }" :src="photoSrc" alt="" class="login-avatar-photo" draggable="false" />
 				</div>
 
 			</div>
@@ -30,8 +31,7 @@
 
 <script>
 import formChecks, { firstError, required } from '@/mixins/formChecks'
-import UserAvatar from '@/shared/basicComponents/UserAvatar.vue'
-import { rememberedAvatar, syncRememberedAvatar } from '@/utils/avatar'
+import { createAvatarLookup, rememberedAvatar, syncRememberedAvatar } from '@/utils/avatar'
 
 const wallpaperConfig = "wallpaper"
 
@@ -47,10 +47,12 @@ export default {
 			busy: false,
 			message: "",
 			notificationShow: false,
+			photo: '', // shown picture; '' = the placeholder
+			photoSrc: '', // the last picture, kept while it fades out
 		}
 	},
-	components: {
-		UserAvatar,
+	created() {
+		this.lookupAvatar = createAvatarLookup(src => this.showPhoto(src || this.rememberedPicture))
 	},
 	computed: {
 		fieldErrors() {
@@ -60,8 +62,7 @@ export default {
 				password: firstError(this.password, [required]),
 			}
 		},
-		// Only the account last signed in on this browser has a picture
-		// here (kept locally - the server never shows one before sign-in).
+		// The account last signed in on this browser: its picture at once.
 		rememberedPicture() {
 			return rememberedAvatar(this.username)
 		}
@@ -81,12 +82,18 @@ export default {
 	watch: {
 		username() {
 			this.markChecked('username')
+			if (this.rememberedPicture) this.showPhoto(this.rememberedPicture)
+			this.lookupAvatar(this.username)
 		},
 		password() {
 			this.markChecked('password')
 		},
 	},
 	methods: {
+		showPhoto(src) {
+			if (src) this.photoSrc = src
+			this.photo = src
+		},
 		// A slow server used to take every extra click/Enter as another login.
 		async submit() {
 			if (this.busy || !this.validateAll()) return
@@ -204,6 +211,35 @@ html[data-theme="dark"] #login-page .login-brand-img {
 		display: flex;
 		justify-content: center;
 		margin-bottom: var(--space-6);
+	}
+
+	.login-avatar {
+		position: relative;
+		width: 6rem;
+		height: 6rem;
+		border-radius: 50%;
+		overflow: hidden;
+
+		img {
+			position: absolute;
+			inset: 0;
+			width: 100%;
+			height: 100%;
+			object-fit: cover;
+		}
+
+		.login-avatar-photo {
+			opacity: 0;
+			transition: opacity 250ms cubic-bezier(0.2, 0, 0, 1);
+
+			&.is-shown {
+				opacity: 1;
+			}
+
+			@media (prefers-reduced-motion: reduce) {
+				transition: none;
+			}
+		}
 	}
 
 	.login-brand-img {
