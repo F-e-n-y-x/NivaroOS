@@ -44,30 +44,23 @@
 			<!-- Active Unpinned Windows -->
 			<button
 				v-for="win in extraWindows"
-				:key="win.id"
+				:key="dockKeyOf(win)"
 				type="button"
 				class="dock-item"
 				:title="win.title"
 				:aria-label="win.title"
 				aria-haspopup="menu"
-				@click="toggleWindow(win)"
+				@click="activateApp(dockKeyOf(win))"
 				@keydown="onItemKeydown($event, { type: 'window', data: win })"
 				@contextmenu.prevent.stop="openDockContextMenu($event, { type: 'window', data: win })"
 			>
 				<img v-if="isViewerWindow(win)" :src="viewerIconUrl" class="dock-icon" :alt="win.title" />
-				<img v-else-if="win.component === 'FilesApp' || win.component === 'FolderWindow'" :src="getBuiltinIcon('Files')" class="dock-icon" :alt="win.title" />
-				<img v-else-if="win.component === 'AppStoreApp'" :src="getBuiltinIcon('App Store')" class="dock-icon" :alt="win.title" />
-				<img v-else-if="win.component === 'TerminalPanel' || win.component === 'SystemUpdateWindow' || win.component === 'ContainerConsolePanel' || win.component === 'AppTerminalPanel'" :src="getBuiltinIcon('Terminal')" class="dock-icon" :alt="win.title" />
-				<img v-else-if="win.component === 'HostDesktopPanel'" :src="getBuiltinIcon('Host Desktop')" class="dock-icon" :alt="win.title" />
-				<img v-else-if="isDownloadStationWindow(win)" :src="getBuiltinIcon('Download Station')" class="dock-icon" :alt="win.title" />
-				<img v-else-if="isBackupWindow(win)" :src="getBuiltinIcon('Backup & Sync')" class="dock-icon" :alt="win.title" />
-				<img v-else-if="win.component === 'SettingsApp'" :src="getBuiltinIcon('Settings')" class="dock-icon" :alt="win.title" />
-				<img v-else-if="isVmWindow(win) || win.component === 'VmManagerApp'" :src="vmConsoleIconUrl" class="dock-icon" :alt="win.title" />
+				<img v-else-if="appDefOf(win)" :src="getBuiltinIcon(appDefOf(win).name)" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'LegacyAppEditPanel' && win.props && win.props.item" :src="(win.props.override && win.props.override.icon) || win.props.item.icon || $assetUrl('img/app-icons/default.svg')" class="dock-icon" :alt="win.title" />
 				<div v-else class="dock-icon dock-icon-generic">
 					<b-icon icon="display-applications-outline" pack="casa" size="is-20"></b-icon>
 				</div>
-				<span class="dock-dot" :class="{ minimized: win.minimized }"></span>
+				<span class="dock-dot" :class="{ minimized: appWindows(dockKeyOf(win)).every(w => w.minimized) }"></span>
 			</button>
 		</div>
 
@@ -224,8 +217,8 @@ import { ice_i18n } from '@/mixins/base/common-i18n'
 import { escapeHtml } from '@/utils/escapeHtml'
 
 import viewerIcon from '@/assets/img/app-icons/viewer.png'
-import vmIcon from '@/assets/img/app-icons/vm.png'
 import draggable from 'vuedraggable'
+import { appIdOf, dockKeyOf, dockClickTarget } from '@/utils/desktop/windowRegistry'
 
 const BUILTIN_DEFS = {
 	Files: { id: 'files', name: 'Files', label: 'Files', defaultIcon: filesIcon, component: 'FilesApp', width: 960, height: 620 },
@@ -240,14 +233,6 @@ const BUILTIN_DEFS = {
 
 
 const VIEWER_COMPONENTS = ['ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewer', 'ExcelViewer', 'PdfViewer']
-const VM_ICON_COMPONENTS = ['VmConsolePanel', 'CreateVmModal', 'EditVmModal']
-const DS_COMPONENTS = ['DownloadStationApp', 'DsAddDownloadWindow', 'DsDownloadDetailWindow', 'DsFolderPickerWindow', 'DsAddTorrentWindow', 'DsTorrentDetailWindow']
-const isDsComponent = c => DS_COMPONENTS.includes(c)
-// Backup & Sync windows (the job wizard, run, preview, browse, restore)
-// show the app's icon; the shared storage pickers don't - Scheduled Tasks
-// uses them too.
-const BACKUP_COMPONENTS = ['BackupApp', 'BackupJobWizardWindow', 'BackupRunWindow', 'BackupPreviewWindow', 'BackupBrowseWindow', 'BackupRestoreWindow']
-const isBackupComponent = c => BACKUP_COMPONENTS.includes(c)
 // Optional modules: a pin only shows while its service answers.
 const OPTIONAL_BUILTINS = { 'Download Station': 'ds', 'Backup & Sync': 'backup' }
 
@@ -278,16 +263,21 @@ export default {
 		windows() {
 			return this.$store.state.windows
 		},
+		// One entry per app that isn't pinned (its front window stands for
+		// it); windows of a pinned app group under the pin.
 		extraWindows() {
 			const pinnedNames = this.dockItems.map(item => item.name)
 			const pinnedIds = this.dockItems.map(item => item.id).filter(Boolean)
-			return this.windows.filter(w => !pinnedIds.includes(w.id) && !pinnedNames.includes(w.title))
+			const front = new Map()
+			for (const w of this.windows) {
+				if (pinnedIds.includes(w.id) || pinnedNames.includes(w.title) || pinnedIds.includes(appIdOf(w))) continue
+				const cur = front.get(dockKeyOf(w))
+				if (!cur || w.zIndex > cur.zIndex) front.set(dockKeyOf(w), w)
+			}
+			return [...front.values()]
 		},
 		viewerIconUrl() {
 			return viewerIcon
-		},
-		vmConsoleIconUrl() {
-			return vmIcon
 		}
 	},
 	created() {
@@ -327,11 +317,18 @@ export default {
 			}
 		},
 
-		isDownloadStationWindow(win) {
-			return isDsComponent(win.component)
+		dockKeyOf,
+		appDefOf(win) {
+			const app = appIdOf(win)
+			return (app && Object.values(BUILTIN_DEFS).find(d => d.id === app)) || null
 		},
-		isBackupWindow(win) {
-			return isBackupComponent(win.component)
+		appWindows(key) {
+			return this.windows.filter(w => dockKeyOf(w) === key)
+		},
+		// Show / cycle / minimize the app's windows (see dockClickTarget).
+		activateApp(key) {
+			const t = dockClickTarget(this.appWindows(key), Math.max(...this.windows.map(w => w.zIndex)))
+			if (t) this.$store.commit(t.minimize ? 'TOGGLE_MINIMIZE_WINDOW' : 'FOCUS_WINDOW', t.id)
 		},
 		getBuiltinIcon(name) {
 			const override = this.overridesMap[name]
@@ -432,20 +429,8 @@ export default {
 				status = win.minimized ? this.$t('Minimized') : this.$t('Active')
 				if (this.isViewerWindow(win)) {
 					icon = this.viewerIconUrl
-				} else if (win.component === 'FilesApp' || win.component === 'FolderWindow') {
-					icon = this.getBuiltinIcon('Files')
-				} else if (win.component === 'AppStoreApp') {
-					icon = this.getBuiltinIcon('App Store')
-				} else if (win.component === 'TerminalPanel' || win.component === 'SystemUpdateWindow' || win.component === 'ContainerConsolePanel' || win.component === 'AppTerminalPanel') {
-					icon = this.getBuiltinIcon('Terminal')
-				} else if (isDsComponent(win.component)) {
-					icon = this.getBuiltinIcon('Download Station')
-				} else if (isBackupComponent(win.component)) {
-					icon = this.getBuiltinIcon('Backup & Sync')
-				} else if (win.component === 'SettingsApp') {
-					icon = this.getBuiltinIcon('Settings')
-				} else if (this.isVmWindow(win) || win.component === 'VmManagerApp') {
-					icon = this.vmConsoleIconUrl
+				} else if (this.appDefOf(win)) {
+					icon = this.getBuiltinIcon(this.appDefOf(win).name)
 				} else if (win.component === 'LegacyAppEditPanel' && win.props && win.props.item) {
 					icon = (win.props.override && win.props.override.icon) || win.props.item.icon || assetUrl('img/app-icons/default.svg')
 				}
@@ -539,17 +524,16 @@ export default {
 		isViewerWindow(win) {
 			return VIEWER_COMPONENTS.includes(win.component)
 		},
-		isVmWindow(win) {
-			return VM_ICON_COMPONENTS.includes(win.component)
+		// A pinned app's windows: its own plus every window that groups under it.
+		itemWindows(item) {
+			return this.windows.filter(w => (item.id && (w.id === item.id || appIdOf(w) === item.id)) || w.title === item.name)
 		},
 		isItemOpen(item) {
-			if (item.id && this.findWindow(item.id)) return true
-			if (this.findWindow(item.name)) return true
-			return false
+			return this.itemWindows(item).length > 0
 		},
 		isItemMinimized(item) {
-			const win = this.findWindow(item.id || item.name)
-			return !!(win && win.minimized)
+			const wins = this.itemWindows(item)
+			return wins.length > 0 && wins.every(w => w.minimized)
 		},
 		isTopmost(win) {
 			return win.zIndex === Math.max(...this.windows.map(w => w.zIndex))
@@ -557,8 +541,9 @@ export default {
 		launchItem(item) {
 			if (this.isBuiltinApp(item)) {
 				const def = BUILTIN_DEFS[SYSTEM_NAME_MAP[item.name] || item.name] || item
-				const win = this.findWindow(def.id)
-				if (!win) {
+				// The app's own window opens if it isn't (child windows like Add
+				// Download may be open alone); else show / cycle its windows.
+				if (!this.findWindow(def.id)) {
 					this.$store.commit('OPEN_WINDOW', {
 						id: def.id,
 						title: this.$t(def.label),
@@ -568,7 +553,7 @@ export default {
 					})
 					return
 				}
-				this.toggleWindow(win)
+				this.activateApp(def.id)
 				return
 			}
 

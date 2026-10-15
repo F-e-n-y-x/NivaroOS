@@ -83,3 +83,41 @@ export function resolveComponent(name) {
 	return COMPONENT_REGISTRY[name]
 }
 
+// Which app a window belongs to, so the dock shows ONE icon per app: an
+// app's child windows (Add Download, the backup job wizard, a VM console...)
+// group under that app's dock icon instead of adding a second identical
+// one. Keys are the dock's built-in app ids (Dock.vue BUILTIN_DEFS). A
+// window can name its app itself with OPEN_WINDOW's appId (e.g. a shared
+// picker opened from Backup); otherwise its component decides. Windows not
+// listed here (viewers, dialogs, app editors) keep their own dock entry.
+const APP_OF_COMPONENT = {
+	'files': ['FilesApp', 'FolderWindow', 'DetailWindow', 'TransferConflictWindow'],
+	'appstore': ['AppStoreApp'],
+	'terminal': ['TerminalPanel', 'ContainerConsolePanel', 'AppTerminalPanel'],
+	'host-desktop': ['HostDesktopPanel'],
+	'download-station': ['DownloadStationApp', 'DsAddDownloadWindow', 'DsDownloadDetailWindow', 'DsFolderPickerWindow', 'DsAddTorrentWindow', 'DsTorrentDetailWindow', 'RbSigninWindow'],
+	'backup': ['BackupApp', 'BackupJobWizardWindow', 'BackupRunWindow', 'BackupPreviewWindow', 'BackupBrowseWindow', 'BackupRestoreWindow'],
+	'vms': ['VmManagerApp', 'VmConsolePanel', 'CreateVmModal', 'EditVmModal'],
+	'settings': ['SettingsApp', 'SystemUpdateWindow', 'ScheduledTaskWindow', 'ScheduledTaskLogWindow']
+}
+const APP_BY_COMPONENT = Object.fromEntries(Object.entries(APP_OF_COMPONENT).flatMap(([app, comps]) => comps.map(c => [c, app])))
+
+export function appIdOf(win) {
+	return (win && (win.appId || APP_BY_COMPONENT[win.component])) || null
+}
+
+// The dock key a window groups under: its app, else the window itself.
+export const dockKeyOf = win => appIdOf(win) || win.id
+
+// Which window a click on an app's dock icon should act on: the app's
+// front window if it isn't already the front-most visible one, else (with
+// several) its back-most window, so repeated clicks cycle through them.
+// Returns { id, minimize } - minimize when its only window is already in front.
+export function dockClickTarget(appWindows, topZ) {
+	if (!appWindows.length) return null
+	const sorted = [...appWindows].sort((a, b) => a.zIndex - b.zIndex)
+	const front = sorted[sorted.length - 1]
+	if (front.minimized || front.zIndex !== topZ) return { id: front.id, minimize: false }
+	if (sorted.length === 1) return { id: front.id, minimize: true }
+	return { id: sorted[0].id, minimize: false }
+}

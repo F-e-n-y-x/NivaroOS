@@ -90,5 +90,6 @@ export function backupWindow(t, kind, params = {}) {
 	const title = t(titleKey, { name: jobName || name || '' })
 	if (kind === 'app') props.requestedAt = Date.now()
 	else props.winId = id
-	return { id, component: def.component, title, props, width: def.width, height: def.height }
+	// appId: every Backup window (pickers included) groups under its dock icon.
+	return { id, appId: BACKUP_APP_ID, component: def.component, title, props, width: def.width, height: def.height }
 }

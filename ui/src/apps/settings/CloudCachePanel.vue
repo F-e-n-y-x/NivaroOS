@@ -224,6 +224,7 @@ export default {
 				id,
 				title: isDir ? this.$t('Cache location') : this.$t('Save {name} to', { name: stuckItem.fileName }),
 				component: 'DsFolderPickerWindow',
+				appId: 'settings',
 				props: {
 					winId: id,
 					startPath: isDir ? this.form.dir : '/DATA',

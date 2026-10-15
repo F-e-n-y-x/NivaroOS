@@ -218,7 +218,7 @@ const mutations = {
 	},
 
 	// Desktop windowing system
-	OPEN_WINDOW(state, { id, title, component, props, width, height, x, y }) {
+	OPEN_WINDOW(state, { id, title, component, props, width, height, x, y, appId }) {
 		const existing = state.windows.find(w => w.id === id)
 		if (existing) {
 			existing.minimized = false
@@ -270,6 +270,8 @@ const mutations = {
 			id,
 			title,
 			component,
+			// The app this window groups under in the dock (windowRegistry appIdOf).
+			...(appId ? { appId } : {}),
 			props: props || {},
 			x: rect.x,
 			y: rect.y,
