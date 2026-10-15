@@ -38,23 +38,26 @@ func (m *Manager) remoteDelete(ctx context.Context, path string) error {
 	return m.opts.Remote.Delete(ctx, path)
 }
 
-func (m *Manager) remoteTransfer(ctx context.Context, j *job, t topItem) error {
+// remoteTransfer returns how many bytes it reported as progress.
+func (m *Manager) remoteTransfer(ctx context.Context, j *job, t topItem) (int64, error) {
 	if m.opts.Remote == nil {
-		return errNoRemote
+		return 0, errNoRemote
 	}
+	var copied int64
 	err := m.opts.Remote.Transfer(ctx, t.src, t.dst, j.Conflict, func(n int64) {
+		copied += n
 		m.update(j, func(j *job) { j.BytesDone += n })
 	})
 	if err != nil {
-		return err
+		return copied, err
 	}
 	// A move removes the source only after the transfer reported full
 	// success.
 	if j.Kind == KindMove {
 		if m.isRemote(t.src) {
-			return m.opts.Remote.Delete(ctx, t.src)
+			return copied, m.opts.Remote.Delete(ctx, t.src)
 		}
-		return removeLocalTree(t.src)
+		return copied, removeLocalTree(t.src)
 	}
-	return nil
+	return copied, nil
 }

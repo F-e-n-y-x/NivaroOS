@@ -1009,7 +1009,7 @@ func ProxyCompanionFileRename(dev *CompanionDevice, oldPath, newPath string) err
 	}
 
 	// Fallback: stream old -> new on the device, then delete old.
-	if err := relayCompanionFile(context.Background(), dev, oldPath, dev, newPath, nil); err != nil {
+	if err := relayCompanionFile(context.Background(), dev, oldPath, -1, dev, newPath, "overwrite", nil); err != nil {
 		return err
 	}
 	return ProxyCompanionFileDelete(dev, oldPath)
@@ -2331,7 +2331,7 @@ func (p *progressReader) Read(b []byte) (int, error) {
 	return n, err
 }
 
-func (h *companionIOHandlerImpl) CopyBetweenCompanions(ctx context.Context, companionSrc, companionDstDir string, onProgress func(int64)) error {
+func (h *companionIOHandlerImpl) CopyBetweenCompanions(ctx context.Context, companionSrc, companionDstDir, conflict string, onProgress func(int64)) error {
 	src, srcPath := GetCompanionDeviceByStoragePath(companionSrc)
 	if src == nil {
 		return fmt.Errorf("device not found for path: %s", companionSrc)
@@ -2341,8 +2341,8 @@ func (h *companionIOHandlerImpl) CopyBetweenCompanions(ctx context.Context, comp
 		return fmt.Errorf("companion device not found for target %s", companionDstDir)
 	}
 	target := filepath.Join(dstDir, filepath.Base(srcPath))
-	if isCompanionFile(src, srcPath) {
-		return relayCompanionFile(ctx, src, srcPath, dst, target, onProgress)
+	if size, isFile, _ := companionFileSize(ctx, src, srcPath); isFile {
+		return relayCompanionFile(ctx, src, srcPath, size, dst, target, conflict, onProgress)
 	}
 	files, err := FetchCompanionFilesFromDevice(src, srcPath)
 	if err != nil {
@@ -2359,13 +2359,13 @@ func (h *companionIOHandlerImpl) CopyBetweenCompanions(ctx context.Context, comp
 			return ctx.Err()
 		}
 		if it.IsDir {
-			err = h.CopyBetweenCompanions(ctx, filepath.Join(companionSrc, it.Name), filepath.Join(companionDstDir, filepath.Base(companionSrc)), onProgress)
+			err = h.CopyBetweenCompanions(ctx, filepath.Join(companionSrc, it.Name), filepath.Join(companionDstDir, filepath.Base(companionSrc)), conflict, onProgress)
 		} else {
 			p := it.Path
 			if p == "" {
 				p = filepath.Join(srcPath, it.Name)
 			}
-			err = relayCompanionFile(ctx, src, p, dst, filepath.Join(target, it.Name), onProgress)
+			err = relayCompanionFile(ctx, src, p, it.Size, dst, filepath.Join(target, it.Name), conflict, onProgress)
 		}
 		if err != nil {
 			var ue *errCompanionUnreachable
@@ -2382,7 +2382,18 @@ func (h *companionIOHandlerImpl) CopyBetweenCompanions(ctx context.Context, comp
 // the upload body, so nothing is staged on the server and memory stays at
 // the transports' buffers. A failure on either side ends both requests;
 // the target phone writes to a temp name and only keeps a complete file.
-func relayCompanionFile(ctx context.Context, src *CompanionDevice, srcPath string, dst *CompanionDevice, dstPath string, onProgress func(int64)) error {
+// conflict "skip" keeps any file already at dstPath, "resume" (the engine's
+// Retry) keeps one of the same size, so a retry only re-sends what didn't
+// arrive; a kept file still counts as done in the progress.
+func relayCompanionFile(ctx context.Context, src *CompanionDevice, srcPath string, size int64, dst *CompanionDevice, dstPath, conflict string, onProgress func(int64)) error {
+	if conflict == "skip" || conflict == "resume" {
+		if have, ok, _ := companionFileSize(ctx, dst, dstPath); ok && (conflict == "skip" || have == size) {
+			if onProgress != nil {
+				onProgress(size)
+			}
+			return nil
+		}
+	}
 	resp, err := companionDo(ctx, src, companionRequest{
 		Method: http.MethodGet, Path: "/download", Query: url.Values{"path": {srcPath}, "download": {"1"}}, Timeout: 6 * time.Hour,
 	})

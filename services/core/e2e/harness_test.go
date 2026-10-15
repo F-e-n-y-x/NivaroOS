@@ -8,7 +8,10 @@
 // (unshare -m, needs root) and masks /etc/nivaroos, /var/lib/nivaroos and
 // /tmp with empty tmpfs mounts there, so the test core can't read or
 // write the live server's state (companion devices, trash index, secret
-// key, upload staging). The live server never sees any of these mounts.
+// key, upload staging, /DATA/Companion). It also runs in its own network
+// namespace (unshare -n): only loopback, plus test-only LAN and Tailscale
+// addresses on it for the fake companion phones (companion_test.go). The
+// live server never sees any of these mounts or addresses.
 // Without root the suite skips.
 package e2e
 
@@ -47,7 +50,7 @@ func TestMain(m *testing.M) {
 			fmt.Println("files e2e: needs root (private mount namespace) - skipping")
 			os.Exit(0)
 		}
-		cmd := exec.Command("unshare", append([]string{"--mount", "--propagation", "private", "--", os.Args[0]}, os.Args[1:]...)...)
+		cmd := exec.Command("unshare", append([]string{"--mount", "--net", "--propagation", "private", "--", os.Args[0]}, os.Args[1:]...)...)
 		cmd.Env = append(os.Environ(), "NV_E2E_NS=1")
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 		if err := cmd.Run(); err != nil {
@@ -113,10 +116,23 @@ func setup() error {
 		}
 	}
 
-	// Live-server state, masked inside this namespace only.
-	for _, d := range []string{"/etc/nivaroos", "/var/lib/nivaroos", "/tmp"} {
+	// Live-server state, masked inside this namespace only. /DATA only if
+	// it exists (creating it would touch the host); without it companion
+	// folders go under /var/lib/nivaroos.
+	masks := []string{"/etc/nivaroos", "/var/lib/nivaroos", "/tmp"}
+	if _, err := os.Stat("/DATA"); err == nil {
+		masks = append(masks, "/DATA")
+	}
+	for _, d := range masks {
 		if err := mountTmpfs(d, "64m"); err != nil {
 			return fmt.Errorf("masking %s: %w", d, err)
+		}
+	}
+	// The private network namespace: loopback up, plus the fake phones'
+	// LAN and Tailscale addresses (the core refuses to dial loopback).
+	for _, args := range [][]string{{"link", "set", "lo", "up"}, {"addr", "add", phoneLAN + "/32", "dev", "lo"}, {"addr", "add", phoneTailnet + "/32", "dev", "lo"}} {
+		if out, err := exec.Command("ip", args...).CombinedOutput(); err != nil {
+			return fmt.Errorf("ip %v: %v %s", args, err, out)
 		}
 	}
 

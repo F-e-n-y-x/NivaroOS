@@ -35,7 +35,8 @@ type topItem struct {
 	dst    string // "" for delete
 	isDir  bool
 	remote bool
-	skip   bool // conflict policy says leave it alone
+	skip   bool  // conflict policy says leave it alone
+	size   int64 // remote items: planned bytes
 }
 
 func (m *Manager) run(ctx context.Context, j *job) {
@@ -136,7 +137,8 @@ func (m *Manager) runTransfer(ctx context.Context, j *job) error {
 	// Scan: build the full plan and totals before copying anything, so the
 	// progress and "N of M files" are real.
 	var plan []entry
-	for _, t := range tops {
+	for i := range tops {
+		t := &tops[i]
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -147,12 +149,14 @@ func (m *Manager) runTransfer(ctx context.Context, j *job) error {
 			size, err := m.remoteSize(ctx, t.src)
 			if err != nil {
 				m.addFailure(j, t.src, err)
+				t.skip = true // already reported; don't transfer it
 				continue
 			}
+			t.size = size
 			m.update(j, func(j *job) { j.FilesTotal++; j.BytesTotal += size })
 			continue
 		}
-		plan = append(plan, m.scan(ctx, j, t)...)
+		plan = append(plan, m.scan(ctx, j, *t)...)
 	}
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -268,10 +272,15 @@ func (m *Manager) runTransfer(ctx context.Context, j *job) error {
 			return ctx.Err()
 		}
 		m.update(j, func(j *job) { j.Current = t.src })
-		err := m.remoteTransfer(ctx, j, t)
+		copied, err := m.remoteTransfer(ctx, j, t)
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
+			}
+			// Like a failed local file: counted as processed, so progress
+			// ends at 100% and the failure is what's reported.
+			if rest := t.size - copied; rest > 0 {
+				m.update(j, func(j *job) { j.BytesDone += rest })
 			}
 			m.addFailure(j, t.src, err)
 			continue

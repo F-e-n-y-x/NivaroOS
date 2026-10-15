@@ -154,7 +154,7 @@ func (companionRemote) Transfer(ctx context.Context, src, destDir string, confli
 	case fromC && toC:
 		// Streamed phone to phone: no staging (it used to fill /tmp, which is
 		// RAM on many boxes) and progress is the bytes the target received.
-		return CompanionHandler.CopyBetweenCompanions(ctx, src, destDir, progress)
+		return CompanionHandler.CopyBetweenCompanions(ctx, src, destDir, string(conflict), progress)
 	case fromC:
 		return CompanionHandler.CopyFromCompanion(ctx, src, destDir+"/", style, progress)
 	default:

@@ -74,8 +74,8 @@ type CompanionIOHandler interface {
 	CopyToCompanion(ctx context.Context, src, companionDst, style string, onProgress func(n int64)) error
 	// CopyBetweenCompanions streams companionSrc into the folder
 	// companionDstDir (another device or the same one) with nothing staged
-	// on the server.
-	CopyBetweenCompanions(ctx context.Context, companionSrc, companionDstDir string, onProgress func(n int64)) error
+	// on the server. conflict is the engine's policy (transfer.Conflict).
+	CopyBetweenCompanions(ctx context.Context, companionSrc, companionDstDir, conflict string, onProgress func(n int64)) error
 	DeleteCompanionPath(ctx context.Context, path string) error
 }
 

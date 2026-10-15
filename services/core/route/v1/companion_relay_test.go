@@ -26,6 +26,7 @@ type relayPhone struct {
 	dlFailAt   int64                          // abort a download after this many bytes
 	dlStallAt  int64                          // stall a download here until the request ends
 	upFailAt   int64                          // reject an upload after this many bytes
+	uploads    atomic.Int32                   // upload requests received
 	inflight   atomic.Int32
 	mu         sync.Mutex
 	stored     map[string][32]byte // completed uploads: path -> sha256
@@ -77,7 +78,9 @@ func (f *relayPhone) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		json.NewEncoder(w).Encode(map[string]any{"success": true, "files": items})
 	case "/download":
+		f.mu.Lock()
 		size, ok := f.files[p]
+		f.mu.Unlock()
 		if !ok {
 			w.WriteHeader(404)
 			return
@@ -105,6 +108,7 @@ func (f *relayPhone) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "/upload":
+		f.uploads.Add(1)
 		h := sha256.New()
 		var body io.Reader = r.Body
 		if f.upFailAt > 0 {
@@ -120,6 +124,7 @@ func (f *relayPhone) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		copy(s[:], h.Sum(nil))
 		f.mu.Lock()
 		f.stored[p] = s
+		f.files[p] = n
 		f.mu.Unlock()
 		w.Write([]byte(`{"success":true}`))
 	case "/mkdir", "/delete":
@@ -169,14 +174,24 @@ func newRelayPhone(id string) *relayPhone {
 // runJob copies src to dest through the real engine and records every
 // progress value it saw.
 func runJob(t *testing.T, src, dest string, during func(m *transfer.Manager, id string)) (transfer.Job, []int64) {
+	return runSpec(t, transfer.Spec{Kind: transfer.KindCopy, Sources: []string{src}, Dest: dest}, during)
+}
+
+func runSpec(t *testing.T, spec transfer.Spec, during func(m *transfer.Manager, id string)) (transfer.Job, []int64) {
 	t.Helper()
 	service.InitTransfers(t.TempDir())
 	m := service.Transfers
 	t.Cleanup(m.Close)
-	j, err := m.Submit(transfer.Spec{Kind: transfer.KindCopy, Sources: []string{src}, Dest: dest})
+	j, err := m.Submit(spec)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return waitJobDone(t, m, j.ID, during)
+}
+
+func waitJobDone(t *testing.T, m *transfer.Manager, id string, during func(m *transfer.Manager, id string)) (transfer.Job, []int64) {
+	t.Helper()
+	j := transfer.Job{ID: id}
 	var seen []int64
 	deadline := time.Now().Add(60 * time.Second)
 	for {
@@ -298,5 +313,56 @@ func TestCompanionToCompanionTargetRejects(t *testing.T) {
 	waitIdle(t, a, b)
 	if len(b.stored) != 0 {
 		t.Fatalf("B kept a rejected file: %v", b.stored)
+	}
+}
+
+// A phone that drops mid-file fails only that item; the engine's Retry
+// then sends just what didn't arrive and the job finishes complete.
+func TestCompanionToCompanionDropThenRetry(t *testing.T) {
+	a, b := newRelayPhone("A"), newRelayPhone("B")
+	f := relayRoot + "/F"
+	a.dirs[f] = []CompanionFileItem{{Name: "x.jpg", Path: f + "/x.jpg", Size: 1000}, {Name: "big.bin", Path: f + "/big.bin", Size: 32 << 20}}
+	a.files[f+"/x.jpg"], a.files[f+"/big.bin"] = 1000, 32<<20
+	a.dlFailAt = 4 << 20
+	aDir, bDir := twoPhones(t, a, b)
+
+	j, _ := runJob(t, aDir+"/F", bDir, nil)
+	waitIdle(t, a, b)
+	if j.State != transfer.StateDoneWithErrors && j.State != transfer.StateFailed {
+		t.Fatalf("job: %+v", j)
+	}
+	if _, ok := b.stored[f+"/big.bin"]; ok {
+		t.Fatal("B kept the partial file")
+	}
+	before := b.uploads.Load()
+	a.dlFailAt = 0
+	r, err := service.Transfers.Retry(j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _ = waitJobDone(t, service.Transfers, r.ID, nil)
+	waitIdle(t, a, b)
+	if r.State != transfer.StateDone || r.BytesDone != r.BytesTotal {
+		t.Fatalf("retry: %+v", r)
+	}
+	if got := b.uploads.Load() - before; got != 1 {
+		t.Fatalf("retry sent %d files, want only the one that failed", got)
+	}
+	if b.stored[f+"/big.bin"] != patternSum(32<<20) {
+		t.Fatal("B didn't get big.bin after the retry")
+	}
+}
+
+// "Skip" keeps the file already on B, even one of another size.
+func TestCompanionToCompanionSkipKeepsTarget(t *testing.T) {
+	a, b := newRelayPhone("A"), newRelayPhone("B")
+	a.files[relayRoot+"/x.jpg"] = 1000
+	b.files[relayRoot+"/x.jpg"] = 7
+	aDir, bDir := twoPhones(t, a, b)
+
+	j, _ := runSpec(t, transfer.Spec{Kind: transfer.KindCopy, Sources: []string{aDir + "/x.jpg"}, Dest: bDir, Conflict: transfer.ConflictSkip}, nil)
+	waitIdle(t, a, b)
+	if j.State != transfer.StateDone || b.uploads.Load() != 0 {
+		t.Fatalf("job %+v, uploads %d", j, b.uploads.Load())
 	}
 }

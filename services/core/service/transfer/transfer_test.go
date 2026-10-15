@@ -559,3 +559,27 @@ func TestConcurrentKeepBothGetDistinctNames(t *testing.T) {
 		t.Fatalf("both pastes landed in one folder (%s, %s)", a, b)
 	}
 }
+
+// halfRemote reports half of every item, then fails.
+type halfRemote struct{}
+
+func (halfRemote) Handles(p string) bool                       { return strings.HasPrefix(p, "/phone/") }
+func (halfRemote) Size(context.Context, string) (int64, error) { return 1000, nil }
+func (halfRemote) Delete(context.Context, string) error        { return nil }
+func (halfRemote) Transfer(_ context.Context, _, _ string, _ Conflict, progress func(int64)) error {
+	progress(500)
+	return errors.New("the phone dropped off")
+}
+
+func TestFailedRemoteItemStillEndsAt100Percent(t *testing.T) {
+	m := NewManager(Options{StatePath: filepath.Join(t.TempDir(), "jobs.json"), Remote: halfRemote{}})
+	t.Cleanup(m.Close)
+	j, err := m.Submit(Spec{Kind: KindCopy, Sources: []string{"/phone/a/x.mp4"}, Dest: "/phone/b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	j = waitDone(t, m, j.ID)
+	if j.FilesFailed != 1 || j.BytesDone != j.BytesTotal || j.BytesTotal != 1000 {
+		t.Fatalf("%s: failed %d, bytes %d of %d", j.State, j.FilesFailed, j.BytesDone, j.BytesTotal)
+	}
+}
