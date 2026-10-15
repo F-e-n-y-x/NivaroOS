@@ -4,6 +4,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"encoding/xml"
 	"fmt"
 	"log"
@@ -40,6 +41,14 @@ const (
 	// buffer an arbitrarily large frame in memory.
 	consoleReadLimit = 4 << 20
 )
+
+// consoleHeartbeat: at the start, and after this long with nothing from
+// the VNC server (a still screen), the proxy sends an empty text frame. RFB clients ignore
+// text frames (noVNC drops empty messages, the app reads only binary), so
+// it changes nothing on the wire protocol - but a viewer that hears
+// nothing at all for a few of these knows the link is dead (laptop slept,
+// phone changed networks) instead of showing a frozen picture as "live".
+var consoleHeartbeat = 4 * time.Second
 
 // consoleGraphicsXML mirrors only the <graphics> element read out of a
 // running domain's live XML - a separate, minimal type from domain.go's
@@ -151,17 +160,142 @@ func handleHostConsole() http.HandlerFunc {
 		hostConsoleSessions.Add(1)
 		defer noteHostConsoleClosed()
 		noteHostConsoleInput()
-		proxyConsole(wsConn, hostInputTracker{vncConn})
+		proxyConsole(wsConn, &hostInputTracker{Conn: vncConn})
 	}
 }
 
 // hostInputTracker records when the viewer last sent anything (keys,
-// pointer) - the CapsLock watcher only acts on an idle session.
-type hostInputTracker struct{ net.Conn }
+// pointer) - the CapsLock watcher only acts on an idle session - and
+// which keys and buttons it holds down: x11vnc never lets go of a
+// viewer's keys when it disconnects, so a link that dropped mid-Ctrl+C
+// left Ctrl stuck on the host's own keyboard until someone pressed it.
+type hostInputTracker struct {
+	net.Conn
+	rfbInput
+}
 
-func (c hostInputTracker) Write(b []byte) (int, error) {
+func (c *hostInputTracker) Write(b []byte) (int, error) {
 	noteHostConsoleInput()
+	c.feed(b)
 	return c.Conn.Write(b)
+}
+
+// Close first releases whatever the viewer still held.
+func (c *hostInputTracker) Close() error {
+	if rel := c.releases(); len(rel) > 0 {
+		_ = c.Conn.SetWriteDeadline(time.Now().Add(time.Second))
+		_, _ = c.Conn.Write(rel)
+	}
+	return c.Conn.Close()
+}
+
+// rfbInput follows the client->server half of an RFB session (after a
+// version >= 3.7 handshake with security None, which is all the host
+// socket offers) just far enough to know the held keys and buttons.
+type rfbInput struct {
+	buf     []byte
+	skip    int // handshake bytes left: version(12) + security choice(1) + ClientInit(1)
+	started bool
+	lost    bool // an unknown message: stop following
+	keys    map[uint32]bool
+	buttons byte
+	x, y    uint16
+}
+
+func (r *rfbInput) feed(b []byte) {
+	if r.lost {
+		return
+	}
+	if !r.started {
+		r.started, r.skip = true, 14
+	}
+	r.buf = append(r.buf, b...)
+	if r.skip > 0 {
+		n := min(r.skip, len(r.buf))
+		r.skip -= n
+		r.buf = r.buf[n:]
+	}
+	for r.skip == 0 && len(r.buf) > 0 {
+		n := rfbClientMsgLen(r.buf)
+		if n < 0 {
+			r.lost, r.buf = true, nil
+			return
+		}
+		if n == 0 || len(r.buf) < n {
+			return // need more bytes
+		}
+		m := r.buf[:n]
+		switch m[0] {
+		case 4: // KeyEvent
+			if r.keys == nil {
+				r.keys = map[uint32]bool{}
+			}
+			k := binary.BigEndian.Uint32(m[4:])
+			if m[1] != 0 {
+				r.keys[k] = true
+			} else {
+				delete(r.keys, k)
+			}
+		case 5: // PointerEvent
+			r.buttons, r.x, r.y = m[1], binary.BigEndian.Uint16(m[2:]), binary.BigEndian.Uint16(m[4:])
+		}
+		r.buf = r.buf[n:]
+	}
+}
+
+// rfbClientMsgLen: the length of the client message at the start of b, 0
+// when more bytes are needed to tell, -1 for a type it doesn't know.
+func rfbClientMsgLen(b []byte) int {
+	need := func(n int) bool { return len(b) >= n }
+	switch b[0] {
+	case 0: // SetPixelFormat
+		return 20
+	case 2: // SetEncodings
+		if !need(4) {
+			return 0
+		}
+		return 4 + 4*int(binary.BigEndian.Uint16(b[2:]))
+	case 3, 150: // FramebufferUpdateRequest, EnableContinuousUpdates
+		return 10
+	case 4: // KeyEvent
+		return 8
+	case 5: // PointerEvent
+		return 6
+	case 6: // ClientCutText (negative length: Extended Clipboard)
+		if !need(8) {
+			return 0
+		}
+		n := int(int32(binary.BigEndian.Uint32(b[4:])))
+		if n < 0 {
+			n = -n
+		}
+		return 8 + n
+	case 251: // SetDesktopSize
+		if !need(8) {
+			return 0
+		}
+		return 8 + 16*int(b[6])
+	}
+	return -1
+}
+
+// releases: the messages that let go of every held key and button, or
+// nil mid-message (anything appended then would be misread).
+func (r *rfbInput) releases() []byte {
+	if r.lost || r.skip > 0 || len(r.buf) > 0 {
+		return nil
+	}
+	var out []byte
+	for k := range r.keys {
+		out = append(out, 4, 0, 0, 0)
+		out = binary.BigEndian.AppendUint32(out, k)
+	}
+	if r.buttons != 0 {
+		out = append(out, 5, 0)
+		out = binary.BigEndian.AppendUint16(out, r.x)
+		out = binary.BigEndian.AppendUint16(out, r.y)
+	}
+	return out
 }
 
 // proxyConsole pumps bytes both ways between a console WebSocket and a VNC
@@ -174,17 +308,31 @@ func proxyConsole(wsConn *websocket.Conn, tcpConn net.Conn) {
 	_ = extendDeadline()
 	wsConn.SetPongHandler(func(string) error { return extendDeadline() })
 
+	// One heartbeat up front: a viewer arms its dead-link watch on the
+	// first one, and a busy screen may never be still long enough to send
+	// another.
+	_ = wsConn.SetWriteDeadline(time.Now().Add(consoleWriteWait))
+	_ = wsConn.WriteMessage(websocket.TextMessage, nil)
+
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		buf := make([]byte, 32*1024)
 		for {
+			_ = tcpConn.SetReadDeadline(time.Now().Add(consoleHeartbeat))
 			n, err := tcpConn.Read(buf)
 			if n > 0 {
 				_ = wsConn.SetWriteDeadline(time.Now().Add(consoleWriteWait))
 				if writeErr := wsConn.WriteMessage(websocket.BinaryMessage, buf[:n]); writeErr != nil {
 					break
 				}
+			}
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				_ = wsConn.SetWriteDeadline(time.Now().Add(consoleWriteWait))
+				if writeErr := wsConn.WriteMessage(websocket.TextMessage, nil); writeErr != nil {
+					break
+				}
+				continue
 			}
 			if err != nil {
 				_ = wsConn.WriteControl(websocket.CloseMessage,

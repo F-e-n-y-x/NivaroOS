@@ -988,6 +988,7 @@ type rfbClient struct {
 	closed      bool
 	dirty       []bool
 	buttons     uint8
+	keys        map[uint32]bool // held down by this viewer
 }
 
 type rfbServer struct {
@@ -1167,6 +1168,22 @@ func (s *rfbServer) handle(conn net.Conn) {
 	if err := s.readLoop(c, br); err != nil && !errors.Is(err, io.EOF) {
 		log.Printf("client: %v", err)
 	}
+	s.releaseHeld(c)
+}
+
+// releaseHeld lets go of every key and button this viewer still held: a
+// link that drops mid-shortcut (Wi-Fi blip, closed laptop) must not
+// leave Ctrl or a mouse button stuck down on the host.
+func (s *rfbServer) releaseHeld(c *rfbClient) {
+	in := s.input()
+	for k := range c.keys {
+		in.Key(k, false)
+	}
+	for i, code := range rfbButtons {
+		if c.buttons&(1<<i) != 0 {
+			in.Button(code, false)
+		}
+	}
 }
 
 func encodePF(p pixelFormat) []byte {
@@ -1255,7 +1272,16 @@ func (s *rfbServer) readLoop(c *rfbClient, r *bufio.Reader) error {
 			if err != nil {
 				return err
 			}
-			s.input().Key(binary.BigEndian.Uint32(b[3:]), b[0] != 0)
+			k, down := binary.BigEndian.Uint32(b[3:]), b[0] != 0
+			if c.keys == nil {
+				c.keys = map[uint32]bool{}
+			}
+			if down {
+				c.keys[k] = true
+			} else {
+				delete(c.keys, k)
+			}
+			s.input().Key(k, down)
 		case 5: // PointerEvent
 			b, err := readFull(r, 5)
 			if err != nil {

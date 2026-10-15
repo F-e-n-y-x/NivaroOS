@@ -161,6 +161,25 @@ func TestRFBServerSessionRawZlibAndInput(t *testing.T) {
 	if strings.Join(got, "|") != want {
 		t.Fatalf("input events:\n%s\nwant\n%s", strings.Join(got, "|"), want)
 	}
+
+	// The link drops with Enter and the left button still down: both are
+	// let go on the host.
+	write(5, 1, 0, 3, 0, 1)
+	<-in.events
+	<-in.events
+	client.Close()
+	got = nil
+	for len(got) < 2 {
+		select {
+		case e := <-in.events:
+			got = append(got, e)
+		case <-time.After(2 * time.Second):
+			t.Fatalf("held input not released on disconnect, got %v", got)
+		}
+	}
+	if strings.Join(got, "|") != "key 0xff0d false|button 0x110 false" {
+		t.Fatalf("on disconnect: %v", got)
+	}
 }
 
 func TestGstCapsLine(t *testing.T) {
