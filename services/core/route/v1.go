@@ -299,6 +299,7 @@ func InitV1Router() http.Handler {
 			v1CompanionGroup.GET("/devices/:id/file", v1.GetCompanionDeviceDownload)
 			v1CompanionGroup.POST("/devices/:id/upload", v1.PostCompanionDeviceUpload)
 			v1CompanionGroup.GET("/devices/:id/ws", v1.GetCompanionDeviceWS)
+			v1CompanionGroup.POST("/:id/peer-ticket", v1.PostCompanionPeerTicket)
 		}
 
 		v1SchedulesGroup := v1Group.Group("/schedules")

@@ -184,7 +184,7 @@ class CompanionFileServer {
     for (final ip in _tailnetIps) {
       try {
         final s = await HttpServer.bind(InternetAddress(ip), _port);
-        s.listen(_handleRequest, onError: (_) {});
+        s.listen((r) => _handleRequest(r, viaTailnet: true), onError: (_) {});
         _tailnetServers.add(s);
       } catch (e) {
         debugPrint('[CompanionFileServer] Tailscale listener failed: ${e.runtimeType}');
@@ -298,19 +298,69 @@ class CompanionFileServer {
   // /download, /upload, /delete, /files call once it's registered this
   // device (PostRegisterCompanionDevice generates it over the phone's own
   // authenticated session and hands it back). Without this check, this
-  // HTTP server is an open LAN file server.
-  Future<bool> _checkAuth(HttpRequest req) async {
+  // HTTP server is an open LAN file server. Another of the owner's phones
+  // may instead read what a peer ticket allows ([peerTicketAllows]), only
+  // over Tailscale ([viaTailnet]: one of the Tailscale listeners).
+  Future<bool> _checkAuth(HttpRequest req, {bool viaTailnet = false}) async {
     final expected = await StorageService.instance.getCompanionSecret();
     if (expected == null || expected.isEmpty) {
       // Not registered yet: fail closed.
       await _reply(req, HttpStatus.serviceUnavailable, {'success': false, 'message': 'Device not yet registered with server'});
       return false;
     }
-    if (!secretsMatch(req.headers.value('x-companion-secret'), expected)) {
-      await _reply(req, HttpStatus.unauthorized, {'success': false, 'message': 'Unauthorized'});
+    if (secretsMatch(req.headers.value('x-companion-secret'), expected)) return true;
+    final ticket = req.headers.value('x-peer-ticket');
+    if (viaTailnet && ticket != null) {
+      final id = await StorageService.instance.getCompanionDeviceId() ?? '';
+      final raw = req.uri.queryParameters['path'];
+      String? resolved;
+      try {
+        resolved = SharedStoragePolicy.resolve((raw == null || raw.isEmpty || raw == '/') && req.uri.path == '/files' ? defaultRootPath : raw ?? '');
+      } on PathRefused {
+        resolved = null;
+      }
+      if (peerTicketAllows(ticket, secret: expected, deviceId: id, method: req.method, endpoint: req.uri.path, path: resolved)) return true;
+    }
+    await _reply(req, HttpStatus.unauthorized, {'success': false, 'message': 'Unauthorized'});
+    return false;
+  }
+
+  /// Whether [ticket] (minted by the server, see its companionPeerTicket:
+  /// `base64url("v1\n<exp>\n<op>\n<peer>\n<path>").<hex hmac>`, keyed
+  /// with this phone's secret) lets a peer read [path] (already resolved
+  /// inside shared storage): GET or HEAD only, `/download` of exactly the
+  /// ticket's file for "read", `/files` of its folder or one below it for
+  /// "list", before it expires.
+  @visibleForTesting
+  static bool peerTicketAllows(String ticket,
+      {required String secret, required String deviceId, required String method, required String endpoint, required String? path, DateTime? now}) {
+    if (path == null || (method != 'GET' && method != 'HEAD') || secret.isEmpty) return false;
+    final dot = ticket.lastIndexOf('.');
+    if (dot <= 0) return false;
+    final String payload;
+    try {
+      payload = utf8.decode(base64Url.decode(base64Url.normalize(ticket.substring(0, dot))));
+    } catch (_) {
       return false;
     }
-    return true;
+    final mac = Hmac(sha256, utf8.encode(secret)).convert(utf8.encode('nivaroos-peer\n$deviceId\n$payload')).toString();
+    if (!secretsMatch(ticket.substring(dot + 1), mac)) return false;
+    final f = payload.split('\n');
+    if (f.length < 5 || f[0] != 'v1') return false;
+    final exp = int.tryParse(f[1]);
+    if (exp == null || (now ?? DateTime.now()).millisecondsSinceEpoch ~/ 1000 >= exp) return false;
+    final op = f[2];
+    final String allowed;
+    try {
+      allowed = SharedStoragePolicy.resolve(f.sublist(4).join('\n'));
+    } on PathRefused {
+      return false;
+    }
+    return switch ((endpoint, op)) {
+      ('/download', 'read') => path == allowed,
+      ('/files', 'list') => path == allowed || path.startsWith('$allowed/'),
+      _ => false,
+    };
   }
 
   Future<void> _reply(HttpRequest req, int status, Map<String, Object?> body) async {
@@ -337,7 +387,10 @@ class CompanionFileServer {
     }
   }
 
-  Future<void> _handleRequest(HttpRequest req) async {
+  @visibleForTesting
+  Future<void> serveForTest(HttpRequest req, {required bool viaTailnet}) => _handleRequest(req, viaTailnet: viaTailnet);
+
+  Future<void> _handleRequest(HttpRequest req, {bool viaTailnet = false}) async {
     final path = req.uri.path;
     try {
       if (path == '/status' || path == '/') {
@@ -350,7 +403,7 @@ class CompanionFileServer {
         await _handleHello(req);
         return;
       }
-      if (!await _checkAuth(req)) return;
+      if (!await _checkAuth(req, viaTailnet: viaTailnet)) return;
       switch (path) {
         case '/files':
           await _handleListFiles(req);
@@ -495,6 +548,11 @@ class CompanionFileServer {
 
     req.response.statusCode = HttpStatus.ok;
     req.response.headers.set('Content-Length', totalSize.toString());
+    if (req.method == 'HEAD') {
+      // A peer checking the route (or a size probe): never read the file.
+      await req.response.close();
+      return;
+    }
     await file.openRead().pipe(req.response);
   }
 

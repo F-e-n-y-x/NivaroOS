@@ -532,6 +532,7 @@ class TransferStrip extends StatelessWidget {
         final detail = <String>[
           if (p.totalBytes != null && p.totalBytes! > 0) '${formatSize(p.doneBytes)} of ${formatSize(p.totalBytes!)}',
           if (queued > 0) '$queued more waiting',
+          if (p.route?.isNotEmpty ?? false) p.route!,
           if (p.current != null) p.current!,
         ].join(' · ');
         return Semantics(

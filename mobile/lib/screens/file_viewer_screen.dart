@@ -18,6 +18,7 @@ import 'package:video_player/video_player.dart';
 import '../models/file_entry.dart';
 import '../services/api_client.dart';
 import '../services/media_relay.dart';
+import '../services/peer_direct.dart';
 import '../ui/ui.dart';
 import '../utils/format.dart';
 import 'files/file_ops.dart';
@@ -1382,39 +1383,65 @@ class _MediaPlayerState extends State<_MediaPlayer> {
   Object? _error;
   bool _compatible = false;
 
+  /// Playing straight from another phone over Tailscale ([PeerDirect]);
+  /// null when it isn't another phone's file.
+  PeerLink? _direct;
+
+  /// The direct route failed once: the server for the rest of this view.
+  bool _relayOnly = false;
+
   @override
   void initState() {
     super.initState();
     _start();
   }
 
-  Future<void> _start() async {
+  Future<void> _start({Duration? at}) async {
+    _video?.removeListener(_onTick);
     _chewie?.dispose();
     await _video?.dispose();
     setState(() {
       _video = null;
       _chewie = null;
       _error = null;
+      _direct = null;
     });
+    PeerLink? direct;
     try {
       final VideoPlayerController controller;
       if (widget.isLocal) {
         controller = VideoPlayerController.file(File(widget.file.path));
       } else {
-        final token = await ApiClient.instance.freshToken();
-        final uri = await MediaRelay.instance.wrapIfNeeded(ApiClient.instance.buildUri(_compatible ? '/file/stream' : '/file', {'path': widget.file.path}));
-        controller = VideoPlayerController.networkUrl(uri, httpHeaders: {'Authorization': ?token});
+        if (!_compatible && !_relayOnly) {
+          direct = await PeerDirect.instance.resolve(widget.file.path).timeout(const Duration(seconds: 5), onTimeout: () => null);
+        }
+        if (direct != null) {
+          // ExoPlayer does Range itself; the ticket is a header, never in the URL.
+          controller = VideoPlayerController.networkUrl(direct.uri, httpHeaders: direct.headers);
+        } else {
+          final token = await ApiClient.instance.freshToken();
+          final uri = await MediaRelay.instance.wrapIfNeeded(ApiClient.instance.buildUri(_compatible ? '/file/stream' : '/file', {'path': widget.file.path}));
+          controller = VideoPlayerController.networkUrl(uri, httpHeaders: {'Authorization': ?token});
+        }
       }
-      await controller.initialize();
+      try {
+        await controller.initialize();
+      } catch (_) {
+        if (direct == null) rethrow;
+        await controller.dispose();
+        return await _fallBack(direct, at);
+      }
       if (!mounted) {
         await controller.dispose();
         return;
       }
+      if (at != null) await controller.seekTo(at);
       controller.addListener(_onTick);
       final scheme = AppTheme.dark().colorScheme;
       final aspect = controller.value.aspectRatio;
       setState(() {
         _video = controller;
+        _direct = direct;
         if (!widget.audio) {
           _chewie = ChewieController(
             videoPlayerController: controller,
@@ -1436,7 +1463,22 @@ class _MediaPlayerState extends State<_MediaPlayer> {
   }
 
   void _onTick() {
+    final v = _video;
+    final direct = _direct;
+    if (v != null && direct != null && v.value.hasError) {
+      // The other phone stopped answering directly: once more through the
+      // server, at the same place.
+      _fallBack(direct, v.value.position);
+      return;
+    }
     if (mounted && widget.audio) setState(() {});
+  }
+
+  Future<void> _fallBack(PeerLink direct, Duration? at) {
+    PeerDirect.instance.failed(direct);
+    _relayOnly = true;
+    _direct = null;
+    return _start(at: at);
   }
 
   @override
@@ -1459,7 +1501,16 @@ class _MediaPlayerState extends State<_MediaPlayer> {
           appBar: AppBar(
             backgroundColor: widget.audio ? null : scheme.surfaceContainerLowest,
             systemOverlayStyle: widget.audio ? null : AppTheme.systemBarsStyle(Brightness.dark),
-            title: Text(widget.file.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+            title: _direct == null
+                ? Text(widget.file.name, maxLines: 1, overflow: TextOverflow.ellipsis)
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(widget.file.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text(peerRouteLabel(true), style: Theme.of(context).textTheme.bodySmall),
+                    ],
+                  ),
             actions: [
               IconButton(icon: const Icon(Icons.info_outline), tooltip: 'Details', onPressed: widget.onDetails),
               PopupMenuButton<String>(

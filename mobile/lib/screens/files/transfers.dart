@@ -18,6 +18,7 @@ import 'package:http/http.dart' as http;
 
 import '../../models/file_entry.dart';
 import '../../services/api_client.dart';
+import '../../services/peer_direct.dart';
 import 'file_ops.dart';
 import 'resumable_upload.dart';
 
@@ -31,6 +32,7 @@ class TransferProgress {
     this.totalBytes,
     this.doneItems = 0,
     this.totalItems,
+    this.route,
   });
 
   /// "Uploading 3 items to Documents".
@@ -45,6 +47,10 @@ class TransferProgress {
   final int doneItems;
   final int? totalItems;
 
+  /// How the bytes travel, for the strip ("Direct · Tailscale"); null or
+  /// empty when there is nothing to say.
+  final String? route;
+
   /// 0-1, or null when unknown (an indeterminate bar).
   double? get fraction {
     final t = totalBytes;
@@ -52,7 +58,7 @@ class TransferProgress {
     return (doneBytes / t).clamp(0.0, 1.0);
   }
 
-  TransferProgress copyWith({String? current, int? doneBytes, int? totalBytes, int? doneItems, int? totalItems}) =>
+  TransferProgress copyWith({String? current, int? doneBytes, int? totalBytes, int? doneItems, int? totalItems, String? route}) =>
       TransferProgress(
         title: title,
         current: current ?? this.current,
@@ -60,6 +66,7 @@ class TransferProgress {
         totalBytes: totalBytes ?? this.totalBytes,
         doneItems: doneItems ?? this.doneItems,
         totalItems: totalItems ?? this.totalItems,
+        route: route ?? this.route,
       );
 }
 
@@ -419,16 +426,23 @@ class DownloadItem {
 /// server's. For a move the originals are deleted from the server only when
 /// every file matched, and a failed delete is reported (plan M-11).
 class DownloadTask extends TransferTask {
-  DownloadTask({required this.items, required this.destDir, this.move = false, this.listFolder, this.download, this.deleteRemote});
+  DownloadTask({required this.items, required this.destDir, this.move = false, this.listFolder, this.download, this.deleteRemote, PeerDirect? peers})
+      : peers = peers ?? PeerDirect.instance;
 
   final List<DownloadItem> items;
   final String destDir;
   final bool move;
 
+  /// Another phone's files come straight from it over Tailscale when it can.
+  final PeerDirect peers;
+
   /// Seams for tests; default to the server.
   final Future<RemoteListing> Function(String path)? listFolder;
   final Future<void> Function(String remotePath, File target, void Function(int received) onProgress)? download;
   final Future<void> Function(List<String> paths)? deleteRemote;
+
+  /// Set by each file's download: how it travelled.
+  bool _lastDirect = false;
 
   @override
   String get title => '${move ? 'Moving' : 'Downloading'} ${describeItems(items.map((i) => i.entry.path).toList())} to this phone';
@@ -441,13 +455,33 @@ class DownloadTask extends TransferTask {
 
   Future<void> _download(String remote, File target, void Function(int) onProgress, TransferCancel cancel) async {
     if (download != null) return download!(remote, target, onProgress);
+    final direct = await peers.resolve(remote);
+    if (direct != null) {
+      try {
+        _lastDirect = true;
+        return await _get(direct.uri, direct.headers, remote, target, onProgress, cancel, auth: false);
+      } on TransferCancelled {
+        rethrow;
+      } catch (_) {
+        cancel.throwIfCancelled();
+        // The other phone stopped answering directly: through the server.
+        peers.failed(direct);
+      }
+    }
+    _lastDirect = false;
+    await _get(ApiClient.instance.buildUri('/file', {'path': remote}), const {}, remote, target, onProgress, cancel, auth: true);
+  }
+
+  /// One GET of [uri] into [target], from the start.
+  Future<void> _get(Uri uri, Map<String, String> headers, String remote, File target, void Function(int) onProgress, TransferCancel cancel,
+      {required bool auth}) async {
     // Our own client, so Cancel can close it mid-file.
     final client = http.Client();
     final detach = cancel.onCancel(client.close);
     IOSink? sink;
     try {
-      final uri = ApiClient.instance.buildUri('/file', {'path': remote});
-      final res = await ApiClient.instance.send(() => http.Request('GET', uri), client: client);
+      http.BaseRequest build() => http.Request('GET', uri)..headers.addAll(headers);
+      final res = auth ? await ApiClient.instance.send(build, client: client) : await client.send(build());
       if (res.statusCode != 200) {
         await res.stream.drain<void>();
         throw ApiException("Couldn't download “${baseName(remote)}” (HTTP ${res.statusCode})", statusCode: res.statusCode);
@@ -531,7 +565,7 @@ class DownloadTask extends TransferTask {
       final before = done;
       report(progress = progress.copyWith(current: entry.name, doneItems: i));
       try {
-        await _download(entry.path, part, (received) => report(progress = progress.copyWith(doneBytes: before + received)), cancel);
+        await _download(entry.path, part, (received) => report(progress = progress.copyWith(doneBytes: before + received, route: _routeLabel())), cancel);
         cancel.throwIfCancelled();
         final got = await part.length();
         if (got != entry.size) {
@@ -602,6 +636,10 @@ class DownloadTask extends TransferTask {
     }
     return TransferOutcome(message: 'Downloaded $what to this phone', affectedDirs: {destDir});
   }
+
+  /// The strip's route line: said only while a file comes straight from
+  /// another phone ("" clears it).
+  String _routeLabel() => _lastDirect ? peerRouteLabel(true) : '';
 
   /// The temporary file [target] is downloaded to before its size is
   /// checked: hidden, next to it, and short, so a name of up to 255 bytes

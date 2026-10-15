@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"net"
@@ -270,5 +271,43 @@ func TestCompanionToCompanionDropMidPipe(t *testing.T) {
 	j = waitJob(t, nj.ID, 5*time.Minute)
 	if j.State != "done" || b.got[phoneRoot+"/v.mp4"] != size {
 		t.Fatalf("retry: %s, B has %v", j.State, b.got)
+	}
+}
+
+// Phase 1: phone B gets a peer ticket for a file on phone A; the ticket is
+// A's HMAC (what A's file server checks) and only A's Tailscale address is
+// offered. Without Tailscale on A the server says to use the relay.
+func TestCompanionPeerTicket(t *testing.T) {
+	a := newPhone(t, "e2e-peer-a", true)
+	r := call(t, "POST", "/v1/companion/e2e-peer-a/peer-ticket", map[string]string{"path": a.storage + "/DCIM/x.mp4", "op": "read"})
+	var d struct {
+		Candidates []string  `json:"candidates"`
+		Ticket     string    `json:"ticket"`
+		Path       string    `json:"path"`
+		ExpiresAt  time.Time `json:"expires_at"`
+	}
+	if r.status != 200 || json.Unmarshal(r.Data, &d) != nil {
+		t.Fatalf("peer-ticket: %d %s", r.status, r.Message)
+	}
+	if len(d.Candidates) != 1 || !strings.HasPrefix(d.Candidates[0], phoneTailnet+":") || d.Path != phoneRoot+"/DCIM/x.mp4" {
+		t.Fatalf("got %+v", d)
+	}
+	dot := strings.LastIndex(d.Ticket, ".")
+	payload, err := base64.RawURLEncoding.DecodeString(d.Ticket[:dot])
+	if err != nil {
+		t.Fatal(err)
+	}
+	mac := hmac.New(sha256.New, []byte(a.secret))
+	mac.Write([]byte("nivaroos-peer\n" + a.id + "\n" + string(payload)))
+	if hex.EncodeToString(mac.Sum(nil)) != d.Ticket[dot+1:] || !strings.HasSuffix(string(payload), "\nread\n\n"+d.Path) {
+		t.Fatalf("ticket doesn't verify with A's secret: %q", payload)
+	}
+	if left := time.Until(d.ExpiresAt); left < 119*time.Minute || left > 2*time.Hour {
+		t.Fatalf("expires in %s", left)
+	}
+
+	lanOnly := newPhone(t, "e2e-peer-lan", false)
+	if r := call(t, "POST", "/v1/companion/e2e-peer-lan/peer-ticket", map[string]string{"path": lanOnly.storage + "/x", "op": "read"}); r.status != http.StatusConflict {
+		t.Fatalf("no Tailscale on the phone: %d, want 409", r.status)
 	}
 }
