@@ -967,7 +967,11 @@ func RenamePath(ctx *echo.Context) error {
 	}
 
 	success, err := service.MyService.System().RenameFile(op, np)
-	return ctx.JSON(common_err.SUCCESS, model.Result{Success: success, Message: common_err.GetMsg(success), Data: err})
+	msg := common_err.GetMsg(success)
+	if err != nil {
+		msg = "Couldn't rename: " + transfer.HumanError(err) // was "Fail", with the reason lost
+	}
+	return ctx.JSON(common_err.SUCCESS, model.Result{Success: success, Message: msg})
 }
 
 // @Summary create folder

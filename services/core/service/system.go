@@ -212,7 +212,9 @@ func (c *systemService) MkdirAll(path string) (int, error) {
 }
 
 func (c *systemService) RenameFile(oldF, newF string) (int, error) {
-	_, err := os.Stat(newF)
+	// Lstat: a dangling symlink is a name that's taken too (Stat said
+	// "doesn't exist" and the rename replaced the link).
+	_, err := os.Lstat(newF)
 	if err == nil {
 		return common_err.DIR_ALREADY_EXISTS, nil
 	}

@@ -72,7 +72,9 @@ export default {
 					this.isLoading = false
 				})
 				.catch((err) => {
-					console.log(err)
+					// Network/server errors used to only reach the console.
+					this.errorType = 'is-danger'
+					this.errors = err?.response?.data?.message || err?.message || String(err)
 					this.isLoading = false
 				})
 		},
