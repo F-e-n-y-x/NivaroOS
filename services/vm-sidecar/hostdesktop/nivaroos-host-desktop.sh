@@ -388,6 +388,52 @@ maybe_fix_headless() {
 }
 
 # ------------------------------------------------------------------------------
+# No TCP, ever. The VNC server has no password: the root-only unix socket is
+# the only thing guarding the host's screen, so a TCP listener (any address,
+# IPv4 or IPv6) is a remote root desktop for whoever can reach it.
+# ------------------------------------------------------------------------------
+
+# tree_pids PID: PID and all its descendants.
+tree_pids() {
+	echo "$1"
+	local c
+	for c in $(pgrep -P "$1" 2>/dev/null); do tree_pids "$c"; done
+}
+
+# tcp_listen_count PID: how many TCP sockets PID (or a descendant) listens on.
+# Matches the process's socket inodes against the LISTEN (st 0A) rows of its
+# network namespace's tcp/tcp6 tables.
+tcp_listen_count() {
+	local p
+	for p in $(tree_pids "$1"); do
+		awk 'FNR > 1 && $4 == "0A" { print "L", $10 }' "/proc/$p/net/tcp" "/proc/$p/net/tcp6" 2>/dev/null
+		find "/proc/$p/fd" -lname 'socket:*' -printf '%l\n' 2>/dev/null | sed -n 's/^socket:\[\([0-9]*\)\]$/S \1/p'
+	done | awk '$1 == "L" { l[$2] = 1 } $1 == "S" { s[$2] = 1 } END { n = 0; for (i in s) if (i in l) n++; print n }'
+}
+
+# refuse_tcp PID: if PID listens on TCP, kill it and fail the service.
+refuse_tcp() {
+	local n
+	n="$(tcp_listen_count "$1")"
+	[ "${n:-0}" -eq 0 ] && return 0
+	echo "host-desktop: the VNC server opened $n TCP listener(s) - refusing to run it (it has no password)" >&2
+	trap - EXIT TERM INT
+	kill "$1" 2>/dev/null
+	rm -f "$SOCK"
+	R_DISPLAY="" write_state failed "The VNC server opened a network port, so it was stopped (it has no password). Update NivaroOS."
+	exit 1
+}
+
+# netns_ok: x11vnc can run without any network (unshare --net) and still
+# reach the X server. Abstract X sockets are per network namespace, so Xlib
+# needs the path socket /tmp/.X11-unix/X<N> of a local ":N" display.
+netns_ok() {
+	[[ "$R_DISPLAY" =~ ^:([0-9]+)(\.[0-9]+)?$ ]] || return 1
+	[ -S "/tmp/.X11-unix/X${BASH_REMATCH[1]}" ] || return 1
+	command -v unshare >/dev/null 2>&1 && unshare --net -- true 2>/dev/null
+}
+
+# ------------------------------------------------------------------------------
 # Wayland: x11vnc can't capture it, so nivaroos-vm-sidecar's host-vnc-wayland
 # serves RFB on the same socket (GNOME: mutter's own API; wlroots: wayvnc;
 # others: the desktop portal, whose "Allow" the host user clicks once). See
@@ -420,6 +466,7 @@ run_wayland() {
 	while kill -0 "$CHILD" 2>/dev/null; do
 		sleep 2 &
 		wait $! 2>/dev/null || true
+		refuse_tcp "$CHILD"
 		if [ "$(active_seat_session)" != "$sid" ]; then
 			echo "host-desktop: seat0 switched sessions - restarting the Wayland stream" >&2
 			kill "$CHILD" 2>/dev/null
@@ -436,6 +483,11 @@ run_wayland() {
 # ------------------------------------------------------------------------------
 # Entry points
 # ------------------------------------------------------------------------------
+if [ "${1:-}" = "--tcp-listeners" ]; then
+	tcp_listen_count "${2:?pid}"
+	exit 0
+fi
+
 if [ "${1:-}" = "--resolve" ]; then
 	resolve_display
 	printf 'DISPLAY=%s\nXAUTHORITY=%s\nSESSION_TYPE=%s\nDESKTOP=%s\nXWAYLAND=%s\n' \
@@ -587,8 +639,25 @@ trap 'cleanup; exit 0' TERM INT
 trap cleanup EXIT
 
 started_display="$R_DISPLAY"
-(umask 077 && exec x11vnc "${args[@]}") &
+# No network namespace at all where possible, so x11vnc can't listen on TCP
+# whatever its flags do; the unix socket works across namespaces.
+netns=()
+if netns_ok; then
+	netns=(unshare --net --)
+else
+	echo "host-desktop: can't run x11vnc without a network (unshare --net) - relying on its flags and the listener check" >&2
+fi
+(umask 077 && exec "${netns[@]}" x11vnc "${args[@]}") &
 CHILD=$!
+
+# Check for TCP listeners as soon as x11vnc is up, then on every pass below.
+for _ in $(seq 20); do
+	[ -S "$SOCK" ] && break
+	kill -0 "$CHILD" 2>/dev/null || break
+	sleep 0.5
+done
+sleep 1
+refuse_tcp "$CHILD"
 
 # Watch for the desktop moving to another display (logout -> greeter on a
 # new server, user switch). x11vnc would keep streaming a dead or wrong
@@ -597,6 +666,7 @@ while kill -0 "$CHILD" 2>/dev/null; do
 	sleep 10 &
 	wait $! 2>/dev/null || true
 	kill -0 "$CHILD" 2>/dev/null || break
+	refuse_tcp "$CHILD"
 	resolve_display
 	if [ -n "$R_DISPLAY" ] && [ "$R_DISPLAY" != "$started_display" ] && [ "$R_XWAYLAND" != 1 ]; then
 		echo "host-desktop: desktop moved from $started_display to $R_DISPLAY - restarting" >&2
