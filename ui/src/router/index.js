@@ -41,6 +41,8 @@ const needInit = async () => {
 
 
 router.beforeEach(async (to, from, next) => {
+	// Embedded viewers bring their own token and have no login page to go to.
+	if (to.meta.embed) return next();
 	const accessToken = localStorage.getItem("access_token");
 	const version = localStorage.getItem("version");
 	const requireAuth = to.matched.some(record => record.meta.requireAuth);

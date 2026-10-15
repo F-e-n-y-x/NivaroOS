@@ -69,7 +69,12 @@ export default defineConfig(({ mode }) => {
 		envPrefix: 'VUE_APP_',
 		plugins: [requireBrowserBuiltins, vue(), stripCssBom, precompress],
 		resolve: {
-			alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+			alias: {
+				'@': fileURLToPath(new URL('./src', import.meta.url)),
+				// noVNC's package exports only core/rfb.js; Host Desktop's WebRTC
+				// viewer reuses its keyboard (keysym) handling too.
+				'@novnc-core': fileURLToPath(new URL('./node_modules/@novnc/novnc/core', import.meta.url)),
+			},
 			extensions: ['.mjs', '.js', '.json', '.vue'],
 		},
 		define: {

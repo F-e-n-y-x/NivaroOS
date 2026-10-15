@@ -52,6 +52,19 @@ export default [
 		}
 	},
 	{
+		// The app's WebView: only the Smooth (WebRTC) viewer, token from
+		// window.__nivaroosToken (see views/HostDesktopEmbed.vue).
+		path: '/host-desktop/embed',
+		name: 'HostDesktopEmbed',
+		hidden: true,
+		component: () => import('@/views/HostDesktopEmbed.vue'),
+		meta: {
+			requireAuth: false,
+			showBackground: false,
+			embed: true
+		}
+	},
+	{
 		path: '/launch',
 		name: 'AppLauncherCheck',
 		hidden: true,

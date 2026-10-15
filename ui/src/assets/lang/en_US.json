@@ -3534,5 +3534,20 @@
   "Nothing to choose yet": "Nothing to choose yet",
   "Choose what this widget shows": "Choose what this widget shows",
   "Couldn't save the widget setting": "Couldn't save the widget setting",
-  "Link speed": "Link speed"
+  "Link speed": "Link speed",
+  "This server can't stream Smooth video yet": "This server can't stream Smooth video yet",
+  "Smooth video is not available on this server": "Smooth video is not available on this server",
+  "No video arrived - a tunnel or firewall may block UDP port 28650": "No video arrived - a tunnel or firewall may block UDP port 28650",
+  "The direct connection to the server failed": "The direct connection to the server failed",
+  "The server stopped answering": "The server stopped answering",
+  "The picture froze": "The picture froze",
+  "The connection dropped": "The connection dropped",
+  "Smooth (beta)": "Smooth (beta)",
+  "Compatible mode": "Compatible mode",
+  "Stream mode": "Stream mode",
+  "Compatible (VNC)": "Compatible (VNC)",
+  "Smooth frame rate": "Smooth frame rate",
+  "Smooth max bitrate": "Smooth max bitrate",
+  "RTT {ms} ms": "RTT {ms} ms",
+  "Reconnecting...": "Reconnecting..."
 }

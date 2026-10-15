@@ -100,6 +100,8 @@
 					<b-icon icon="monitor" custom-size="mdi-18px"></b-icon>
 					<span class="vm-name">{{ $t('Host Desktop') }}</span>
 					<span class="status-pill" :class="'is-' + status" aria-live="polite">{{ statusText }}</span>
+					<span v-if="lane === 'webrtc'" class="status-pill is-smooth">{{ $t('Smooth (beta)') }}</span>
+					<span v-else-if="laneReason" class="status-pill is-compatible" :title="$t(laneReason)">{{ $t('Compatible mode') }}</span>
 					<span v-if="status === 'connected' && pingMs !== null" class="ping-pill" :class="pingClass" :title="$t('Round-trip time to this host')">
 						<b-icon icon="wifi" custom-size="mdi-14px"></b-icon>
 						{{ pingMs }} ms
@@ -380,6 +382,29 @@
 								</button>
 
 								<div class="stream-settings" @click.stop>
+									<p class="device-menu-title device-menu-title-divided">{{ $t('Stream mode') }}</p>
+									<label class="stream-setting-row" for="hd-stream-mode">
+										<span>{{ $t('Stream mode') }}</span>
+										<select id="hd-stream-mode" v-model="streamPrefs.mode" class="stream-setting-select" @change="saveStreamPrefs">
+											<option value="compatible">{{ $t('Compatible (VNC)') }}</option>
+											<option value="auto">{{ $t('Auto') }}</option>
+											<option value="smooth">{{ $t('Smooth (beta)') }}</option>
+										</select>
+									</label>
+									<template v-if="streamPrefs.mode !== 'compatible'">
+										<label class="stream-setting-row" for="hd-stream-fps">
+											<span>{{ $t('Smooth frame rate') }}</span>
+											<select id="hd-stream-fps" v-model.number="streamPrefs.fps" class="stream-setting-select" @change="saveStreamPrefs">
+												<option v-for="f in streamFpsOptions" :key="f" :value="f">{{ f }} fps</option>
+											</select>
+										</label>
+										<label class="stream-setting-row" for="hd-stream-kbps">
+											<span>{{ $t('Smooth max bitrate') }}</span>
+											<select id="hd-stream-kbps" v-model.number="streamPrefs.maxKbps" class="stream-setting-select" @change="saveStreamPrefs">
+												<option v-for="k in streamKbpsOptions" :key="k" :value="k">{{ k / 1000 }} Mbit/s</option>
+											</select>
+										</label>
+									</template>
 									<p class="device-menu-title device-menu-title-divided">{{ $t('Stream Settings') }}</p>
 									<label class="stream-setting-row" for="hd-noxdamage">
 										<input id="hd-noxdamage" v-model="streamSettings.noxdamage" type="checkbox" :disabled="savingSettings" />
@@ -456,7 +481,21 @@
 				ref="screen"
 				class="console-screen"
 				:class="{ 'is-scrollable': !scaleToFit }"
-			></div>
+			>
+				<host-desktop-web-r-t-c
+					v-if="lane === 'webrtc' && webrtcSession"
+					:key="webrtcSession"
+					:scale-to-fit="scaleToFit"
+					:fallback="streamPrefs.mode === 'auto'"
+					:fps="streamPrefs.fps"
+					:max-kbps="streamPrefs.maxKbps"
+					@ready="(r) => (rfb = r)"
+					@state="onWebrtcState"
+					@stats="(s) => (webrtcStats = s)"
+					@size="(d) => (currentResolution = `${d.w}x${d.h}`)"
+					@clipboard="receiveHostClipboard"
+				></host-desktop-web-r-t-c>
+			</div>
 
 			<!-- Changing the host's actual display mode mid-stream produces a few
 			     garbled/corrupted frames while x11vnc catches up to the new
@@ -647,6 +686,18 @@
 					<b-icon :icon="scaleToFit ? 'fit-to-page-outline' : 'aspect-ratio'" size="is-small"></b-icon>
 					{{ scaleToFit ? $t('Fit') : $t('1:1') }}
 				</span>
+				<template v-if="lane === 'webrtc' && webrtcStats">
+					<span v-if="webrtcStats.encoder" class="statusbar-item">
+						<b-icon icon="chip" size="is-small"></b-icon>
+						{{ webrtcStats.encoder }}
+					</span>
+					<span v-if="webrtcStats.fps !== null" class="statusbar-item">{{ webrtcStats.fps }} fps</span>
+					<span v-if="webrtcStats.rttMs !== null" class="statusbar-item">{{ $t('RTT {ms} ms', { ms: webrtcStats.rttMs }) }}</span>
+				</template>
+				<span v-else-if="lane === 'vnc' && laneReason" class="statusbar-item">
+					<b-icon icon="information-outline" size="is-small"></b-icon>
+					{{ $t('Compatible mode') }}: {{ $t(laneReason) }}
+				</span>
 				<span v-if="hostDisplayName" class="statusbar-item">
 					<b-icon icon="desktop-classic" size="is-small"></b-icon>
 					{{ $t('Display {display}', { display: hostDisplayName }) }}
@@ -669,6 +720,8 @@ import { apiBase as sidecarApiBase, wsBase as sidecarWsBase } from '@/api/vmSide
 import RemoteClipboardPanel from '@/shared/clipboard/RemoteClipboardPanel.vue'
 import { record as recordClipboard, typeText } from '@/service/remoteClipboard'
 import { reconnectDelay, watchedSocket } from '@/utils/consoleSocket'
+import HostDesktopWebRTC from './HostDesktopWebRTC.vue'
+import { STREAM_FPS, STREAM_KBPS, loadPrefs, savePrefs } from './streamMode'
 
 const QUALITY_PRESETS = {
 	high: { qualityLevel: 9, compressionLevel: 1 },
@@ -842,6 +895,7 @@ export default {
 	name: 'HostDesktopPanel',
 	components: {
 		RemoteClipboardPanel,
+		HostDesktopWebRTC,
 	},
 	props: {
 		showClose: {
@@ -917,6 +971,16 @@ export default {
 			streamSettings: { fixscreen: 0, noxdamage: true, fps: 0, snapfb: false },
 			savingSettings: false,
 			connectedThisAttempt: false,
+			// Smooth (beta): 'webrtc' or 'vnc' once chosen ('' = choose on
+			// connect); laneReason says why Auto/Smooth ended up on VNC.
+			streamPrefs: loadPrefs(),
+			streamFpsOptions: STREAM_FPS,
+			streamKbpsOptions: STREAM_KBPS,
+			lane: '',
+			laneReason: '',
+			webrtcSession: 0,
+			webrtcState: '',
+			webrtcStats: null,
 		}
 	},
 	computed: {
@@ -945,7 +1009,7 @@ export default {
 				case 'connected':
 					return this.$t('Connected')
 				case 'connecting':
-					return this.$t('Connecting...')
+					return this.webrtcState === 'reconnecting' ? this.$t('Reconnecting...') : this.$t('Connecting...')
 				case 'disconnected':
 				default:
 					return this.$t('Disconnected')
@@ -1150,6 +1214,15 @@ export default {
 				return
 			}
 
+			if (!this.lane) this.lane = this.streamPrefs.mode === 'compatible' ? 'vnc' : 'webrtc'
+			if (this.lane === 'webrtc') {
+				// A new key remounts the viewer: a fresh peer. It reports back via onWebrtcState.
+				this.webrtcState = ''
+				this.webrtcStats = null
+				this.webrtcSession++
+				return
+			}
+
 			let token = ''
 			try {
 				token = localStorage.getItem('access_token') || ''
@@ -1241,6 +1314,42 @@ export default {
 					this.scheduleReconnect()
 				}
 			}
+		},
+
+		onWebrtcState({ state, reason }) {
+			this.webrtcState = state
+			if (state === 'live') {
+				this.status = 'connected'
+				this.connectError = ''
+				this.reconnectAttempt = 0
+				if (!this.minimized) this.startCapsLockPoll()
+				this.fetchHostDisplay()
+			} else if (state === 'fallback') {
+				// Auto (or no WebRTC on this server): noVNC for the rest of this session.
+				this.lane = 'vnc'
+				this.laneReason = reason || ''
+				this.webrtcState = ''
+				this.rfb = null
+				this.webrtcStats = null
+				this.connect()
+			} else if (state === 'error') {
+				// Token expired: connect() refreshes it first (or shows "session expired").
+				this.rfb = null
+				this.status = 'disconnected'
+				this.stopCapsLockPoll()
+				this.scheduleReconnect()
+			} else {
+				this.status = 'connecting'
+				this.stopCapsLockPoll()
+				this.connectError = reason ? this.$t(reason) : ''
+			}
+		},
+
+		saveStreamPrefs() {
+			this.streamPrefs = savePrefs(this.streamPrefs)
+			this.lane = ''
+			this.laneReason = ''
+			this.manualReconnect()
 		},
 
 		armConnectWatchdog(rfb) {
@@ -1339,6 +1448,8 @@ export default {
 			this.deChecked = false
 			this.provisionCommand = ''
 			this.intentionalDisconnect = true
+			this.lane = ''
+			this.laneReason = ''
 			this.clearReconnectTimer()
 			if (this.rfb) {
 				this.releaseStickyModifiers()
@@ -2289,6 +2400,13 @@ export default {
 	&.is-disconnected {
 		background: rgba(255, 56, 96, 0.15);
 		color: #ff3860;
+	}
+	&.is-smooth {
+		background: rgba(50, 152, 220, 0.2);
+		color: #6cb8ec;
+	}
+	&.is-compatible {
+		cursor: help;
 	}
 }
 
