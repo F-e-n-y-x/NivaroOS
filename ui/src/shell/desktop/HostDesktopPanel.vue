@@ -687,6 +687,10 @@ const QUALITY_OPTIONS = [
 const HOST_DESKTOP_WINDOW_ID = 'host-desktop'
 
 const INSTALL_TIMEOUT_MS = 15 * 60 * 1000
+// A stream socket that opens but never completes the handshake (stuck
+// VNC server or portal, a proxy holding the socket) fires neither
+// connect nor disconnect: give up after this and retry with backoff.
+const CONNECT_TIMEOUT_MS = 20000
 
 const SPECIAL_KEYSYMS = {
 	Backspace: 0xff08,
@@ -1054,6 +1058,7 @@ export default {
 		this.releaseStickyModifiers()
 		this.intentionalDisconnect = true
 		this.clearReconnectTimer()
+		this.clearConnectWatchdog()
 		if (this.rfb) {
 			this.rfb.disconnect()
 			this.rfb = null
@@ -1108,6 +1113,7 @@ export default {
 
 		async connect() {
 			this.clearReconnectTimer()
+			this.clearConnectWatchdog()
 			if (this.rfb) {
 				this.releaseStickyModifiers()
 				this.intentionalDisconnect = true
@@ -1157,8 +1163,11 @@ export default {
 				rfb.resizeSession = false
 				this.applyQualityPreset()
 
+				this.armConnectWatchdog(rfb)
+
 				rfb.addEventListener('connect', () => {
 					if (this.rfb !== rfb) return
+					this.clearConnectWatchdog()
 					this.status = 'connected'
 					this.connectedThisAttempt = true
 					this.connectError = ''
@@ -1223,6 +1232,31 @@ export default {
 					this.scheduleReconnect()
 				}
 			}
+		},
+
+		armConnectWatchdog(rfb) {
+			this.clearConnectWatchdog()
+			this.connectWatchdog = setTimeout(async () => {
+				this.connectWatchdog = null
+				if (this.rfb !== rfb || this.status !== 'connecting') return
+				// A Wayland portal waiting for someone at the server to click
+				// Allow is a legitimate wait: keep it, the overlay says why.
+				await this.fetchServiceStatus()
+				if (this.rfb !== rfb || this.status !== 'connecting') return
+				if (this.hostBlocker) return this.armConnectWatchdog(rfb)
+				this.rfb = null
+				this.status = 'disconnected'
+				this.connectError = this.$t('The host desktop did not answer. Trying again...')
+				try {
+					rfb.disconnect()
+				} catch (e) {}
+				this.scheduleReconnect()
+			}, CONNECT_TIMEOUT_MS)
+		},
+
+		clearConnectWatchdog() {
+			clearTimeout(this.connectWatchdog)
+			this.connectWatchdog = null
 		},
 
 		manualReconnect() {

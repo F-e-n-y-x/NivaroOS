@@ -1051,6 +1051,7 @@
   "Adjusting display resolution...": "Adjusting display resolution...",
   "Restart service": "Restart service",
   "Allow screen sharing on the server": "Allow screen sharing on the server",
+  "The host desktop did not answer. Trying again...": "The host desktop did not answer. Trying again...",
   "Screen sharing was declined on the server": "Screen sharing was declined on the server",
   "Ask again": "Ask again",
   "The server's screen is locked": "The server's screen is locked",
