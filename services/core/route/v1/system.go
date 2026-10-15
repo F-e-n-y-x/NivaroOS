@@ -20,15 +20,12 @@ import (
 
 	http2 "github.com/F-e-n-y-x/NivaroOS/services/common/utils/http"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/port"
-	"github.com/F-e-n-y-x/NivaroOS/services/core/common"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/config"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/common_err"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/version"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
-	model2 "github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
-	"github.com/F-e-n-y-x/NivaroOS/services/core/types"
 	"github.com/labstack/echo/v5"
 	"github.com/tidwall/gjson"
 )
@@ -41,22 +38,24 @@ import (
 // @Success 200 {string} string "ok"
 // @Router /sys/version/check [get]
 func GetSystemCheckVersion(ctx *echo.Context) error {
-	need, version := version.IsNeedUpdate(service.MyService.Casa().GetNivaroOSVersion())
-	if need {
-		installLog := model2.AppNotify{}
-		installLog.State = 0
-		installLog.Message = "New version " + version.Version + " is ready, ready to upgrade"
-		installLog.Type = types.NOTIFY_TYPE_NEED_CONFIRM
-		installLog.CreatedAt = strconv.FormatInt(time.Now().Unix(), 10)
-		installLog.UpdatedAt = strconv.FormatInt(time.Now().Unix(), 10)
-		installLog.Name = "NivaroOS System"
-		service.MyService.Notify().AddLog(installLog)
+	build := version.Info()
+	update := version.Check(ctx.QueryParam("refresh") == "1")
+	data := map[string]interface{}{
+		"build":           build,
+		"update":          update,
+		"current_version": build.Version,
+		// Older clients: need_update + version.version/change_log.
+		"need_update": update.State == version.StateBehind,
+		"version":     model.Version{Version: shortSHA(update.LatestCommit), ChangeLog: update.LatestMessage},
 	}
-	data := make(map[string]interface{}, 3)
-	data["need_update"] = need
-	data["version"] = version
-	data["current_version"] = common.VERSION
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: data})
+}
+
+func shortSHA(s string) string {
+	if len(s) > 7 {
+		return s[:7]
+	}
+	return s
 }
 
 // @Summary 系统信息
@@ -67,13 +66,12 @@ func GetSystemCheckVersion(ctx *echo.Context) error {
 // @Success 200 {string} string "ok"
 // @Router /sys/update [post]
 func SystemUpdate(ctx *echo.Context) error {
-	need, version := version.IsNeedUpdate(service.MyService.Casa().GetNivaroOSVersion())
-	if !need {
-		// Nothing to install (or no update source configured) - this used
+	if version.Check(false).State != version.StateBehind || config.ServerInfo.UpdateUrl == "" {
+		// Nothing to install, or no update source configured - this used
 		// to answer "success", and the UI showed a finished update.
 		return ctx.JSON(http.StatusConflict, model.Result{Success: http.StatusConflict, Message: "no update is available to install from here - run the NivaroOS installer to update"})
 	}
-	service.MyService.System().UpdateSystemVersion(version.Version)
+	service.MyService.System().UpdateSystemVersion("")
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
 }
 
@@ -94,17 +92,15 @@ func GetSystemConfigDebug(ctx *echo.Context) error {
 	array := service.MyService.System().GetSystemConfigDebug()
 	disk := service.MyService.System().GetDiskInfo()
 	sys := service.MyService.System().GetSysInfo()
-	version := service.MyService.Casa().GetNivaroOSVersion()
 	var bugContent string = fmt.Sprintf(`
 	 - OS: %s
 	 - NivaroOS Version: %s
 	 - Disk Total: %v 
 	 - Disk Used: %v 
 	 - System Info: %s
-	 - Remote Version: %s
-	 - Browser: $Browser$ 
+		 - Browser: $Browser$ 
 	 - Version: $Version$
-`, sys.OS, common.VERSION, disk.Total>>20, disk.Used>>20, array, version.Version)
+`, sys.OS, version.Info().Version, disk.Total>>20, disk.Used>>20, array)
 
 	//	array = append(array, fmt.Sprintf("disk,total:%v,used:%v,UsedPercent:%v", disk.Total>>20, disk.Used>>20, disk.UsedPercent))
 

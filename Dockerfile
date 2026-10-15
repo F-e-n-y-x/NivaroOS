@@ -20,9 +20,13 @@ ENV GOTOOLCHAIN=auto
 COPY services/ ./services/
 COPY cli/ ./cli/
 
+# Core's build identity (no .git in the build context to read it from).
+ARG NIVAROOS_COMMIT=""
+ARG NIVAROOS_DATE=""
+
 # Compile all microservices
 RUN mkdir -p /build/bin && \
-    (cd services/core && GOWORK=off go build -o /build/bin/nivaroos .) && \
+    (cd services/core && GOWORK=off go build -ldflags "-X github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/version.Commit=${NIVAROOS_COMMIT} -X github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/version.Date=${NIVAROOS_DATE}" -o /build/bin/nivaroos .) && \
     (cd services/gateway && GOWORK=off go build -o /build/bin/nivaroos-gateway .) && \
     (cd services/message-bus && GOWORK=off go build -o /build/bin/nivaroos-message-bus .) && \
     (cd services/app-management && GOWORK=off go build -o /build/bin/nivaroos-app-management .) && \

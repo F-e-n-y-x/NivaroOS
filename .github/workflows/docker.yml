@@ -51,6 +51,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NIVAROOS_COMMIT=${{ github.sha }}
+            NIVAROOS_DATE=${{ github.event.head_commit.timestamp }}
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max

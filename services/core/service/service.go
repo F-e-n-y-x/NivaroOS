@@ -25,7 +25,6 @@ var (
 )
 
 type Repository interface {
-	Casa() NivaroOSService
 	Connections() ConnectionsService
 	Gateway() external.ManagementService
 	Health() HealthService
@@ -47,7 +46,6 @@ func NewService(db *gorm.DB, RuntimePath string) Repository {
 	}
 
 	return &store{
-		casa:        NewNivaroOSService(),
 		connections: NewConnectionsService(db),
 		gateway:     gatewayManagement,
 		notify:      NewNotifyService(db),
@@ -66,7 +64,6 @@ func NewService(db *gorm.DB, RuntimePath string) Repository {
 type store struct {
 	peer        PeerService
 	db          *gorm.DB
-	casa        NivaroOSService
 	notify      NotifyServer
 	rely        RelyService
 	system      SystemService
@@ -117,10 +114,6 @@ func (c *store) System() SystemService {
 
 func (c *store) Notify() NotifyServer {
 	return c.notify
-}
-
-func (c *store) Casa() NivaroOSService {
-	return c.casa
 }
 
 func (c *store) Health() HealthService {

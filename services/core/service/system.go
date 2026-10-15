@@ -19,13 +19,13 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	"github.com/F-e-n-y-x/NivaroOS/services/core/common"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/config"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/common_err"
 	corefile "github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/httper"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/ip_helper"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/version"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 
@@ -75,7 +75,7 @@ type systemService struct{}
 
 func (c *systemService) GetDeviceInfo() model.DeviceInfo {
 	m := model.DeviceInfo{}
-	m.OS_Version = common.VERSION
+	m.OS_Version = version.Info().Version
 	err, portStr := MyService.Gateway().GetPort()
 	if err != nil {
 		m.Port = 80

@@ -9,8 +9,8 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
 	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
-	"github.com/F-e-n-y-x/NivaroOS/services/core/common"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/version"
 	v1 "github.com/F-e-n-y-x/NivaroOS/services/core/route/v1"
 	echojwt "github.com/labstack/echo-jwt/v5"
 	"github.com/labstack/echo/v5"
@@ -42,7 +42,7 @@ func InitV1Router() http.Handler {
 
 	e.GET("/v1/sys/version/check", v1.GetSystemCheckVersion)
 	e.GET("/v1/sys/version/current", func(ctx *echo.Context) error {
-		return ctx.String(200, common.VERSION)
+		return ctx.String(200, version.Info().Version)
 	})
 	e.GET("/ping", func(ctx *echo.Context) error {
 		return ctx.String(200, "pong")

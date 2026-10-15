@@ -25,6 +25,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/config"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/sqlite"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/version"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/route"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"github.com/coreos/go-systemd/daemon"
@@ -38,9 +39,6 @@ const LOCALHOST = "127.0.0.1"
 var sqliteDB *gorm.DB
 
 var (
-	commit = "private build"
-	date   = "private build"
-
 	//go:embed api/index.html
 	_docHTML string
 
@@ -58,12 +56,13 @@ var (
 func init() {
 	flag.Parse()
 	if *versionFlag {
-		fmt.Println("v" + common.VERSION)
+		fmt.Println(version.Info().Version)
 		return
 	}
 
-	println("git commit:", commit)
-	println("build date:", date)
+	b := version.Info()
+	println("git commit:", b.Commit)
+	println("build date:", b.Date)
 
 	config.InitSetup(*configFlag, _confSample)
 
