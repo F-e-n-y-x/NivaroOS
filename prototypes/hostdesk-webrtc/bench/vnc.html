@@ -1,0 +1,17 @@
+<!doctype html><html><body style="margin:0;background:#000"><div id="s" style="width:3398px;height:1220px"></div>
+<script type="module">
+import RFB from './novnc/core/rfb.js';
+const q = new URLSearchParams(location.search);
+// Same policy as HostDesktopPanel.vue: reconnect on 'disconnect' with 1,2,4..15 s backoff.
+let attempt = 0, rfb;
+function connect() {
+rfb = new RFB(document.getElementById('s'), `ws://${location.host}/websockify`);
+rfb.addEventListener('disconnect', () => setTimeout(connect, Math.min(15000, 1000 * 2 ** attempt++)));
+rfb.addEventListener('connect', () => { attempt = 0; });
+rfb.scaleViewport = false; rfb.viewOnly = q.get('vo') === '1'; rfb.resizeSession = false;
+rfb.qualityLevel = +(q.get('q') ?? 6); rfb.compressionLevel = +(q.get('c') ?? 2);
+rfb.addEventListener('connect', () => window.__connected = true);
+window.rfb = rfb;
+}
+connect();
+</script></body></html>

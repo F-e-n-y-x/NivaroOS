@@ -1,0 +1,66 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Host Desktop WebRTC prototype</title></head>
+<body style="margin:0;background:#000;overflow:hidden">
+<video id="v" autoplay muted playsinline style="display:none"></video>
+<canvas id="c" tabindex="0" style="display:block;outline:none"></canvas>
+<script>
+// Prototype viewer. The video is drawn into a canvas on every decoded frame (requestVideoFrameCallback)
+// so the same pixel-reading bench harness used for noVNC works unchanged.
+const v = document.getElementById('v'), c = document.getElementById('c'), g = c.getContext('2d');
+let pc, dc, lastFrame = 0, connecting = false;
+window.__stats = { reconnects: 0 };
+
+function draw(_, meta) {
+  if (c.width !== meta.width) { c.width = meta.width; c.height = meta.height; }
+  g.drawImage(v, 0, 0); lastFrame = performance.now();
+  v.requestVideoFrameCallback(draw);
+}
+
+async function connect() {
+  if (connecting) return; connecting = true;
+  try {
+    if (pc) pc.close();
+    pc = new RTCPeerConnection();
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    dc = pc.createDataChannel('input', { ordered: true });
+    pc.ontrack = e => {
+      if ('playoutDelayHint' in e.receiver) e.receiver.playoutDelayHint = 0;
+      if ('jitterBufferTarget' in e.receiver) e.receiver.jitterBufferTarget = 0;
+      v.srcObject = e.streams[0] || new MediaStream([e.track]);
+      v.requestVideoFrameCallback(draw);
+    };
+    await pc.setLocalDescription(await pc.createOffer());
+    await new Promise(r => { if (pc.iceGatheringState === 'complete') r(); pc.onicegatheringstatechange = () => pc.iceGatheringState === 'complete' && r(); setTimeout(r, 1000); });
+    const res = await fetch('/offer', { method: 'POST', body: JSON.stringify(pc.localDescription) });
+    await pc.setRemoteDescription(await res.json());
+    lastFrame = performance.now();
+  } catch (e) { console.error('connect', e); }
+  connecting = false;
+}
+
+// Self-healing: any dead peer or a frozen picture (>3 s without a decoded frame) re-offers.
+// ponytail: a static desktop still produces frames here (x11grab is fixed-rate); with damage-gated
+// capture this watchdog must use a server heartbeat on the data channel instead.
+setInterval(() => {
+  const st = pc && pc.connectionState;
+  if (!pc || st === 'failed' || st === 'closed' || performance.now() - lastFrame > 3000) { window.__stats.reconnects++; connect(); }
+}, 1000);
+
+const send = m => dc && dc.readyState === 'open' && dc.send(JSON.stringify(m));
+let mask = 0;
+const pos = e => { const r = c.getBoundingClientRect(); return { x: Math.round((e.clientX - r.left) * c.width / r.width), y: Math.round((e.clientY - r.top) * c.height / r.height) }; };
+const bit = b => [1, 2, 4][b] || 0;
+c.addEventListener('mousemove', e => send({ t: 'p', ...pos(e), m: mask }));
+c.addEventListener('mousedown', e => { mask |= bit(e.button); send({ t: "p", ...pos(e), m: mask }); });
+c.addEventListener('mouseup', e => { mask &= ~bit(e.button); send({ t: 'p', ...pos(e), m: mask }); });
+c.addEventListener('wheel', e => { const b = e.deltaY < 0 ? 8 : 16; const p = pos(e); send({ t: 'p', ...p, m: mask | b }); send({ t: 'p', ...p, m: mask }); e.preventDefault(); }, { passive: false });
+c.addEventListener('contextmenu', e => e.preventDefault());
+// ponytail: tiny keysym table; production reuses noVNC core/input/keyboard.js (already bundled).
+const SPECIAL = { Backspace: 0xff08, Tab: 0xff09, Enter: 0xff0d, Escape: 0xff1b, Delete: 0xffff, Home: 0xff50, End: 0xff57,
+  ArrowLeft: 0xff51, ArrowUp: 0xff52, ArrowRight: 0xff53, ArrowDown: 0xff54, PageUp: 0xff55, PageDown: 0xff56,
+  Shift: 0xffe1, Control: 0xffe3, Alt: 0xffe9, Meta: 0xffeb };
+const keysym = e => SPECIAL[e.key] ?? (e.key.length === 1 ? (e.key.codePointAt(0) < 0x100 ? e.key.codePointAt(0) : 0x01000000 + e.key.codePointAt(0)) : 0);
+for (const [ev, d] of [['keydown', true], ['keyup', false]]) c.addEventListener(ev, e => { const k = keysym(e); if (k) { send({ t: 'k', k, d }); e.preventDefault(); } });
+// bench hook: received bytes for bandwidth (UDP, so the harness can't use ss)
+setInterval(async () => { if (!pc) return; (await pc.getStats()).forEach(r => { if (r.type === 'inbound-rtp' && r.kind === 'video') { window.__stats.bytes = r.bytesReceived; window.__stats.dropped = r.framesDropped; window.__stats.decodeMs = r.totalDecodeTime / r.framesDecoded * 1000; } }); if (window.__m) window.__m.rtcBytes = window.__stats.bytes; }, 500);
+connect();
+</script></body></html>
