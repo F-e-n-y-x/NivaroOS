@@ -8,7 +8,9 @@
 #   * a unit that keeps failing - failed or crash-looping on two runs in a
 #     row - right after its binary was replaced (within
 #     NIVAROOS_ROLLBACK_WINDOW, 1 h by default) gets the previous binary
-#     (<binary>.prev) back, is restarted, and the rollback is logged;
+#     (<binary>.prev) back, is restarted, and the rollback is logged - or,
+#     when `nivaroos update` installed that binary, the whole release is
+#     rolled back (nivaroos update rollback);
 #   * tailscaled and sshd - the way in from outside - are started again if
 #     they stopped;
 #   * the gateway is probed over HTTP; if it stops answering on two runs in
@@ -31,6 +33,11 @@ FLAP_RESTARTS="${NIVAROOS_FLAP_RESTARTS:-3}"
 GATEWAY_INI="${NIVAROOS_GATEWAY_INI:-/etc/nivaroos/gateway.ini}"
 CURL="${NIVAROOS_CURL:-curl}"
 REMOTE_UNITS="${NIVAROOS_REMOTE_UNITS:-tailscaled.service ssh.service sshd.service ssh.socket}"
+# The last `nivaroos update` (installer/bundle/apply.sh's snapshot): a
+# binary it installed is rolled back with the whole release, never alone -
+# one old binary among new ones is a mix nobody tested.
+UPDATE_SNAP="${NIVAROOS_UPDATE_SNAP:-/var/lib/nivaroos/update/snap}"
+UPDATE_ROLLBACK="${NIVAROOS_UPDATE_ROLLBACK:-/usr/bin/nivaroos-cli update rollback --auto --reason}"
 
 mkdir -p "$NV_STATE_DIR" 2>/dev/null || true
 
@@ -119,6 +126,13 @@ check_unit() {
 	if [ -n "$bin" ] && [ "$fails" -ge "$FAILS_BEFORE_ROLLBACK" ] && nv_has_prev "$bin"; then
 		changed="$(nv_changed_at "$bin")"
 		if [ $(($(nv_now) - changed)) -le "$ROLLBACK_WINDOW" ]; then
+			if [ "$(cat "$UPDATE_SNAP/state" 2>/dev/null)" = committed ] && grep -qxF "/usr/bin/${bin##*/}" "$UPDATE_SNAP/changed" 2>/dev/null; then
+				nv_log "ROLLBACK: $unit $WHY on $fails checks in a row after an update; rolling the whole release back"
+				state_del "$unit.fails"
+				# shellcheck disable=SC2086 # the command and its fixed flags
+				$UPDATE_ROLLBACK "$unit $WHY after the update" >/dev/null 2>&1 || nv_log "whole-release rollback failed"
+				return 0
+			fi
 			if nv_restore_prev "$bin"; then
 				nv_log "ROLLBACK: $unit $WHY on $fails checks in a row after $bin changed; restored $bin.prev (bad build kept as $bin.bad.*)"
 				state_del "$unit.fails"

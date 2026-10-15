@@ -5,12 +5,14 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -129,6 +131,8 @@ func handleConsole(store *LibvirtStore) http.HandlerFunc {
 			return
 		}
 		defer wsConn.Close()
+		vmConsoleSessions.Add(1)
+		defer vmConsoleSessions.Add(-1)
 
 		proxyConsole(wsConn, tcpConn)
 	}
@@ -381,7 +385,21 @@ func proxyConsole(wsConn *websocket.Conn, tcpConn net.Conn) {
 	<-done
 }
 
+// vmConsoleSessions counts open VM consoles. GET /sessions reports them
+// with the Host Desktop viewers (VNC and WebRTC): the self-updater
+// installs at night only when both are 0.
+var vmConsoleSessions atomic.Int32
+
+func handleSessions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]int32{
+		"vm_console":   vmConsoleSessions.Load(),
+		"host_desktop": hostConsoleSessions.Load(),
+	})
+}
+
 func RegisterConsoleRoutes(mux *http.ServeMux, store *LibvirtStore) {
 	mux.HandleFunc("GET /vms/{name}/console", handleConsole(store))
 	mux.HandleFunc("GET /host/console", handleHostConsole())
+	mux.HandleFunc("GET /sessions", handleSessions)
 }

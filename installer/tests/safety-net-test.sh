@@ -161,6 +161,26 @@ wd
 wd
 check '[ "$(grep -c ROLLBACK "$T/log")" = 1 ]' "rollback happens once, no flip-flop"
 
+echo "watchdog: a binary the last update installed rolls the whole release back"
+reset_env
+mkdir -p "$T/snap"
+echo committed >"$T/snap/state"
+printf '/usr/bin/nivaroos\n/usr/bin/nivaroos-gateway\n' >"$T/snap/changed"
+printf '#!/bin/bash\necho "$*" >"%s/whole-rollback"\n' "$T" >"$T/update-rollback"
+chmod +x "$T/update-rollback"
+export NIVAROOS_UPDATE_SNAP="$T/snap" NIVAROOS_UPDATE_ROLLBACK="$T/update-rollback --auto --reason"
+echo "good build" >"$T/bin/nivaroos-gateway.prev"
+echo "BAD build" >"$T/bin/nivaroos-gateway"
+unit nivaroos-gateway.service nivaroos-gateway failed failed
+wd; wd
+check 'grep -q "^--auto --reason nivaroos-gateway.service failed" "$T/whole-rollback"' "whole-release rollback expected, got: $(cat "$T/whole-rollback" 2>/dev/null)"
+check '[ "$(cat "$T/bin/nivaroos-gateway")" = "BAD build" ]' "the watchdog must not swap that one binary itself"
+echo rolled-back >"$T/snap/state"
+rm -f "$T/whole-rollback"
+wd; wd
+check '[ ! -e "$T/whole-rollback" ] && [ "$(cat "$T/bin/nivaroos-gateway")" = "good build" ]' "after the update is rolled back, the single-binary rollback applies again"
+unset NIVAROOS_UPDATE_SNAP NIVAROOS_UPDATE_ROLLBACK
+
 echo "watchdog: no rollback when the binary changed long ago"
 reset_env
 echo "good build" >"$T/bin/nivaroos-user.prev"
