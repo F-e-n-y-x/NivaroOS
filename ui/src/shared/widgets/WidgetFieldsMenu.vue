@@ -1,5 +1,5 @@
 <template>
-	<b-dropdown position="is-bottom-left" append-to-body :close-on-click="false" aria-role="menu" class="widget-fields-menu">
+	<b-dropdown ref="dd" position="is-bottom-left" append-to-body :close-on-click="false" aria-role="menu" class="widget-fields-menu" @active-change="onActive">
 		<template #trigger>
 			<button type="button" class="widget-icon-btn" :title="$t('Choose what this widget shows')" :aria-label="$t('Choose what this widget shows')">
 				<i class="mdi mdi-tune-variant" aria-hidden="true"></i>
@@ -27,6 +27,21 @@ export default {
 	name: 'widget-fields-menu',
 	props: { fields: { type: Array, required: true } },
 	emits: ['toggle'],
+	beforeUnmount() {
+		this.onActive(false)
+	},
+	methods: {
+		// The menu lives on <body> at a fixed spot: when the widget column
+		// (or anything else) scrolls, close it instead of leaving it behind.
+		onActive(open) {
+			window[open ? 'addEventListener' : 'removeEventListener']('scroll', this.onScroll, true)
+		},
+		onScroll(e) {
+			const menu = this.$refs.dd && this.$refs.dd.$refs.dropdownMenu
+			if (menu && e.target instanceof Node && menu.contains(e.target)) return
+			this.$refs.dd.isActive = false
+		}
+	}
 }
 </script>
 
