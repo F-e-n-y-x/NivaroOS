@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	http2 "github.com/F-e-n-y-x/NivaroOS/services/common/utils/http"
 )
 
 const (
@@ -31,7 +29,7 @@ func (n *shareService) DeleteShare(id string) error {
 	url := strings.TrimSuffix(address, "/") + APINivaroOSShare + "/" + id
 	fmt.Println(url)
 
-	response, err := http2.Delete(url, []byte("{}"), 30*time.Second)
+	response, err := localCall(http.MethodDelete, url, []byte("{}"), 30*time.Second)
 	if err != nil {
 		return err
 	}

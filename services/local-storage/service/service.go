@@ -2,6 +2,7 @@ package service
 
 import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/localtoken"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/codegen/message_bus"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/config"
 	v2 "github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/v2"
@@ -105,7 +106,7 @@ func (c *store) MessageBus() *message_bus.ClientWithResponses {
 
 		c.Server = messageBusAddress
 		return nil
-	})
+	}, message_bus.WithRequestEditorFn(localtoken.Editor))
 
 	return client
 }

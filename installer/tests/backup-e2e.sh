@@ -91,6 +91,12 @@ check() {
 LAST_STATUS=""
 LAST_BODY=""
 
+# tcurl ARGS...: curl as same-host automation - with the root-only local
+# token (security audit H1), passed on stdin so it never shows in `ps`.
+tcurl() {
+	printf 'X-Nivaroos-Local-Token: %s\n' "$(cat /var/run/nivaroos/local-automation.token 2>/dev/null)" | curl -H @- "$@"
+}
+
 # api METHOD PATH [JSON] - sets LAST_STATUS/LAST_BODY; never fails the shell.
 api() {
 	local method="$1" path="$2" data="${3:-}" out
@@ -98,7 +104,7 @@ api() {
 	if [ -n "$data" ]; then
 		args+=(-H 'Content-Type: application/json' --data-binary "$data")
 	fi
-	out="$(curl "${args[@]}" "${API}${path}" 2>/dev/null)" || out=$'\n000'
+	out="$(tcurl "${args[@]}" "${API}${path}" 2>/dev/null)" || out=$'\n000'
 	LAST_STATUS="${out##*$'\n'}"
 	LAST_BODY="${out%$'\n'*}"
 }
@@ -296,7 +302,7 @@ if [ "$USE_GATEWAY" = yes ]; then
 	code="$(curl -sS -m 10 -o /dev/null -w '%{http_code}' -H 'Origin: http://evil.example' "$gw/jobs" 2>/dev/null || true)"
 	check "gateway: a browser request without a token is refused (got $code)" test "$code" = 401
 	# The installer's update check (§8.4) - loopback automation through the gateway.
-	code="$(curl -sS -m 10 -o /dev/null -w '%{http_code}' "$gw/runs?status=running" 2>/dev/null || true)"
+	code="$(tcurl -sS -m 10 -o /dev/null -w '%{http_code}' "$gw/runs?status=running" 2>/dev/null || true)"
 	check "gateway: GET /runs?status=running as local automation (got $code)" test "$code" = 200
 else
 	skip "gateway route checks (--no-gateway)"

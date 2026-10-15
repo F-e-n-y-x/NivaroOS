@@ -18,9 +18,11 @@ package cmd
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/cli/codegen/message_bus"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/localtoken"
 	"github.com/gorilla/websocket"
 	"github.com/spf13/cobra"
 )
@@ -52,10 +54,14 @@ func subscribeWS(rootURL, messageType, sourceID, names string, bufferSize uint) 
 	}
 
 	// No Origin header: the gateway only treats a same-host caller as
-	// local automation (no token needed) when it doesn't look like a
-	// browser, and golang.org/x/net/websocket always sent one.
+	// local automation when it doesn't look like a browser (and
+	// golang.org/x/net/websocket always sent one) - plus the local token.
+	hdr := http.Header{}
+	if tok := localtoken.Get(); tok != "" {
+		hdr.Set(localtoken.Header, tok)
+	}
 	dialer := websocket.Dialer{ReadBufferSize: int(bufferSize)}
-	ws, _, err := dialer.Dial(wsURL, nil)
+	ws, _, err := dialer.Dial(wsURL, hdr)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}

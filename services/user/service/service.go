@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/localtoken"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/codegen/message_bus"
@@ -75,7 +76,7 @@ func (c *store) MessageBus() *message_bus.ClientWithResponses {
 
 		c.Server = messageBusAddress
 		return nil
-	})
+	}, message_bus.WithRequestEditorFn(localtoken.Editor))
 
 	return client
 }

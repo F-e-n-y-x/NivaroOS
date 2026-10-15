@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/F-e-n-y-x/NivaroOS/services/common/localtoken"
 )
 
 // Loopback clients for the other NivaroOS services (spec §0): core's
@@ -96,6 +98,7 @@ func doJSON(ctx context.Context, method, u string, body, out interface{}) error 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	localtoken.Add(req)
 	res, err := loopbackClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("%w: %v", errUnreachable, err)

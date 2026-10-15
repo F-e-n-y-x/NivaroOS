@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
-	http2 "github.com/F-e-n-y-x/NivaroOS/services/common/utils/http"
 	"github.com/tidwall/gjson"
 )
 
@@ -34,7 +33,7 @@ type appManageService struct {
 func (m *appManageService) GetAppInfo(storeId string) (model.ComposeAppWithStoreInfo, error) {
 	url := strings.TrimSuffix(m.address, "/") + APIComposeInfo + "/" + storeId
 	model := model.ComposeAppWithStoreInfo{}
-	response, err := http2.Get(url, 5*time.Second)
+	response, err := localCall(http.MethodGet, url, nil, 5*time.Second)
 	if err != nil {
 		return model, err
 	}
@@ -57,7 +56,7 @@ func (m *appManageService) PutAppStatus(storeId string, status string) (bool, er
 	url := strings.TrimSuffix(m.address, "/") + APIComposeStatus + "/" + storeId + "/status"
 
 	body := []byte(`"` + status + `"`)
-	response, err := http2.Put(url, body, 5*time.Second)
+	response, err := localCall(http.MethodPut, url, body, 5*time.Second)
 	if err != nil {
 		return false, err
 	}

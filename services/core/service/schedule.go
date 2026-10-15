@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/localtoken"
 	"github.com/tidwall/gjson"
 	"io"
 	"net/http"
@@ -958,6 +959,7 @@ func updateContainerViaAppManagement(ctx context.Context, target string) (string
 	if err != nil {
 		return "", err
 	}
+	localtoken.Add(req)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("container update request failed: %w", err)

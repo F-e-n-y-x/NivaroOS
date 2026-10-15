@@ -121,6 +121,9 @@ func tokenRoleAllowed(token string) bool {
 // requiring both to be absent keeps a browser tab on this box (which also
 // arrives from loopback) on the normal token path. Copied from vm-sidecar.
 func isLoopbackAutomation(r *http.Request) bool {
+	if middleware.HasLocalToken(r) {
+		return true
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
@@ -135,7 +138,7 @@ func isLoopbackAutomation(r *http.Request) bool {
 	// middleware.HasProxyMarks also covers cloudflared / `tailscale serve`
 	// relays; LoopbackUntrusted is set while a userspace-networking
 	// tailscaled re-dials tailnet peers from 127.0.0.1.
-	if viaGateway(r) || middleware.HasProxyMarks(r) || middleware.LoopbackUntrusted() {
+	if viaGateway(r) || middleware.HasProxyMarks(r) || !middleware.LegacyLoopbackTrust() {
 		return false
 	}
 	return r.Header.Get("Origin") == "" && r.Header.Get("Sec-Fetch-Site") == ""

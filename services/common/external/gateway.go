@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
-	http2 "github.com/F-e-n-y-x/NivaroOS/services/common/utils/http"
 )
 
 const (
@@ -40,7 +39,7 @@ func (m *managementService) CreateRoute(route *model.Route) error {
 		return err
 	}
 
-	response, err := http2.Post(url, body, 30*time.Second)
+	response, err := localCall(http.MethodPost, url, body, 30*time.Second)
 	if err != nil {
 		return err
 	}
@@ -60,7 +59,7 @@ func (m *managementService) ChangePort(request *model.ChangePortRequest) error {
 		return err
 	}
 
-	response, err := http2.Put(url, body, 30*time.Second)
+	response, err := localCall(http.MethodPut, url, body, 30*time.Second)
 	if err != nil {
 		return err
 	}
@@ -75,7 +74,7 @@ func (m *managementService) ChangePort(request *model.ChangePortRequest) error {
 func (m *managementService) GetPort() (error, string) {
 	url := strings.TrimSuffix(m.address, "/") + "/" + strings.TrimPrefix(APIGatewayPort, "/")
 
-	response, err := http2.Get(url, 30*time.Second)
+	response, err := localCall(http.MethodGet, url, nil, 30*time.Second)
 	if err != nil {
 		return err, ""
 	}

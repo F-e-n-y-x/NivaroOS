@@ -1564,32 +1564,55 @@ install_backup() {
 # afterwards, but a long cloud upload would start over, so running backups
 # are waited for (or cancelled, or the update aborted) first. Runs before
 # any service is stopped. Asks the service directly on its loopback port as
-# local automation (no token: loopback peer, no browser headers); an old
-# install without Backup, or a service that doesn't answer, has nothing to
-# wait for. --force skips the check.
+# local automation (local_api_curl); an old install without Backup, or a
+# service that doesn't answer, has nothing to wait for. --force skips the
+# check.
 # ------------------------------------------------------------------------------
 BACKUP_API="http://127.0.0.1:28643/v1/backup"
+
+# Same-host automation proves it is root with this token (security audit
+# 2026-10, H1; services/common/localtoken). The services create it too; the
+# installer makes it for services that only read it.
+LOCAL_TOKEN=/var/run/nivaroos/local-automation.token
+
+ensure_local_token() {
+	[ -s "$LOCAL_TOKEN" ] && return 0
+	mkdir -p "${LOCAL_TOKEN%/*}"
+	local tmp="$LOCAL_TOKEN.tmp.$$"
+	rm -f "$tmp"
+	# ln never replaces: a service that made one at the same moment wins.
+	(umask 077 && od -An -tx1 -N32 /dev/urandom | tr -d ' \n' >"$tmp" && echo >>"$tmp") && ln "$tmp" "$LOCAL_TOKEN" 2>/dev/null
+	rm -f "$tmp"
+	return 0
+}
+
+# local_api_curl ARGS...: curl a NivaroOS service on loopback with the token.
+# The header goes in on stdin, so the token never shows up in `ps`.
+local_api_curl() {
+	ensure_local_token
+	printf 'X-Nivaroos-Local-Token: %s\n' "$(cat "$LOCAL_TOKEN" 2>/dev/null)" | curl -H @- "$@"
+}
 BACKUP_WAIT_MAX_SECS=7200
 
 # running_backup_ids prints the ids of running backup runs, one per line
 # (nothing when none run or the service isn't there).
 running_backup_ids() {
 	local body
-	body="$(curl -fsS -m 5 "${BACKUP_API}/runs?status=running" 2>/dev/null)" || return 0
+	body="$(local_api_curl -fsS -m 5 "${BACKUP_API}/runs?status=running" 2>/dev/null)" || return 0
 	printf '%s' "$body" | grep -o '"id":"run_[^"]*"' | sed 's/^"id":"//; s/"$//' || true
 }
 
 # running_backup_names prints "job name" per running run, for the prompt.
 running_backup_names() {
 	local body
-	body="$(curl -fsS -m 5 "${BACKUP_API}/runs?status=running" 2>/dev/null)" || return 0
+	body="$(local_api_curl -fsS -m 5 "${BACKUP_API}/runs?status=running" 2>/dev/null)" || return 0
 	printf '%s' "$body" | grep -o '"job_name":"[^"]*"' | sed 's/^"job_name":"//; s/"$//' || true
 }
 
 cancel_running_backups() {
 	local id
 	for id in $(running_backup_ids); do
-		curl -fsS -m 10 -X POST -H 'Content-Type: application/json' -d '{}' "${BACKUP_API}/runs/${id}/cancel" >/dev/null 2>&1 || true
+		local_api_curl -fsS -m 10 -X POST -H 'Content-Type: application/json' -d '{}' "${BACKUP_API}/runs/${id}/cancel" >/dev/null 2>&1 || true
 	done
 	# Cancelling stops the transfer and runs the post hooks (restarting
 	# apps and VMs the job stopped); give that a moment to finish.
@@ -2228,6 +2251,7 @@ main() {
 		ui_head "Installing"
 	fi
 
+	ensure_local_token
 	check_running_backups
 	remove_backup_module
 	pause_backup_service

@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	http2 "github.com/F-e-n-y-x/NivaroOS/services/common/utils/http"
 )
 
 const (
@@ -38,7 +36,7 @@ func (n *notifyService) SendNotify(path string, message interface{}) error {
 		return err
 	}
 
-	response, err := http2.Post(url, body, 5*time.Second)
+	response, err := localCall(http.MethodPost, url, body, 5*time.Second)
 	if err != nil {
 		return err
 	}

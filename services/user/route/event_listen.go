@@ -3,11 +3,13 @@ package route
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/localtoken"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	message_bus "github.com/F-e-n-y-x/NivaroOS/services/user/codegen/message_bus"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/model"
@@ -39,7 +41,11 @@ func EventListen() {
 		}
 
 		wsURL := fmt.Sprintf("ws://%s/event/%s", strings.TrimPrefix(messageBusUrl, "http://"), "local-storage")
-		conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+		hdr := http.Header{}
+		if tok := localtoken.Get(); tok != "" {
+			hdr.Set(localtoken.Header, tok)
+		}
+		conn, _, err := websocket.DefaultDialer.Dial(wsURL, hdr)
 		if err != nil {
 			failures++
 			logger.Error("connect websocket err"+strconv.Itoa(failures), zap.Any("error", err))

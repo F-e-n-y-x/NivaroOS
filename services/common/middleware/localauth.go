@@ -70,7 +70,9 @@ func IsDirectLocalAutomation(r *http.Request) bool {
 }
 
 // IsLocalAutomation reports whether r may skip JWT auth as same-host
-// automation. Unlike echo's c.RealIP() (which trusts X-Forwarded-For /
+// automation: it carries the root-only local token (HasLocalToken), or -
+// while LegacyLoopbackTrust allows it - it passes the old loopback rule.
+// Unlike echo's c.RealIP() (which trusts X-Forwarded-For /
 // X-Real-IP and therefore any header an attacker sends, and which makes
 // every gateway-proxied request look like it came from wherever the
 // gateway says), this looks only at the socket peer:
@@ -88,7 +90,10 @@ func IsDirectLocalAutomation(r *http.Request) bool {
 // connections are re-dialled from 127.0.0.1 and would look local - see
 // LoopbackUntrusted, which switches loopback trust off entirely then.
 func IsLocalAutomation(r *http.Request) bool {
-	if LoopbackUntrusted() || !IsLoopbackAddr(r.RemoteAddr) || hasBrowserMarks(r) {
+	if HasLocalToken(r) {
+		return true
+	}
+	if !LegacyLoopbackTrust() || !IsLoopbackAddr(r.RemoteAddr) || hasBrowserMarks(r) {
 		return false
 	}
 	if !hasProxyMarks(r) {

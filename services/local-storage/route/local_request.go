@@ -20,10 +20,14 @@ func IsTrustedLocalRequest(r *http.Request) bool {
 	if r == nil {
 		return false
 	}
+	if middleware.HasLocalToken(r) {
+		return true
+	}
 	// Relays on this box (cloudflared, `tailscale serve`) and a
 	// userspace-networking tailscaled all dial from loopback on behalf of
-	// remote clients - see common/middleware.LoopbackUntrusted.
-	if middleware.LoopbackUntrusted() || middleware.HasProxyMarks(r) {
+	// remote clients - see common/middleware.LoopbackUntrusted. Without the
+	// token, loopback counts only for the old rule's last release.
+	if !middleware.LegacyLoopbackTrust() || middleware.HasProxyMarks(r) {
 		return false
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)

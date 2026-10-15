@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/F-e-n-y-x/NivaroOS/services/common/localtoken"
 )
 
 // Finished and failed downloads in the NivaroOS notification feed
@@ -62,7 +64,13 @@ func busNotifier(runtimePath string) func(Event) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	post := func(u string, body interface{}) error {
 		raw, _ := json.Marshal(body)
-		res, err := client.Post(u, "application/json", bytes.NewReader(raw))
+		req, err := http.NewRequest(http.MethodPost, u, bytes.NewReader(raw))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		localtoken.Add(req)
+		res, err := client.Do(req)
 		if err != nil {
 			return err
 		}

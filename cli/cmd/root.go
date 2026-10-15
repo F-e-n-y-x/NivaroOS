@@ -18,9 +18,11 @@ package cmd
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
+	"github.com/F-e-n-y-x/NivaroOS/services/common/localtoken"
 	"github.com/go-ini/ini"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/spf13/cobra"
@@ -69,7 +71,20 @@ func Execute() {
 	}
 }
 
+// localTokenTransport sends the root-only local-automation token with every
+// request to this host (localtoken.Add skips any other host): the
+// services no longer take a bare loopback connection as root.
+type localTokenTransport struct{ base http.RoundTripper }
+
+func (t localTokenTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	localtoken.Add(r)
+	return t.base.RoundTrip(r)
+}
+
 func init() {
+	http.DefaultTransport = localTokenTransport{http.DefaultTransport}
+
 	url := ""
 
 	rootCmd.PersistentFlags().StringP(FlagRootURL, "u", "", "root url of NivaroOS API")
