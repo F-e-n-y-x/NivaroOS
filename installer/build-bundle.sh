@@ -230,8 +230,9 @@ if [ -n "$VERSION" ]; then
 	printf '{"version":"%s","channel":"%s","commit":"%s","built":"%s"}\n' \
 		"$VERSION" "$CHANNEL" "$COMMIT" "$(git -C "$SRC" log -1 --format=%cI 2>/dev/null || date -u +%FT%TZ)" >"$OUT/.release.json"
 	put release 0644 "$OUT/.release.json" /usr/share/nivaroos/release.json
-	# This release's section of CHANGELOG.md (## X.Y.Z ... up to the next ##).
-	awk -v v="$VERSION" '/^## / { p = (index($0, v) > 0) } p' "$SRC/CHANGELOG.md" >"$OUT/CHANGES.md" || true
+	# This release's section of CHANGELOG.md: "## [server X.Y.Z] - date" up
+	# to the next "## " (server and app versions are numbered apart).
+	awk -v h="## [server $VERSION]" '/^## / { p = (index($0, h) == 1) } p' "$SRC/CHANGELOG.md" >"$OUT/CHANGES.md" || true
 	[ -s "$OUT/CHANGES.md" ] || echo "NivaroOS server $VERSION" >"$OUT/CHANGES.md"
 	echo "bundle 0644 CHANGES.md" >>"$FILES"
 fi
