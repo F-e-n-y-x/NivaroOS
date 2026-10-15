@@ -12,7 +12,7 @@
 				</div>
 
 			</div>
-			<b-notification v-model="notificationShow" aria-close-label="Close notification" auto-close role="alert"
+			<b-notification v-model="notificationShow" aria-close-label="Close notification" role="alert"
 							type="is-danger">
 				{{ message }}
 			</b-notification>
@@ -22,14 +22,14 @@
 			<b-field :label="$t('Password')" :message="fieldMessage('password')" :type="fieldType('password')" class="mt-2">
 				<b-input v-model="password" :autofocus="!!username" password-reveal type="password" @keyup.enter="submit"></b-input>
 			</b-field>
-			<b-button class="mt-5" expanded rounded type="is-primary" @click="submit">{{ $t('Login') }}
+			<b-button class="mt-5" expanded rounded type="is-primary" :loading="busy" @click="submit">{{ $t('Login') }}
 			</b-button>
 		</div>
 	</div>
 </template>
 
 <script>
-import formChecks, { firstError, minLength, required } from '@/mixins/formChecks'
+import formChecks, { firstError, required } from '@/mixins/formChecks'
 import UserAvatar from '@/shared/basicComponents/UserAvatar.vue'
 import { rememberedAvatar, syncRememberedAvatar } from '@/utils/avatar'
 
@@ -44,6 +44,7 @@ export default {
 			username: '',
 			password: '',
 			isLoading: false,
+			busy: false,
 			message: "",
 			notificationShow: false,
 		}
@@ -55,7 +56,8 @@ export default {
 		fieldErrors() {
 			return {
 				username: firstError(this.username, [required]),
-				password: firstError(this.password, [required, minLength(5)]),
+				// Sign-in only needs a password; length rules belong to sign-up.
+				password: firstError(this.password, [required]),
 			}
 		},
 		// Only the account last signed in on this browser has a picture
@@ -85,8 +87,21 @@ export default {
 		},
 	},
 	methods: {
-		submit() {
-			if (this.validateAll()) this.login()
+		// A slow server used to take every extra click/Enter as another login.
+		async submit() {
+			if (this.busy || !this.validateAll()) return
+			this.busy = true
+			this.notificationShow = false
+			try {
+				await this.login()
+			} finally {
+				this.busy = false
+			}
+		},
+		// Errors only: a green username after a failed sign-in read as
+		// "username right, password wrong".
+		fieldType(f) {
+			return this.checkedFields[f] && this.fieldErrors[f] ? 'is-danger' : ''
 		},
 		// The background here otherwise only ever reflects whatever was
 		// last cached to localStorage the last time this browser fully
