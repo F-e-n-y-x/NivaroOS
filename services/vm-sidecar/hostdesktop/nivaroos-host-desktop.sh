@@ -515,11 +515,17 @@ write_state running ""
 
 args=(
 	-display "$R_DISPLAY"
-	# Unix socket only (-rfbport 0 = no TCP listener at all), created 0600
-	# root by the umask below: only root - i.e. vm-sidecar's authenticated
-	# /host/console proxy - can connect. No password is needed on top.
-	-rfbport 0 -unixsock "$SOCK" -noipv6 -nopw
+	# Unix socket only, created 0600 root by the umask below: only root -
+	# i.e. vm-sidecar's authenticated /host/console proxy - can connect. No
+	# password is needed on top. -rfbport 0 turns off only the IPv4
+	# listener; libvncserver still opened [::]:5900 with no password (and
+	# -noipv6 doesn't stop it) until -rfbportv6 -1.
+	-rfbport 0 -rfbportv6 -1 -unixsock "$SOCK" -noipv6 -nopw
 	-forever -shared
+	# -nonap: x11vnc's default naps up to 1.5 s between polls on a still
+	# screen, so a viewer connecting to an idle desktop waited ~1 s for the
+	# handshake and the first click after a pause took that long to show.
+	-nonap
 	-xrandr resize
 	# -repeat (not -norepeat): -norepeat broke holding a key (Backspace,
 	# arrows) entirely.

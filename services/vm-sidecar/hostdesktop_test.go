@@ -99,7 +99,7 @@ func TestHostDesktopSettingsRoundTrip(t *testing.T) {
 
 func TestEmbeddedHostDesktopFiles(t *testing.T) {
 	script := string(hostDesktopScriptContent)
-	for _, want := range []string{"-unixsock", "-rfbport 0", "-noprimary", "-add_keysyms", "-nowf", "-noscr", "-snapfb", "-wait", "-defer", "--resolve", "host-vnc-wayland"} {
+	for _, want := range []string{"-unixsock", "-rfbport 0 -rfbportv6 -1", "-nonap", "-noprimary", "-add_keysyms", "-nowf", "-noscr", "-snapfb", "-wait", "-defer", "--resolve", "host-vnc-wayland"} {
 		if !strings.Contains(script, want) {
 			t.Errorf("wrapper script lacks %q", want)
 		}
