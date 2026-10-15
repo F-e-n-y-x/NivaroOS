@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/ecdsa"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -178,5 +179,15 @@ func TestRequireAuthTakesTheScreenshotTicket(t *testing.T) {
 		if w.Code != want {
 			t.Errorf("GET %s: %d, want %d", target, w.Code, want)
 		}
+	}
+}
+
+// L7: the UI and the app reach the sidecar through the gateway
+// (/v1/vm-sidecar); its own port listened on every address (LAN, docker and
+// libvirt bridges, Tailscale v6).
+func TestListensOnLoopbackOnly(t *testing.T) {
+	host, _, err := net.SplitHostPort(defaultAddr)
+	if ip := net.ParseIP(host); err != nil || ip == nil || !ip.IsLoopback() {
+		t.Fatalf("default address %q is not loopback", defaultAddr)
 	}
 }

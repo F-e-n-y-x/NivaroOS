@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# nivaroos-host-firewall apply|remove - Host Desktop firewall rules.
-#  - x11vnc backstop (audit C1/L7): TCP 5900 dropped on every interface but
-#    loopback, IPv4 and IPv6, in NivaroOS's own nftables table. x11vnc only
-#    serves a unix socket; this keeps a stray TCP listener unreachable.
+# nivaroos-host-firewall apply|remove - NivaroOS host firewall rules.
+#  - Backstops in NivaroOS's own nftables table (inet: IPv4 and IPv6):
+#    - TCP 5900 (x11vnc, audit C1) and 28641 (vm-sidecar, audit L7) dropped
+#      on every interface but loopback. x11vnc only serves a unix socket and
+#      the sidecar listens on 127.0.0.1 (the UI reaches it through the
+#      gateway); this keeps a stray or old wide listener unreachable.
+#    - TCP 28642 (Download Station: the Lite browser needs its own origin,
+#      so the LAN and Tailscale reach it) dropped from container and VM
+#      bridges (audit L7).
 #  - "Smooth (beta)" WebRTC: UDP 28650 opened for the LAN (interfaces with a
 #    default route) and Tailscale, only where ufw or firewalld is active
 #    (without them nothing blocks it). Never on docker/libvirt bridges.
@@ -13,6 +18,8 @@ set -uo pipefail
 PORT=28650
 TAG=nivaroos-hostdesk-smooth
 TABLE=nivaroos_hostdesk
+# Container (docker, podman veth) and VM (libvirt) bridges and taps.
+GUEST_BRIDGES=('docker*' 'br-*' 'veth*' 'virbr*' 'vnet*')
 
 warn() { printf 'nivaroos-host-firewall: %s\n' "$*" >&2; }
 
@@ -34,15 +41,17 @@ ufw_ours() { # interfaces we opened the port on
 }
 
 backstop_apply() {
-	command -v nft >/dev/null || { warn "nft not found - TCP 5900 backstop not installed (install nftables)"; return 0; }
+	command -v nft >/dev/null || { warn "nft not found - TCP 5900/28641/28642 backstops not installed (install nftables)"; return 0; }
 	# "table; delete table; table {...}" in one transaction = atomic replace.
-	nft -f - <<EOF || warn "nft: TCP 5900 backstop failed"
+	nft -f - <<EOF || warn "nft: backstop rules failed"
 table inet $TABLE
 delete table inet $TABLE
 table inet $TABLE {
 	chain input {
 		type filter hook input priority -10; policy accept;
 		iifname != "lo" tcp dport 5900 drop comment "x11vnc backstop (audit C1)"
+		iifname != "lo" tcp dport 28641 drop comment "vm-sidecar: gateway only (audit L7)"
+$(for b in "${GUEST_BRIDGES[@]}"; do printf '\t\tiifname "%s" tcp dport 28642 drop comment "DS: not from containers/VMs (audit L7)"\n' "$b"; done)
 	}
 }
 EOF

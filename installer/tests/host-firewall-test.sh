@@ -73,6 +73,15 @@ fw apply
 check '[ ! -s "$FAKE/ufw.rules" ] && ! ls "$FAKE"/fwd.* >/dev/null 2>&1' "inactive firewalls: no 28650 rule"
 check 'grep -q "tcp dport 5900 drop" "$FAKE/nft.table" && grep -q "iifname != \"lo\"" "$FAKE/nft.table"' "backstop drops 5900 except on loopback"
 check 'grep -q "^table inet nivaroos_hostdesk" "$FAKE/nft.table" && grep -q "^delete table inet nivaroos_hostdesk" "$FAKE/nft.table"' "backstop replaces its own table atomically"
+# Sidecars (audit L7): VM Manager only through the gateway (loopback);
+# Download Station's Lite-browser port for the LAN/Tailscale, never from a
+# container or VM bridge. IPv4 and IPv6 (one inet table).
+check 'grep -q "iifname != \"lo\" tcp dport 28641 drop" "$FAKE/nft.table"' "vm-sidecar 28641 loopback only"
+for b in "docker*" "br-*" "veth*" "virbr*" "vnet*"; do
+	check 'grep -qF "iifname \"$b\" tcp dport 28642 drop" "$FAKE/nft.table"' "DS 28642 dropped on $b"
+done
+check '! grep -q "iifname != \"lo\" tcp dport 28642" "$FAKE/nft.table"' "DS 28642 stays open to the LAN"
+check 'grep -q "^table inet nivaroos_hostdesk {" "$FAKE/nft.table" && grep -q "type filter hook input" "$FAKE/nft.table"' "one inet table (v4 + v6)"
 
 # ufw active: br0 + tailscale0 only, idempotent.
 touch "$FAKE/ufw.on"

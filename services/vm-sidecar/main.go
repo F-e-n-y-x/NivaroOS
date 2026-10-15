@@ -10,8 +10,13 @@ import (
 	"time"
 )
 
+// defaultAddr: loopback only - the UI and the app come through the gateway
+// (/v1/vm-sidecar, audit L7); nivaroos-host-firewall drops 28641 off
+// loopback too.
+const defaultAddr = "127.0.0.1:28641"
+
 func main() {
-	addr := flag.String("addr", ":28641", "address to listen on")
+	addr := flag.String("addr", defaultAddr, "address to listen on")
 	uri := flag.String("libvirt-uri", "qemu:///system", "libvirt connection URI")
 	runtimePath := flag.String("runtime-path", "/var/run/nivaroos", "NivaroOS runtime directory (for locating user-service's JWKS endpoint)")
 	flag.Parse()
