@@ -11,6 +11,7 @@
 
 .ds-list-toolbar {
 	display: flex;
+	flex-wrap: wrap; // a phone-width window drops the actions under the title
 	align-items: center;
 	justify-content: space-between;
 	gap: var(--space-3);
