@@ -35,6 +35,7 @@
 				<p class="step-help">{{ $t('Run this on the server, open the link it prints, and sign in.') }}</p>
 				<code class="authorize-cmd">{{ command }}</code>
 				<a class="advanced-toggle" :class="{ 'is-disabled': !credsOk }" @click="credsOk && openTerminal()">{{ $t('Run it in Terminal') }}</a>
+				<p class="step-help">{{ $t('If the page after signing in does not open, replace {from} at the start of its address with {to}.', { from: 'http://127.0.0.1:53682 (or http://localhost:53682)', to: relayBase }) }}</p>
 			</div>
 		</div>
 
@@ -103,6 +104,9 @@ export default {
 				client_secret: this.own ? this.clientSecret : '',
 			}
 		},
+		relayBase() {
+			return `${window.location.origin}/v1/rclone-auth`
+		},
 		command() {
 			if (!this.own) return `rclone authorize "${this.type}"`
 			return `rclone authorize "${this.type}" "${this.clientId || 'CLIENT_ID'}" "${this.clientSecret || 'CLIENT_SECRET'}"`
@@ -120,16 +124,13 @@ export default {
 	},
 	methods: {
 		openTerminal() {
-			// `rclone authorize` always prints a 127.0.0.1:53682 link (hardcoded
-			// upstream), and the provider's redirect back after sign-in is
-			// hardcoded to that same literal address too - unreachable unless
-			// the browser is on this exact machine. A small always-on proxy
-			// (services/local-storage/pkg/oauthproxy) listens on port 53682
-			// on this box's real LAN address(es), same port rclone uses, just
-			// not on loopback - so swapping only the host (not the port) in
-			// whatever 127.0.0.1:53682 link/redirect shows up, here or by
-			// hand in the URL bar, lands somewhere real.
-			const host = window.location.hostname
+			// `rclone authorize` serves its link and the provider's redirect
+			// back on 127.0.0.1:53682 only (hardcoded upstream) - unreachable
+			// unless the browser is on this machine. The gateway relays
+			// /v1/rclone-auth to it on the dashboard's own port
+			// (services/gateway/route/rclone_auth.go), so the printed link is
+			// rewritten to that; the redirect back is fixed in the address bar
+			// (see relayHint).
 			const args = this.own ? ` "${this.clientId}" "${this.clientSecret}"` : ''
 			this.$store.commit('OPEN_WINDOW', {
 				id: 'terminal-' + Date.now(),
@@ -137,7 +138,7 @@ export default {
 				component: 'TerminalPanel',
 				width: 720,
 				height: 480,
-				props: { initCommand: `rclone authorize "${this.type}"${args} 2>&1 | sed -u "s/127\\.0\\.0\\.1:53682/${host}:53682/g"` },
+				props: { initCommand: `rclone authorize "${this.type}"${args} 2>&1 | sed -u -e "s#http://127\\.0\\.0\\.1:53682#${this.relayBase}#g" -e "s#http://localhost:53682#${this.relayBase}#g"` },
 			})
 		},
 	},

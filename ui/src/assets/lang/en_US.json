@@ -576,6 +576,7 @@
   "Sign in to {provider}": "Sign in to {provider}",
   "Run this on the server, open the link it prints, and sign in.": "Run this on the server, open the link it prints, and sign in.",
   "Run it in Terminal": "Run it in Terminal",
+  "If the page after signing in does not open, replace {from} at the start of its address with {to}.": "If the page after signing in does not open, replace {from} at the start of its address with {to}.",
   "Paste what it prints back": "Paste what it prints back",
   "Paste it here": "Paste it here",
   "Sign in with your Apple ID": "Sign in with your Apple ID",

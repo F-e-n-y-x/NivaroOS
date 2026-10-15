@@ -36,7 +36,7 @@ Your client ID and secret are stored only on your server, in the same protected 
 2. Choose **Your own app**, then paste the Client ID and Client secret.
 3. Click **Run it in Terminal** and open the link it prints.
 4. Sign in. Google says **"Google hasn't verified this app"**: click **Advanced → Go to NivaroOS (unsafe)**. It's your own app. Then allow access.
-5. If the browser ends on a `127.0.0.1:53682` page that doesn't load, replace `127.0.0.1` in the address bar with your server's address (the one in the dashboard's address bar), then press Enter.
+5. If the browser ends on a `http://127.0.0.1:53682` (or `http://localhost:53682`) page that doesn't load, replace that start of the address with your dashboard's address followed by `/v1/rclone-auth` (for example `http://192.168.1.10/v1/rclone-auth/?state=...`), then press Enter. The form shows the exact text to use.
 6. The terminal prints a token, a line starting with `{"access_token"`. Copy it, paste it into step 3 of the form, and click **Connect** (or **Reconnect**).
 
 The account list now shows **Your own app** next to the account.

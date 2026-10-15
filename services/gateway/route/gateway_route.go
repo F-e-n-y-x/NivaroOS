@@ -349,6 +349,11 @@ func (g *GatewayRoute) GetRoute() *http.ServeMux {
 			return
 		}
 
+		if isRcloneAuthPath(r.URL.Path) {
+			rcloneAuthProxy.ServeHTTP(w, r)
+			return
+		}
+
 		if isVMSidecarPath(r.URL.Path) {
 			nivaroos_middleware.MarkLocalAutomation(r)
 			rewriteRequestSourceIP(r)

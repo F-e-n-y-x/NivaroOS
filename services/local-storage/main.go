@@ -23,7 +23,6 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/cache"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/config"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/ntfsperm"
-	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/oauthproxy"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/sqlite"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/utils/merge"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/vfscachedir"
@@ -118,7 +117,6 @@ func init() {
 	} else if len(moved) > 0 {
 		logger.Info("cloud cache moved to disk", zap.String("dir", cacheSettings.Dir), zap.Strings("from", moved))
 	}
-	oauthproxy.Start()
 	if err := service.MyService.Storage().CheckAndMountAll(); err != nil {
 		logger.Error("failed to remount previously configured cloud accounts", zap.Error(err))
 	}

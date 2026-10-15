@@ -23,6 +23,15 @@ describe('OAuthSignInSteps', () => {
 		expect(vm.command).toBe('rclone authorize "drive" "123-abc.apps.googleusercontent.com" "GOCSPX-x_y"')
 	})
 
+	test('the sign-in link goes through the gateway relay, not port 53682 on the LAN (audit L8)', () => {
+		globalThis.window = { location: { origin: 'https://nas.example:8443' } }
+		const opened = []
+		const { vm } = make({ $store: { commit: (_, w) => opened.push(w) } })
+		vm.openTerminal()
+		expect(opened[0].props.initCommand).toBe('rclone authorize "drive" 2>&1 | sed -u -e "s#http://127\\.0\\.0\\.1:53682#https://nas.example:8443/v1/rclone-auth#g" -e "s#http://localhost:53682#https://nas.example:8443/v1/rclone-auth#g"')
+		delete globalThis.window
+	})
+
 	test('own app: nothing to save until the client is complete', () => {
 		const { vm, emitted } = make({ own: true, clientId: 'id', token: '{"access_token":"a"}' })
 		expect(vm.payload).toBeNull()

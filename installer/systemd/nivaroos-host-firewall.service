@@ -1,5 +1,5 @@
 [Unit]
-Description=NivaroOS Host Desktop firewall (x11vnc TCP 5900 backstop, Smooth stream UDP 28650)
+Description=NivaroOS host firewall (TCP 5900/28641/28642 backstops, Smooth stream UDP 28650)
 Documentation=file:/usr/local/lib/nivaroos/nivaroos-host-firewall
 # After the distro's firewall (nftables.service flushes the ruleset) and the
 # network, so the LAN interface (default route) and tailscale0 exist.
