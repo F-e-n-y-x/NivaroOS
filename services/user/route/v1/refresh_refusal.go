@@ -30,6 +30,8 @@ const (
 	refuseGeneration     = "generation"      // password change / sign out everywhere since
 	refuseBeforeCutoff   = "issued_before_cutoff"
 	refuseSessionRevoked = "session_revoked" // that one session was ended
+	refuseNoSession      = "no_session"      // a refresh token from before sessions had ids
+	refuseReused         = "reused"          // an already exchanged refresh token: the session was ended
 )
 
 func parseRefusal(token string, err error) string {

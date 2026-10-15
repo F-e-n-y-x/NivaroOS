@@ -98,7 +98,16 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
       MaterialPageRoute(fullscreenDialog: true, builder: (_) => ServerProfileForm(existing: existing)),
     );
     if (saved == null || !mounted) return;
-    await StorageService.instance.saveProfile(saved);
+    var toSave = saved;
+    if (existing != null && _isActive(existing) && saved.refreshToken != null && saved.refreshToken == existing.refreshToken) {
+      // The form kept the tokens this list was loaded with, but the app
+      // may have refreshed them since - and a refresh token works only
+      // once: saving the old one would sign this server out on the next
+      // switch back to it.
+      final live = await StorageService.instance.reloadSession();
+      if (live != null) toSave = saved.copyWith(accessToken: live.accessToken, refreshToken: live.refreshToken);
+    }
+    await StorageService.instance.saveProfile(toSave);
     if (existing != null && _isActive(existing) &&
         (saved.url != existing.url || saved.accessToken != existing.accessToken || saved.username != existing.username)) {
       // The server in use changed its address or account: start over on it.

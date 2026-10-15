@@ -26,10 +26,10 @@ type Claims struct {
 }
 
 func GenerateToken(username string, privateKey *ecdsa.PrivateKey, id int, issuer string, t time.Duration) (string, error) {
-	return generateSessionToken(username, privateKey, id, "", 0, issuer, t)
+	return generateSessionToken(username, privateKey, id, "", 0, "", issuer, t)
 }
 
-func generateSessionToken(username string, privateKey *ecdsa.PrivateKey, id int, sid string, gen int64, issuer string, t time.Duration) (string, error) {
+func generateSessionToken(username string, privateKey *ecdsa.PrivateKey, id int, sid string, gen int64, jti string, issuer string, t time.Duration) (string, error) {
 	claims := Claims{
 		username,
 		id,
@@ -40,6 +40,7 @@ func generateSessionToken(username string, privateKey *ecdsa.PrivateKey, id int,
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
 			Issuer:    issuer,
+			ID:        jti,
 		},
 	}
 
@@ -86,11 +87,18 @@ func GetSessionTokens(username string, privateKey *ecdsa.PrivateKey, id int, sid
 // IssueSessionTokens issues the access and refresh tokens of session sid for
 // an account whose token generation is gen.
 func IssueSessionTokens(username string, privateKey *ecdsa.PrivateKey, id int, sid string, gen int64) (access, refresh string, err error) {
-	access, err = generateSessionToken(username, privateKey, id, sid, gen, "nivaroos", 3*time.Hour)
+	return IssueRotatedTokens(username, privateKey, id, sid, gen, "")
+}
+
+// IssueRotatedTokens is IssueSessionTokens with the refresh token's "jti":
+// the user service rotates it on every refresh, and a refresh token whose
+// jti is no longer the session's current one is a reused (stolen) copy.
+func IssueRotatedTokens(username string, privateKey *ecdsa.PrivateKey, id int, sid string, gen int64, jti string) (access, refresh string, err error) {
+	access, err = generateSessionToken(username, privateKey, id, sid, gen, "", "nivaroos", AccessTokenLifetime)
 	if err != nil {
 		return "", "", err
 	}
-	refresh, err = generateSessionToken(username, privateKey, id, sid, gen, "refresh", 7*24*time.Hour)
+	refresh, err = generateSessionToken(username, privateKey, id, sid, gen, jti, "refresh", RefreshTokenLifetime)
 	if err != nil {
 		return "", "", err
 	}

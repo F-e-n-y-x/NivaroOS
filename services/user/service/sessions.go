@@ -117,3 +117,56 @@ func KeepSessionsPublished(us UserService, stop <-chan struct{}) {
 		}
 	}
 }
+
+// refreshReuseGrace: the refresh token just exchanged still works this long,
+// for clients racing themselves (two tabs, two app engines) or retrying a
+// refresh whose answer was lost (a phone's background job may only try
+// again minutes later). It gets a token of the current id - the session
+// doesn't fork, and a copy used later than this still ends it.
+const refreshReuseGrace = 10 * time.Minute
+
+func (u *userService) StartRefresh(sid string, userID int) (string, error) {
+	jti := jwt.NewSessionID()
+	now := time.Now()
+	err := u.db.Transaction(func(tx *gorm.DB) error {
+		// Sessions not refreshed for longer than a refresh token lives are over.
+		if err := tx.Where("rotated_at < ?", now.Add(-jwt.RefreshTokenLifetime-24*time.Hour).Unix()).Delete(&model.RefreshSessionModel{}).Error; err != nil {
+			return err
+		}
+		return tx.Save(&model.RefreshSessionModel{SessionID: sid, UserID: userID, JTI: jti, RotatedAt: now.Unix()}).Error
+	})
+	return jti, err
+}
+
+func (u *userService) RotateRefresh(sid string, userID int, presented string) (string, bool, error) {
+	if sid == "" {
+		return "", true, nil
+	}
+	var next string
+	var reused bool
+	now := time.Now()
+	err := u.db.Transaction(func(tx *gorm.DB) error {
+		var r model.RefreshSessionModel
+		err := tx.Where("sid = ?", sid).Take(&r).Error
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			// A session from before refresh tokens rotated: start now.
+			next = jwt.NewSessionID()
+			return tx.Create(&model.RefreshSessionModel{SessionID: sid, UserID: userID, JTI: next, PrevJTI: presented, RotatedAt: now.Unix()}).Error
+		case err != nil:
+			return err
+		case r.UserID != userID:
+			reused = true
+			return nil
+		case presented != "" && presented == r.JTI:
+			next = jwt.NewSessionID()
+			return tx.Model(&r).Updates(map[string]interface{}{"jti": next, "prev_jti": presented, "rotated_at": now.Unix()}).Error
+		case presented == r.PrevJTI && now.Sub(time.Unix(r.RotatedAt, 0)) < refreshReuseGrace:
+			next = r.JTI
+			return nil
+		}
+		reused = true
+		return tx.Delete(&r).Error
+	})
+	return next, reused, err
+}

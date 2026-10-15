@@ -40,3 +40,17 @@ type UserDBModel struct {
 func (p *UserDBModel) TableName() string {
 	return "o_users"
 }
+
+// RefreshSessionModel is one session's current refresh token (by its jti).
+// Every refresh exchanges it for a new one; presenting an exchanged one
+// again means a copy leaked, and the session is ended.
+type RefreshSessionModel struct {
+	SessionID string `gorm:"column:sid;primaryKey"`
+	UserID    int    `gorm:"column:user_id;index"`
+	JTI       string `gorm:"column:jti"`
+	PrevJTI   string `gorm:"column:prev_jti"`
+	// RotatedAt (unix seconds): when JTI became current.
+	RotatedAt int64 `gorm:"column:rotated_at"`
+}
+
+func (RefreshSessionModel) TableName() string { return "refresh_sessions" }

@@ -49,6 +49,10 @@ type RevokedSession struct {
 // removed from the server's device list.
 const ReasonCompanionRemoved = "companion_removed"
 
+// ReasonRefreshReused: a refresh token was used again after it had been
+// exchanged - a copy is in someone else's hands - so the session ended.
+const ReasonRefreshReused = "refresh_reused"
+
 // ErrSessionRevoked is returned (wrapped in *SessionRevokedError) for a
 // token whose session was ended.
 var ErrSessionRevoked = errors.New("session revoked")

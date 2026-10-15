@@ -162,13 +162,11 @@ func PostUserLogin(c *gin.Context) {
 	}
 	loginLimiter.reset(limitKeys...)
 
-	privateKey, _ := service.MyService.User().GetKeyPair()
-
 	token := system_model.VerifyInformation{}
 
 	// A new session: its tokens share one id, so it can be ended on its own
 	// (a companion phone removed from the device list is signed out).
-	accessToken, refreshToken, err := jwt.IssueSessionTokens(user.Username, privateKey, user.Id, jwt.NewSessionID(), user.TokenGeneration)
+	accessToken, refreshToken, err := issueSessionTokens(user.Username, user.Id, jwt.NewSessionID(), user.TokenGeneration)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 		return
@@ -793,13 +791,32 @@ func PostUserRefreshToken(c *gin.Context) {
 		return
 	}
 
-	// The session keeps its id across refreshes. A refresh token from before
-	// sessions had ids starts one now, so that session can be ended too.
-	sid := claims.SessionID
-	if sid == "" {
-		sid = jwt.NewSessionID()
+	// The session keeps its id across refreshes; its refresh token is
+	// exchanged for a new one each time. Every refresh token has had a
+	// session id since 2026-09-29 (and lives 7 days), so one without is
+	// refused.
+	if claims.SessionID == "" {
+		logRefreshRefused(c, refuseNoSession, claims, &owner, nil)
+		c.JSON(http.StatusUnauthorized, model.Result{Success: common_err.VERIFICATION_FAILURE, Message: common_err.GetMsg(common_err.VERIFICATION_FAILURE), Data: map[string]string{"refused": refuseNoSession}})
+		return
 	}
-	newAccessToken, newRefreshToken, err := jwt.IssueSessionTokens(claims.Username, privateKey, claims.ID, sid, owner.TokenGeneration)
+	next, reused, err := service.MyService.User().RotateRefresh(claims.SessionID, claims.ID, claims.RegisteredClaims.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+		return
+	}
+	if reused {
+		// An exchanged refresh token came back: someone else holds a copy.
+		// End the whole session, everywhere - the thief's tokens and the
+		// owner's alike; the owner signs in again.
+		if err := jwt.RevokeSessions([]string{claims.SessionID}, jwt.ReasonRefreshReused); err != nil {
+			logger.Error("revoking a session whose refresh token was reused", zap.Error(err))
+		}
+		logRefreshRefused(c, refuseReused, claims, &owner, nil)
+		c.JSON(http.StatusUnauthorized, jwt.UnauthorizedResult(&jwt.SessionRevokedError{Reason: jwt.ReasonRefreshReused}))
+		return
+	}
+	newAccessToken, newRefreshToken, err := jwt.IssueRotatedTokens(claims.Username, privateKey, claims.ID, claims.SessionID, owner.TokenGeneration, next)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 		return

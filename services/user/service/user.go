@@ -52,6 +52,14 @@ type UserService interface {
 	// PublishSessions writes every account's session rule for the other
 	// services (see common/utils/jwt/sessions.go).
 	PublishSessions() error
+
+	// StartRefresh (sign-in, or new tokens for a session) makes a fresh
+	// refresh-token id current for session sid and returns it.
+	StartRefresh(sid string, userID int) (string, error)
+	// RotateRefresh exchanges the refresh-token id presented for session
+	// sid: it returns the id the new refresh token carries, or reused when
+	// the presented one was already exchanged (the session must end).
+	RotateRefresh(sid string, userID int, presented string) (next string, reused bool, err error)
 }
 
 var UserRegisterHash = make(map[string]string)
@@ -186,6 +194,10 @@ func NewUserService(db *gorm.DB) UserService {
 			_ = os.MkdirAll(filepath.Dir(keyPath), 0700)
 			_ = os.WriteFile(keyPath, pem.EncodeToMemory(block), 0600)
 		}
+	}
+
+	if err := db.AutoMigrate(&model.RefreshSessionModel{}); err != nil {
+		logger.Error("creating the refresh_sessions table", zap.Error(err))
 	}
 
 	return &userService{

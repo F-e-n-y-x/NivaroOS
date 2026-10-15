@@ -104,17 +104,14 @@ func TestLoginSessionsCanBeEndedOneByOne(t *testing.T) {
 	}
 }
 
-// A refresh token from before sessions had ids joins a session on refresh.
-func TestALegacyRefreshTokenGetsASession(t *testing.T) {
+// A refresh token from before sessions had ids (all expired by now: they
+// lived 7 days, sessions came on 2026-09-29) is refused - it could never be
+// rotated, so a copy would renew forever.
+func TestALegacyRefreshTokenIsRefused(t *testing.T) {
 	f := withAuthRoutes(t)
 	priv, _ := service.MyService.User().GetKeyPair()
 	legacy, _ := jwt.GetRefreshToken("alice", priv, f.alice.Id)
-	w := post(f, "/v1/users/refresh", map[string]string{"refresh_token": legacy})
-	if w.Code != http.StatusOK {
+	if w := post(f, "/v1/users/refresh", map[string]string{"refresh_token": legacy}); w.Code != http.StatusUnauthorized {
 		t.Fatalf("refresh: %d %s", w.Code, w.Body)
-	}
-	a, r := tokensOf(t, w.Body.Bytes(), true)
-	if s := sidOf(t, a); s == "" || s != sidOf(t, r) {
-		t.Fatalf("no session after refresh: %q", s)
 	}
 }

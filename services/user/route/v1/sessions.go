@@ -26,6 +26,18 @@ func requestClaims(c *gin.Context) *jwt.Claims {
 	return nil
 }
 
+// issueSessionTokens: the access and refresh tokens of session sid, the
+// refresh token with a new id that becomes the session's current one (any
+// refresh token the session had before stops working).
+func issueSessionTokens(username string, id int, sid string, gen int64) (access, refresh string, err error) {
+	jti, err := service.MyService.User().StartRefresh(sid, id)
+	if err != nil {
+		return "", "", err
+	}
+	privateKey, _ := service.MyService.User().GetKeyPair()
+	return jwt.IssueRotatedTokens(username, privateKey, id, sid, gen, jti)
+}
+
 // revokeAllButThisSession ends every session of the account - in every
 // service, refresh tokens included - and hands the request's own session
 // fresh tokens of the new generation. It keeps its session id, so a phone
@@ -42,8 +54,7 @@ func revokeAllButThisSession(c *gin.Context, user model2.UserDBModel, reason str
 	if sid == "" {
 		sid = jwt.NewSessionID()
 	}
-	privateKey, _ := service.MyService.User().GetKeyPair()
-	access, refresh, err := jwt.IssueSessionTokens(user.Username, privateKey, user.Id, sid, gen)
+	access, refresh, err := issueSessionTokens(user.Username, user.Id, sid, gen)
 	if err != nil {
 		return system_model.VerifyInformation{}, err
 	}
