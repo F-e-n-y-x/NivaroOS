@@ -65,6 +65,7 @@
 <script>
 import Uploader from 'simple-uploader.js'
 import { formatSize } from '@/utils/formatSize'
+import { uploadIdentifier } from './uploadIdentifier'
 import events from '@/events/events'
 
 // Ported from src/components/filebrowser/FilePanel.vue:728-791
@@ -143,9 +144,7 @@ export default {
 			uploadMethod: 'POST',
 			successStatuses: [200, 201, 202],
 			permanentErrors: [400, 404, 409, 415, 501],
-			// Re-adding a file that's already queued is ignored instead of
-			// uploading it twice.
-			allowDuplicateUploads: false,
+			generateUniqueIdentifier: uploadIdentifier,
 			headers: {
 				Authorization: this.$store.state.access_token || localStorage.getItem('access_token'),
 			},
