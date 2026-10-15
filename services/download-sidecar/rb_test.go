@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -946,5 +947,31 @@ func TestRBWebSocketChecksOriginAndStripsCredentials(t *testing.T) {
 	r := <-seen
 	if r.URL.Path != "/ws" || r.URL.RawQuery != "" || r.Header.Get("Authorization") != "" || r.Header.Get("Cookie") != "" || r.Header.Get(rbUserHeader) != "7" {
 		t.Fatalf("host saw %s?%s auth=%q cookie=%q user=%q", r.URL.Path, r.URL.RawQuery, r.Header.Get("Authorization"), r.Header.Get("Cookie"), r.Header.Get(rbUserHeader))
+	}
+}
+
+// H1: the shipped host firewall lets the browser user reach loopback only on
+// the egress ports (nivaroos-host-firewall: DS_EGRESS_PORTS), so the proxy
+// must listen there - one port per profile, the next one if taken.
+func TestEgressListensOnTheFirewalledPorts(t *testing.T) {
+	var egs []*rbEgress
+	defer func() {
+		for _, e := range egs {
+			e.Close()
+		}
+	}()
+	seen := map[string]bool{}
+	for range 3 {
+		eg, err := newRBEgress(func(string) bool { return false })
+		if err != nil {
+			t.Fatal(err)
+		}
+		egs = append(egs, eg)
+		host, port, _ := net.SplitHostPort(eg.Addr())
+		p, _ := strconv.Atoi(port)
+		if host != "127.0.0.1" || p < rbEgressPortMin || p > rbEgressPortMax || seen[port] {
+			t.Fatalf("egress on %s, want a free port in 127.0.0.1:%d-%d", eg.Addr(), rbEgressPortMin, rbEgressPortMax)
+		}
+		seen[port] = true
 	}
 }

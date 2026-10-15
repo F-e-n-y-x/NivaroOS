@@ -312,6 +312,8 @@ ensure_user() {
 			return 1
 		fi
 		record "user:nivaroos-browser"
+		# Its loopback limits name the user (audit H1).
+		if [ -x /usr/local/lib/nivaroos/nivaroos-host-firewall ]; then /usr/local/lib/nivaroos/nivaroos-host-firewall apply; fi
 	fi
 	[ -d "$STATE_DIR/staging" ] || STAGING_NEW=1
 	mkdir -p "$STATE_DIR/profiles" "$STATE_DIR/staging"

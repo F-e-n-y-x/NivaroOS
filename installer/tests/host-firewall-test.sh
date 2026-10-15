@@ -59,6 +59,10 @@ case "$*" in
 	"delete table inet nivaroos_hostdesk") [ -e "$FAKE/nft.table" ] && rm "$FAKE/nft.table" ;;
 esac
 EOF
+cat >"$T/bin/getent" <<'EOF'
+#!/bin/bash
+[ "$*" = "passwd nivaroos-browser" ] && [ -e "$FAKE/browser-user" ] && echo "nivaroos-browser:x:997:984::/var/lib/nivaroos/ds-browser:/usr/sbin/nologin"
+EOF
 chmod +x "$T/bin/"*
 
 WRAP=()
@@ -82,6 +86,21 @@ for b in "docker*" "br-*" "veth*" "virbr*" "vnet*"; do
 done
 check '! grep -q "iifname != \"lo\" tcp dport 28642" "$FAKE/nft.table"' "DS 28642 stays open to the LAN"
 check 'grep -q "^table inet nivaroos_hostdesk {" "$FAKE/nft.table" && grep -q "type filter hook input" "$FAKE/nft.table"' "one inet table (v4 + v6)"
+
+# DS full browser (audit H1): its user reaches loopback only on the egress
+# proxy ports (services/download-sidecar/rb_egress.go) and DNS - every
+# NivaroOS API trusts some loopback callers. Only once the user exists.
+check '! grep -q "skuid" "$FAKE/nft.table"' "no browser user: no browser rules"
+touch "$FAKE/browser-user"
+fw apply
+check 'grep -q "type filter hook output" "$FAKE/nft.table"' "browser rules in an output chain"
+check 'grep -q "meta skuid 997 ip daddr 127.0.0.0/8 tcp dport 28660-28679 accept" "$FAKE/nft.table"' "browser: egress ports allowed"
+check 'grep -q "meta skuid 997 ip daddr 127.0.0.0/8 th dport 53 accept" "$FAKE/nft.table"' "browser: DNS stub allowed"
+check 'grep -q "meta skuid 997 ip daddr 127.0.0.0/8 ct state new drop" "$FAKE/nft.table" && grep -q "meta skuid 997 ip6 daddr ::1 ct state new drop" "$FAKE/nft.table"' "browser: rest of loopback dropped (v4 + v6)"
+check 'tr -d "\t" <"$d/../services/download-sidecar/rb_egress.go" | grep -q "^rbEgressPortMin = 28660$" && tr -d "\t" <"$d/../services/download-sidecar/rb_egress.go" | grep -q "^rbEgressPortMax = 28679$"' "egress port range matches download-sidecar"
+check 'grep -q "^IPAddressDeny=169.254.0.0/16 multicast$" "$d/../services/download-sidecar/build/sysroot/usr/lib/systemd/system/nivaroos-ds-browser.service"' "ds-browser unit: IPAddressDeny"
+check 'grep -q "nivaroos-host-firewall apply" "$d/../services/download-sidecar/build/scripts/install-ds-browser.sh"' "browser install re-applies the firewall"
+rm "$FAKE/browser-user"
 
 # ufw active: br0 + tailscale0 only, idempotent.
 touch "$FAKE/ufw.on"

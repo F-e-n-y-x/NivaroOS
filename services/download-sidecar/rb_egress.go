@@ -18,10 +18,12 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -41,12 +43,26 @@ type rbEgress struct {
 	conns map[net.Conn]bool
 }
 
-// newRBEgress listens on 127.0.0.1 on a random port. typed reports whether
-// a host was typed by the user (and so may be on the LAN).
+// The egress ports: the only loopback ports the browser user may connect
+// to (installer/nivaroos-host-firewall.sh drops the rest - every NivaroOS
+// API trusts some loopback callers; audit H1). One per open profile.
+const (
+	rbEgressPortMin = 28660
+	rbEgressPortMax = 28679
+)
+
+// newRBEgress listens on 127.0.0.1 on the first free egress port. typed
+// reports whether a host was typed by the user (and so may be on the LAN).
 func newRBEgress(typed func(string) bool) (*rbEgress, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	var ln net.Listener
+	var err error
+	for p := rbEgressPortMin; p <= rbEgressPortMax; p++ {
+		if ln, err = net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(p))); err == nil {
+			break
+		}
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("no free browser egress port in %d-%d: %w", rbEgressPortMin, rbEgressPortMax, err)
 	}
 	e := &rbEgress{
 		ln:       ln,

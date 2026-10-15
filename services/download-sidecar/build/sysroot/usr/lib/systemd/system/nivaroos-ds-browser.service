@@ -40,6 +40,11 @@ LockPersonality=true
 CapabilityBoundingSet=
 AmbientCapabilities=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# No IPv4 link-local (cloud metadata) or multicast, even past the egress proxy's
+# own checks. Loopback can't be denied here (Chromium reaches its egress
+# proxy in this same unit over it): nivaroos-host-firewall limits this
+# user's loopback to the proxy's ports (audit H1).
+IPAddressDeny=169.254.0.0/16 multicast
 TemporaryFileSystem=/var/lib/nivaroos:ro
 BindPaths=/var/lib/nivaroos/ds-browser
 InaccessiblePaths=-/DATA -/media -/mnt -/srv -/etc/nivaroos -/run/nivaroos -/var/lib/casaos -/var/log/nivaroos

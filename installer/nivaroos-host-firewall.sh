@@ -8,6 +8,9 @@
 #    - TCP 28642 (Download Station: the Lite browser needs its own origin,
 #      so the LAN and Tailscale reach it) dropped from container and VM
 #      bridges (audit L7).
+#    - The DS full browser's user (Chromium on untrusted pages) reaches
+#      loopback only on its egress proxy ports and DNS: every NivaroOS API
+#      trusts some loopback callers (audit H1).
 #  - "Smooth (beta)" WebRTC: UDP 28650 opened for the LAN (interfaces with a
 #    default route) and Tailscale, only where ufw or firewalld is active
 #    (without them nothing blocks it). Never on docker/libvirt bridges.
@@ -20,6 +23,8 @@ TAG=nivaroos-hostdesk-smooth
 TABLE=nivaroos_hostdesk
 # Container (docker, podman veth) and VM (libvirt) bridges and taps.
 GUEST_BRIDGES=('docker*' 'br-*' 'veth*' 'virbr*' 'vnet*')
+BROWSER_USER=nivaroos-browser
+DS_EGRESS_PORTS=28660-28679 # services/download-sidecar/rb_egress.go
 
 warn() { printf 'nivaroos-host-firewall: %s\n' "$*" >&2; }
 
@@ -40,6 +45,23 @@ ufw_ours() { # interfaces we opened the port on
 		'$2 == "allow" && $3 == "in" && $4 == "on" && $9 == p && index($0, t) {print $5}'
 }
 
+# The DS browser's output chain, once its user exists (install-ds-browser.sh
+# re-applies after creating it).
+browser_chain() {
+	local uid
+	uid="$(getent passwd "$BROWSER_USER" 2>/dev/null | cut -d: -f3)"
+	[ -n "$uid" ] || return 0
+	cat <<EOF
+	chain output {
+		type filter hook output priority -10; policy accept;
+		meta skuid $uid ip daddr 127.0.0.0/8 tcp dport $DS_EGRESS_PORTS accept
+		meta skuid $uid ip daddr 127.0.0.0/8 th dport 53 accept
+		meta skuid $uid ip daddr 127.0.0.0/8 ct state new drop comment "DS browser: egress proxy only (audit H1)"
+		meta skuid $uid ip6 daddr ::1 ct state new drop comment "DS browser: egress proxy only (audit H1)"
+	}
+EOF
+}
+
 backstop_apply() {
 	command -v nft >/dev/null || { warn "nft not found - TCP 5900/28641/28642 backstops not installed (install nftables)"; return 0; }
 	# "table; delete table; table {...}" in one transaction = atomic replace.
@@ -53,6 +75,7 @@ table inet $TABLE {
 		iifname != "lo" tcp dport 28641 drop comment "vm-sidecar: gateway only (audit L7)"
 $(for b in "${GUEST_BRIDGES[@]}"; do printf '\t\tiifname "%s" tcp dport 28642 drop comment "DS: not from containers/VMs (audit L7)"\n' "$b"; done)
 	}
+$(browser_chain)
 }
 EOF
 }
