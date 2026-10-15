@@ -97,23 +97,79 @@ describe('HostDesktopWebRTC', () => {
 		el = document.createElement('div')
 		document.body.appendChild(el)
 		const on = (name) => (e) => events.push([name, e])
-		app = createApp({ render: () => h(HostDesktopWebRTC, { ...props, onState: on('state'), onReady: on('ready'), onStats: on('stats'), onClipboard: on('clipboard'), onSize: on('size') }) })
+		app = createApp({
+			render: () =>
+				h(HostDesktopWebRTC, { ...props, onState: on('state'), onReady: on('ready'), onStats: on('stats'), onClipboard: on('clipboard'), onSize: on('size'), onAdapt: on('adapt'), onCaps: on('caps') }),
+		})
 		app.mount(el)
 		await flush()
 	}
 	const states = () => events.filter(([n]) => n === 'state').map(([, e]) => e)
 	const lastState = () => states().at(-1)
 
-	test('offers with the app token, non-trickle SDP, fps and bitrate; no STUN/TURN', async () => {
-		await mount({ fps: 60, maxKbps: 20000 })
+	test('offers with the app token, non-trickle SDP and the preset (Balanced by default); no STUN/TURN', async () => {
+		await mount()
 		const call = fetchMock.mock.calls.find(([u]) => u.endsWith('/v1/vm-sidecar/host/webrtc/offer'))
 		expect(call[1].headers.Authorization).toBe('jwt-from-app')
-		expect(JSON.parse(call[1].body)).toEqual({ sdp: 'v=0 offer', type: 'offer', fps: 60, max_kbps: 20000 })
+		expect(JSON.parse(call[1].body)).toEqual({ sdp: 'v=0 offer', type: 'offer', preset: 'balanced' })
+		expect(events.find(([n]) => n === 'caps')[1]).toMatchObject({ encoder: 'nvh264enc' })
 		expect(pcs[0].config).toBeUndefined()
 		expect(pcs[0].transceiver).toEqual({ kind: 'video', init: { direction: 'recvonly' } })
 		expect(pcs[0].dc.label).toBe('input')
 		expect(pcs[0].remoteDescription).toEqual({ type: 'answer', sdp: 'v=0 answer' })
 		expect(lastState()).toEqual({ state: 'connecting', reason: '' })
+	})
+
+	test('Custom offers the raw fps and bitrate instead of a preset', async () => {
+		await mount({ preset: 'custom', fps: 60, maxKbps: 20000 })
+		const call = fetchMock.mock.calls.find(([u]) => u.endsWith('/host/webrtc/offer'))
+		expect(JSON.parse(call[1].body)).toEqual({ sdp: 'v=0 offer', type: 'offer', fps: 60, max_kbps: 20000 })
+	})
+
+	// One second of a live stream: a frame, a heartbeat, the RTT.
+	async function liveSecond(pc, i, rtt) {
+		pc.frames(i)
+		pc.stats.get('cp').currentRoundTripTime = rtt
+		pc.msg({ t: 'hb' })
+		await vi.advanceTimersByTimeAsync(1000)
+		await flush()
+	}
+
+	test('network adaptation: high RTT steps the preset down on the data channel, a stable network steps it back up', async () => {
+		await mount({ preset: 'high' })
+		const pc = pcs[0]
+		const presets = () => pc.dc.sent.filter((m) => m.t === 'preset')
+		let i = 1
+		for (; i <= 3; i++) await liveSecond(pc, i, 0.004)
+		expect(presets()).toEqual([])
+		for (const end = i + 3; i < end; i++) await liveSecond(pc, i, 0.4) // 400 ms RTT
+		expect(presets()).toEqual([{ t: 'preset', preset: 'balanced' }])
+		expect(events.filter(([n]) => n === 'adapt').map(([, a]) => a)).toEqual([{ preset: 'balanced', dir: 'down' }])
+		pc.msg({ t: 'enc', encoder: 'nvh264enc', preset: 'balanced', fps: 30 })
+		await liveSecond(pc, i++, 0.004)
+		expect(events.filter(([n]) => n === 'stats').at(-1)[1]).toMatchObject({ encoder: 'nvh264enc', preset: 'balanced' })
+		// Still bad right after the change: it settles 10 s first (no step to Low yet).
+		for (const end = i + 5; i < end; i++) await liveSecond(pc, i, 0.4)
+		expect(presets()).toHaveLength(1)
+		// 30 good seconds: back to High, never above it.
+		for (const end = i + 45; i < end; i++) await liveSecond(pc, i, 0.004)
+		expect(presets()).toEqual([
+			{ t: 'preset', preset: 'balanced' },
+			{ t: 'preset', preset: 'high' },
+		])
+		expect(events.filter(([n]) => n === 'adapt').at(-1)[1]).toEqual({ preset: 'high', dir: 'up' })
+		expect(pcs).toHaveLength(1) // the same peer throughout
+	})
+
+	test('adaptation off, or Custom: the preset never changes', async () => {
+		await mount({ preset: 'high', adapt: false })
+		for (let i = 1; i < 8; i++) await liveSecond(pcs[0], i, 0.4)
+		expect(pcs[0].dc.sent.filter((m) => m.t === 'preset')).toEqual([])
+		app.unmount()
+		el.remove()
+		await mount({ preset: 'custom' })
+		for (let i = 1; i < 8; i++) await liveSecond(pcs.at(-1), i, 0.4)
+		expect(pcs.at(-1).dc.sent.filter((m) => m.t === 'preset')).toEqual([])
 	})
 
 	test('Auto: no first frame within 4 s falls back with a reason and closes the peer', async () => {
@@ -173,7 +229,7 @@ describe('HostDesktopWebRTC', () => {
 		await vi.advanceTimersByTimeAsync(1000)
 		await flush()
 		expect(lastState()).toEqual({ state: 'live', reason: '' })
-		expect(events.filter(([n]) => n === 'stats').at(-1)[1]).toEqual({ encoder: 'nvh264enc', fps: 30, rttMs: 4 })
+		expect(events.filter(([n]) => n === 'stats').at(-1)[1]).toEqual({ encoder: 'nvh264enc', fps: 30, rttMs: 4, preset: 'balanced' })
 		// Frames keep coming, heartbeats don't.
 		for (let i = 2; i < 9; i++) {
 			pcs[0].frames(i)
@@ -342,7 +398,8 @@ describe('#/host-desktop/embed', () => {
 		app.config.globalProperties.$t = (s) => s
 		app.mount(el)
 		await flush()
-		// The app's settings win over this browser's, from the first offer.
+		// The app's settings win over this browser's, from the first offer
+		// (an older app's raw fps / bitrate: Custom).
 		expect(offers.at(-1)).toMatchObject({ fps: 60, max_kbps: 8000 })
 		const pc = pcs.at(-1)
 		const e = window.nivaroosEmbed
@@ -361,7 +418,7 @@ describe('#/host-desktop/embed', () => {
 		await vi.advanceTimersByTimeAsync(1000)
 		await flush()
 		expect(posted).toContainEqual({ t: 'size', w: 2400, h: 1080 })
-		expect(posted).toContainEqual({ t: 'stats', encoder: 'x264enc', fps: 30, rttMs: 4 })
+		expect(posted).toContainEqual({ t: 'stats', encoder: 'x264enc', fps: 30, rttMs: 4, preset: 'custom' })
 		// Unchanged stats aren't posted again.
 		await vi.advanceTimersByTimeAsync(2000)
 		await flush()
@@ -386,6 +443,11 @@ describe('#/host-desktop/embed', () => {
 		await flush()
 		expect(offers.at(-1)).toMatchObject({ fps: 30, max_kbps: 20000 })
 		expect(offers).toHaveLength(n)
+
+		// A preset (what the app sends now): offered with it alone.
+		e.setStream({ preset: 'low', adapt: true })
+		await flush()
+		expect(offers.at(-1)).toEqual({ sdp: 'v=0 offer', type: 'offer', preset: 'low' })
 		app.unmount()
 		el.remove()
 		delete window.__nivaroosStream

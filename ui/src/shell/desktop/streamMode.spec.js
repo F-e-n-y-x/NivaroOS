@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { REASONS, STREAM_DEFAULTS, chooseLane, loadPrefs, normalizePrefs, rfbMask, savePrefs, toRemote, watchdog, wheelSteps } from './streamMode'
+import { REASONS, STREAM_DEFAULTS, adaptInit, adaptStep, chooseLane, directRoute, encoderLabel, loadPrefs, lossPct, normalizePrefs, presetSummary, rfbMask, savePrefs, toRemote, watchdog, wheelSteps } from './streamMode'
 
 const memStorage = () => {
 	const m = new Map()
@@ -9,22 +9,101 @@ const memStorage = () => {
 }
 
 describe('stream prefs', () => {
-	test('default is Compatible, 30 fps, 12000 kbps', () => {
-		expect(normalizePrefs()).toEqual({ mode: 'compatible', fps: 30, maxKbps: 12000 })
-		expect(loadPrefs(memStorage())).toEqual(STREAM_DEFAULTS)
+	test('default is Auto (WebRTC first), Balanced, adapting', () => {
+		expect(normalizePrefs({ v: 2 })).toEqual({ v: 2, mode: 'auto', preset: 'balanced', adapt: true, fps: 30, maxKbps: 12000 })
+		expect(loadPrefs(memStorage())).toEqual({ v: 2, ...STREAM_DEFAULTS })
 	})
 	test('junk falls back per field; a round trip keeps valid values', () => {
-		expect(normalizePrefs({ mode: 'turbo', fps: 144, maxKbps: '20000' })).toEqual({ mode: 'compatible', fps: 30, maxKbps: 20000 })
+		expect(normalizePrefs({ v: 2, mode: 'turbo', preset: 'ultra', adapt: 'yes', fps: 144, maxKbps: '20000' })).toEqual({
+			v: 2,
+			mode: 'auto',
+			preset: 'balanced',
+			adapt: true,
+			fps: 30,
+			maxKbps: 20000,
+		})
 		const s = memStorage()
-		savePrefs({ mode: 'smooth', fps: 60, maxKbps: 40000 }, s)
-		expect(loadPrefs(s)).toEqual({ mode: 'smooth', fps: 60, maxKbps: 40000 })
+		savePrefs({ mode: 'smooth', preset: 'custom', adapt: false, fps: 60, maxKbps: 40000 }, s)
+		expect(loadPrefs(s)).toEqual({ v: 2, mode: 'smooth', preset: 'custom', adapt: false, fps: 60, maxKbps: 40000 })
 		s.setItem('host_desktop_stream', '{not json')
-		expect(loadPrefs(s)).toEqual(STREAM_DEFAULTS)
+		expect(loadPrefs(s)).toEqual({ v: 2, ...STREAM_DEFAULTS })
+	})
+	test('v1 prefs (Smooth beta days): the chosen mode stays, raw fps/bitrate become Custom', () => {
+		const s = memStorage()
+		s.setItem('host_desktop_stream', JSON.stringify({ mode: 'compatible', fps: 30, maxKbps: 12000 }))
+		expect(loadPrefs(s)).toMatchObject({ mode: 'compatible', preset: 'balanced', adapt: true })
+		s.setItem('host_desktop_stream', JSON.stringify({ mode: 'smooth', fps: 60, maxKbps: 20000 }))
+		expect(loadPrefs(s)).toMatchObject({ mode: 'smooth', preset: 'custom', fps: 60, maxKbps: 20000 })
+		// An older app's __nivaroosStream has the same shape.
+		expect(normalizePrefs({ fps: 30, maxKbps: 12000 })).toMatchObject({ mode: 'auto', preset: 'balanced' })
+	})
+})
+
+describe('labels', () => {
+	test('GPU or CPU encoding', () => {
+		expect(encoderLabel('nvh264enc')).toBe('GPU · NVENC')
+		expect(encoderLabel('vah264enc')).toBe('GPU · VA-API')
+		expect(encoderLabel('x264enc')).toBe('CPU · x264')
+		expect(encoderLabel('')).toBe('')
+	})
+	test('preset summary from /host/stream', () => {
+		expect(presetSummary({ fps: 24, max_kbps: 2500, max_width: 1280 })).toBe('1280 wide · 24 fps · 2.5 Mbit/s')
+		expect(presetSummary({ fps: 60, max_kbps: 25000, max_width: 0 })).toBe('Full size · 60 fps · 25 Mbit/s')
+		expect(presetSummary(undefined)).toBe('')
+	})
+})
+
+describe('directRoute', () => {
+	test('LAN, Tailscale and local names go direct; a public domain (a tunnel) does not', () => {
+		for (const h of ['localhost', '192.168.1.20', '10.0.0.5', '172.20.0.1', '100.101.2.3', 'nivaroos.local', 'box.tail1234.ts.net', 'nas', '[fd7a:115c:a1e0::1]', '127.0.0.1'])
+			expect(directRoute(h), h).toBe(true)
+		for (const h of ['nivaroos.example.com', '8.8.8.8', '100.200.1.1', '172.32.0.1', '[2001:db8::1]']) expect(directRoute(h), h).toBe(false)
+	})
+})
+
+describe('adaptStep', () => {
+	const run = (a, samples, base) => {
+		const changes = []
+		for (const s of samples) {
+			a = adaptStep(a, s, base)
+			if (a.change) changes.push({ at: s.now, ...a.change })
+		}
+		return { a, changes }
+	}
+	const secs = (from, n, rttMs, lossPct = 0) => Array.from({ length: n }, (_, i) => ({ now: (from + i) * 1000, rttMs, lossPct }))
+	test('3 bad seconds (RTT or loss) step down one level; never below Low', () => {
+		expect(run(adaptInit('high', -60000), secs(0, 2, 400), 'high').changes).toEqual([])
+		expect(run(adaptInit('high', -60000), secs(0, 3, 400), 'high').changes).toEqual([{ at: 2000, preset: 'balanced', dir: 'down' }])
+		expect(run(adaptInit('balanced', -60000), secs(0, 3, 5, 8), 'balanced').changes).toEqual([{ at: 2000, preset: 'low', dir: 'down' }])
+		expect(run(adaptInit('low', -60000), secs(0, 30, 900, 50), 'low').changes).toEqual([])
+	})
+	test('a change settles for 10 s; 30 good seconds step back up, never above the chosen preset', () => {
+		const { changes } = run(adaptInit('high', -60000), [...secs(0, 3, 400), ...secs(3, 12, 400), ...secs(15, 60, 10)], 'high')
+		expect(changes).toEqual([
+			{ at: 2000, preset: 'balanced', dir: 'down' },
+			{ at: 12000, preset: 'low', dir: 'down' }, // still bad after the 10 s hold
+			{ at: 45000, preset: 'balanced', dir: 'up' }, // 30 good seconds
+		])
+		expect(run(adaptInit('balanced', -60000), secs(0, 60, 10), 'balanced').changes).toEqual([])
+	})
+	test('one bad second in between resets the count; unknown RTT/loss counts as fine', () => {
+		const s = [...secs(0, 2, 400), ...secs(2, 1, 10), ...secs(3, 2, 400)]
+		expect(run(adaptInit('high', -60000), s, 'high').changes).toEqual([])
+		expect(run(adaptInit('high', -60000), secs(0, 5, null, null), 'high').changes).toEqual([])
+	})
+	test('lossPct between two inbound-rtp samples', () => {
+		expect(lossPct({ lost: 0, received: 100 }, { lost: 10, received: 190 })).toBe(10)
+		expect(lossPct(null, { lost: 1, received: 1 })).toBeNull()
+		expect(lossPct({ lost: 5, received: 5 }, { lost: 5, received: 5 })).toBeNull()
 	})
 })
 
 describe('chooseLane', () => {
 	const caps = (webrtc) => ({ modes: { vnc: { available: true }, webrtc } })
+	test('Auto from a page reached through the internet (a tunnel): VNC at once, with the reason', () => {
+		expect(chooseLane('auto', caps({ available: true, encoder: 'x264enc' }), 'nivaroos.example.com')).toEqual({ lane: 'vnc', reason: REASONS.route })
+		expect(chooseLane('smooth', caps({ available: true, encoder: 'x264enc' }), 'nivaroos.example.com').lane).toBe('webrtc')
+	})
 	test('Compatible never tries WebRTC', () => {
 		expect(chooseLane('compatible', caps({ available: true, encoder: 'nvh264enc' }))).toEqual({ lane: 'vnc', reason: '' })
 	})

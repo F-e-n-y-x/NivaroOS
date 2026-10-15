@@ -1,7 +1,10 @@
 <!-- src/shell/desktop/HostDesktopWebRTC.vue
-	Host Desktop "Smooth (beta)": the host's screen as H.264 over WebRTC
+	Host Desktop over WebRTC (the primary lane): the host's screen as H.264
 	(vm-sidecar POST /host/webrtc/offer), input over the `input` data
-	channel. Contract: /root/nivaroos-wip/webrtc-contract.md. Used by
+	channel. A quality preset (the server maps it per GPU/CPU encoder) or
+	custom fps/bitrate; with `adapt` it steps the preset down when RTT or
+	packet loss climbs and back up when the network is stable again (on the
+	data channel: the encoder restarts, the peer stays) and says so (`adapt`). Contract: /root/nivaroos-wip/webrtc-contract.md. Used by
 	HostDesktopPanel.vue (behind its toolbar) and views/HostDesktopEmbed.vue
 	(the app's WebView). It reports what happens through `state`; the
 	parent decides what a fallback means (the panel opens noVNC).
@@ -15,18 +18,22 @@ import { markRaw, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Keyboard from '@novnc-core/input/keyboard.js'
 import { apiBase } from '@/api/vmSidecar'
 import { reconnectDelay } from '@/utils/consoleSocket'
-import { REASONS, chooseLane, rfbMask, toRemote, watchdog, wheelSteps } from './streamMode'
+import { REASONS, STREAM_PRESETS, adaptInit, adaptStep, chooseLane, lossPct, rfbMask, toRemote, watchdog, wheelSteps } from './streamMode'
 
 const props = defineProps({
 	scaleToFit: { type: Boolean, default: true },
 	// Auto: give up on WebRTC (state "fallback") when the first frame
 	// doesn't come; Smooth keeps retrying it.
 	fallback: { type: Boolean, default: true },
+	// low|balanced|high, or custom (fps / maxKbps instead).
+	preset: { type: String, default: 'balanced' },
+	adapt: { type: Boolean, default: true },
 	fps: { type: Number, default: 30 },
 	maxKbps: { type: Number, default: 12000 },
 })
 // state: { state: 'connecting'|'live'|'reconnecting'|'fallback'|'error', reason }
-const emit = defineEmits(['ready', 'state', 'stats', 'size', 'clipboard'])
+// caps: /host/stream's modes.webrtc; adapt: { preset, dir: 'down'|'up' }
+const emit = defineEmits(['ready', 'state', 'stats', 'size', 'clipboard', 'caps', 'adapt'])
 
 const SESSION_EXPIRED = 'Your session expired - sign in again'
 const KS = { ctrl: 0xffe3, alt: 0xffe9, del: 0xffff }
@@ -53,6 +60,11 @@ let remote = { w: 0, h: 0 }
 let mask = 0
 const wheelAcc = { x: 0, y: 0 }
 let keyboard = null
+// The preset streaming now: props.preset, or a step below it while the
+// network is bad. Offers use it too, so a re-offer keeps the adaptation.
+let adaptState = adaptInit(props.preset)
+let lastRtp = null
+let running = null // the server's last {"t":"enc"}
 
 // The app's WebView injects its JWT here before load (never in the URL).
 function token() {
@@ -164,6 +176,7 @@ function onMessage(e) {
 		remote = { w: m.w, h: m.h }
 		emit('size', remote)
 	} else if (m.t === 'clip' && typeof m.text === 'string') emit('clipboard', m.text)
+	else if (m.t === 'enc') running = m
 	else if (m.t === 'err') {
 		console.warn('Host Desktop stream error:', m.code)
 		// Every encoder on the server failed: no picture is coming.
@@ -177,6 +190,7 @@ async function offer() {
 	offerAt = lastHbAt = Date.now()
 	firstFrameAt = 0
 	framesDecoded = 0
+	lastRtp = running = null
 	// Host candidates only (contract): no STUN/TURN servers.
 	const p = (pc = new RTCPeerConnection())
 	p.addTransceiver('video', { direction: 'recvonly' })
@@ -192,7 +206,8 @@ async function offer() {
 		await p.setLocalDescription(await p.createOffer())
 		await iceGathered(p)
 		if (my !== gen) return
-		const res = await api('/host/webrtc/offer', { sdp: p.localDescription.sdp, type: 'offer', fps: props.fps, max_kbps: props.maxKbps })
+		const stream = STREAM_PRESETS.includes(adaptState.preset) ? { preset: adaptState.preset } : { fps: props.fps, max_kbps: props.maxKbps }
+		const res = await api('/host/webrtc/offer', { sdp: p.localDescription.sdp, type: 'offer', ...stream })
 		if (my !== gen) return
 		if (res.status === 401) return authFailed()
 		const body = await res.json().catch(() => ({}))
@@ -240,9 +255,11 @@ async function pollStats() {
 	let fps = null
 	let rttMs = null
 	let pairId = ''
+	let rtp = null
 	report.forEach((r) => {
 		if (r.type === 'inbound-rtp' && r.kind === 'video') {
 			if (r.framesPerSecond != null) fps = Math.round(r.framesPerSecond)
+			rtp = { lost: r.packetsLost || 0, received: r.packetsReceived || 0 }
 			if (r.framesDecoded > framesDecoded) {
 				framesDecoded = r.framesDecoded
 				markFrame()
@@ -253,7 +270,17 @@ async function pollStats() {
 		const selected = pairId ? r.id === pairId : r.nominated && r.state === 'succeeded'
 		if (r.type === 'candidate-pair' && selected && r.currentRoundTripTime != null) rttMs = Math.round(r.currentRoundTripTime * 1000)
 	})
-	emit('stats', { encoder, fps, rttMs })
+	const loss = lossPct(lastRtp, rtp)
+	lastRtp = rtp
+	if (props.adapt && firstFrameAt && dc && dc.readyState === 'open') {
+		adaptState = adaptStep(adaptState, { now: Date.now(), rttMs, lossPct: loss }, props.preset)
+		if (adaptState.change) {
+			send({ t: 'preset', preset: adaptState.change.preset })
+			emit('adapt', adaptState.change)
+		}
+	}
+	const enc = running || {}
+	emit('stats', { encoder: enc.encoder || encoder, fps, rttMs, preset: enc.preset || (STREAM_PRESETS.includes(adaptState.preset) ? adaptState.preset : 'custom') })
 }
 
 async function start() {
@@ -265,7 +292,8 @@ async function start() {
 		if (res.ok) caps = await res.json()
 	} catch {}
 	if (stopped) return
-	const pick = chooseLane(props.fallback ? 'auto' : 'smooth', caps)
+	if (caps && caps.modes && caps.modes.webrtc) emit('caps', caps.modes.webrtc)
+	const pick = chooseLane(props.fallback ? 'auto' : 'smooth', caps, location.hostname)
 	if (pick.lane !== 'webrtc') return giveUp(pick.reason)
 	encoder = pick.encoder
 	offer()
@@ -360,13 +388,23 @@ const rfbLike = markRaw({
 	},
 })
 
-// New fps / bitrate: they go with the offer, so offer again.
+// A new preset (or fps / bitrate): they go with the offer, so offer again.
 watch(
-	() => [props.fps, props.maxKbps],
+	() => [props.preset, props.fps, props.maxKbps],
 	() => {
+		adaptState = adaptInit(props.preset, Date.now())
 		if (stopped || !pc) return
 		setState('reconnecting')
 		offer()
+	},
+)
+// Adaptation off: back to the chosen preset.
+watch(
+	() => props.adapt,
+	(on) => {
+		if (on || adaptState.preset === props.preset) return
+		adaptState = adaptInit(props.preset, Date.now())
+		send({ t: 'preset', preset: props.preset })
 	},
 )
 

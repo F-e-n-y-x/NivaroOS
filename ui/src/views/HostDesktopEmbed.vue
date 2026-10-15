@@ -1,22 +1,26 @@
 <!-- src/views/HostDesktopEmbed.vue
-	#/host-desktop/embed?mode=smooth - the Android app's WebView: the Smooth
-	(WebRTC) viewer full-bleed, nothing else. The app injects its JWT as
+	#/host-desktop/embed?mode=smooth - the Android app's WebView: the WebRTC
+	viewer full-bleed, nothing else. The app injects its JWT as
 	window.__nivaroosToken before load (never in the URL) and listens on
 	window.NivaroosBridge for {"state":"connecting|live|fallback|error","reason"}.
 	On "fallback" (no WebRTC here, or no first frame within 4 s) the app
 	switches to its own VNC client.
 	The app draws its own console over the page and drives everything
 	through window.nivaroosEmbed (key, pointer, clip, setStream, view); the
-	page renders the video and posts {t:"size"}, {t:"stats"} and {t:"clip"}
-	back. Contract: /root/nivaroos-wip/webrtc-contract.md (Embedding).
+	page renders the video and posts {t:"size"}, {t:"stats"}, {t:"adapt"}
+	and {t:"clip"} back. Contract: /root/nivaroos-wip/webrtc-contract.md (Embedding).
 -->
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import HostDesktopWebRTC from '@/shell/desktop/HostDesktopWebRTC.vue'
-import { STREAM_FPS, STREAM_KBPS, loadPrefs, normalizePrefs } from '@/shell/desktop/streamMode'
+import { PRESET_CHOICES, STREAM_FPS, STREAM_KBPS, loadPrefs, normalizePrefs } from '@/shell/desktop/streamMode'
 
-// The app sets its own fps / bitrate before load (window.__nivaroosStream).
+// The app sets its own preset / fps / bitrate before load
+// (window.__nivaroosStream: {preset, adapt, fps, maxKbps}; an older app
+// sends only fps / maxKbps, which normalizePrefs turns into Custom).
 const prefs = window.__nivaroosStream ? normalizePrefs(window.__nivaroosStream) : loadPrefs()
+const preset = ref(prefs.preset)
+const adapt = ref(prefs.adapt)
 const fps = ref(prefs.fps)
 const maxKbps = ref(prefs.maxKbps)
 const state = ref('connecting')
@@ -63,7 +67,8 @@ function onClipboard(text) {
 
 // The app's input and settings. key: X keysym, down; pointer: remote
 // pixels and an RFB button mask (8/16/32/64 = wheel); clip: text to the
-// host's clipboard; setStream({fps, maxKbps}): offers again with them;
+// host's clipboard; setStream({preset, adapt, fps, maxKbps}): offers again
+// with them (adapt alone doesn't);
 // view({x, y, w, h} | null): where the video goes, in CSS pixels (the
 // app's fit / zoom / pan), null = fit.
 function onReady(rfb) {
@@ -74,6 +79,9 @@ function onReady(rfb) {
 		// A value it doesn't know leaves that setting as it is.
 		setStream(o) {
 			const v = o || {}
+			if (PRESET_CHOICES.includes(v.preset)) preset.value = v.preset
+			else if (v.preset === undefined && (STREAM_FPS.includes(Number(v.fps)) || STREAM_KBPS.includes(Number(v.maxKbps)))) preset.value = 'custom' // an older app
+			if (typeof v.adapt === 'boolean') adapt.value = v.adapt
 			if (STREAM_FPS.includes(Number(v.fps))) fps.value = Number(v.fps)
 			if (STREAM_KBPS.includes(Number(v.maxKbps))) maxKbps.value = Number(v.maxKbps)
 		},
@@ -92,7 +100,19 @@ onBeforeUnmount(() => {
 
 <template>
 	<div class="hd-embed">
-		<host-desktop-web-r-t-c :fallback="true" :fps="fps" :max-kbps="maxKbps" @ready="onReady" @state="onState" @clipboard="onClipboard" @size="onSize" @stats="onStats"></host-desktop-web-r-t-c>
+		<host-desktop-web-r-t-c
+			:fallback="true"
+			:preset="preset"
+			:adapt="adapt"
+			:fps="fps"
+			:max-kbps="maxKbps"
+			@ready="onReady"
+			@state="onState"
+			@clipboard="onClipboard"
+			@size="onSize"
+			@stats="onStats"
+			@adapt="(a) => post({ t: 'adapt', ...a })"
+		></host-desktop-web-r-t-c>
 		<div v-if="state !== 'live'" class="hd-embed-status" role="status" aria-live="polite">
 			<span v-if="state === 'connecting'">{{ $t('Connecting...') }}</span>
 			<span v-else-if="state === 'fallback'">{{ $t('Compatible mode') }}</span>

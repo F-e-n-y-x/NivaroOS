@@ -42,11 +42,14 @@ describe('Host Desktop connect watchdog', () => {
 	afterEach(() => {
 		app && app.unmount()
 		sockets.length = 0
+		localStorage.clear()
 		vi.useRealTimers()
 	})
 
 	function mount() {
 		vi.useFakeTimers()
+		// These are about the noVNC lane.
+		localStorage.setItem('host_desktop_stream', JSON.stringify({ v: 2, mode: 'compatible' }))
 		const el = document.createElement('div')
 		document.body.appendChild(el)
 		app = createApp({ render: () => h(Panel) })
@@ -90,7 +93,7 @@ describe('Host Desktop connect watchdog', () => {
 	})
 })
 
-describe('Host Desktop Smooth (beta) lane', () => {
+describe('Host Desktop WebRTC lane', () => {
 	let app
 	afterEach(() => {
 		app && app.unmount()
@@ -112,8 +115,7 @@ describe('Host Desktop Smooth (beta) lane', () => {
 		return el
 	}
 
-	test('Auto opens WebRTC instead of noVNC, and falls back to noVNC with a reason when no frame comes', async () => {
-		localStorage.setItem('host_desktop_stream', JSON.stringify({ mode: 'auto' }))
+	test('Auto (the default) opens WebRTC instead of noVNC, and falls back to noVNC with a reason when no frame comes', async () => {
 		sidecar.status = { installed: true, service_active: true }
 		const pcs = []
 		vi.stubGlobal(
@@ -150,14 +152,23 @@ describe('Host Desktop Smooth (beta) lane', () => {
 			}
 		)
 		const ok = (body) => ({ status: 200, ok: true, json: async () => body })
-		vi.stubGlobal('fetch', async (url) => ok(url.endsWith('/host/stream') ? { modes: { webrtc: { available: true, encoder: 'x264enc' } } } : { type: 'answer', sdp: 'a' }))
+		vi.stubGlobal('fetch', async (url) => ok(url.endsWith('/host/stream') ? { modes: { webrtc: { available: true, encoder: 'x264enc', presets: { low: { fps: 20, max_kbps: 2000, max_width: 1280 } } } } } : { type: 'answer', sdp: 'a' }))
 
 		const el = mount()
 		await flush()
 		expect(pcs.length).toBe(1)
 		expect(sockets.length).toBe(0)
 		expect(el.querySelector('.hd-webrtc video')).not.toBeNull()
-		expect(el.querySelector('.status-pill.is-smooth')).not.toBeNull()
+		expect(el.querySelector('.status-pill.is-smooth').textContent).toContain('CPU · x264')
+		// The quality menu: the presets (with the server's numbers) and the encoder, not the VNC qualities.
+		const qualityBtn = [...el.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Display & Bandwidth Quality')
+		qualityBtn.click()
+		await flush()
+		const menu = el.querySelector('.quality-menu')
+		expect([...menu.querySelectorAll('.quality-menu-title')].map((t) => t.textContent)).toEqual(['Low bandwidth', 'Balanced', 'High quality', 'Custom'])
+		expect(menu.textContent).toContain('1280 wide · 20 fps · 2 Mbit/s')
+		expect(menu.querySelector('.quality-menu-encoder').textContent).toContain('CPU · x264')
+		expect(menu.querySelector('#hd-noxdamage')).toBeNull()
 
 		await vi.advanceTimersByTimeAsync(5000)
 		await flush()
@@ -167,7 +178,8 @@ describe('Host Desktop Smooth (beta) lane', () => {
 		expect(el.querySelector('.console-statusbar').textContent).toContain('No video arrived')
 	})
 
-	test('Compatible (the default) never touches WebRTC', async () => {
+	test('Compatible (an explicit choice) never touches WebRTC', async () => {
+		localStorage.setItem('host_desktop_stream', JSON.stringify({ v: 2, mode: 'compatible' }))
 		sidecar.status = { installed: true, service_active: true }
 		const fetchSpy = vi.fn()
 		vi.stubGlobal('fetch', fetchSpy)

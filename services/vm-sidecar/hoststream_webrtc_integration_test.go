@@ -287,7 +287,7 @@ func TestIntegrationWebRTCOfferStreamsAndInjects(t *testing.T) {
 //	  window.__states = []
 //	  localStorage.setItem('access_token', 'test')
 //	  createApp({ render: () => h('div', { style: 'position:fixed;inset:0' }, [h(Viewer, {
-//	    fallback: false, fps: 30, maxKbps: 4000,
+//	    fallback: false, preset: 'low',
 //	    onState: (s) => window.__states.push(s.state + ':' + s.reason),
 //	    onSize: (s) => (window.__size = s), onStats: (s) => (window.__stats = s) })]) }).mount('#app')
 func TestIntegrationWebViewerInChrome(t *testing.T) {
@@ -299,7 +299,7 @@ func TestIntegrationWebViewerInChrome(t *testing.T) {
 	if err != nil {
 		t.Skip("no google-chrome")
 	}
-	_, _, onDisp := testDesktop(t)
+	enc, _, onDisp := testDesktop(t)
 	api := http.NewServeMux()
 	RegisterHostStreamRoutes(api)
 	target, _ := url.Parse(ui)
@@ -411,7 +411,8 @@ func TestIntegrationWebViewerInChrome(t *testing.T) {
 	}
 	time.Sleep(1500 * time.Millisecond)
 	t.Logf("states %s, stats %s", eval("window.__states"), eval("window.__stats"))
-	if !strings.Contains(eval("window.__stats"), `"fps":`) {
-		t.Errorf("no stats")
+	// The server's {"t":"enc"}: the preset and encoder actually running.
+	if st := eval("window.__stats"); !strings.Contains(st, `"fps":`) || !strings.Contains(st, `"preset":"low"`) || !strings.Contains(st, `"encoder":"`+enc+`"`) {
+		t.Errorf("stats %s", st)
 	}
 }

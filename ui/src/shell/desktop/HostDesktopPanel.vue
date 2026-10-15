@@ -100,7 +100,7 @@
 					<b-icon icon="monitor" custom-size="mdi-18px"></b-icon>
 					<span class="vm-name">{{ $t('Host Desktop') }}</span>
 					<span class="status-pill" :class="'is-' + status" aria-live="polite">{{ statusText }}</span>
-					<span v-if="lane === 'webrtc'" class="status-pill is-smooth">{{ $t('Smooth (beta)') }}</span>
+					<span v-if="lane === 'webrtc'" class="status-pill is-smooth" :title="$t('WebRTC video')">{{ webrtcEncoderLabel || 'WebRTC' }}</span>
 					<span v-else-if="laneReason" class="status-pill is-compatible" :title="$t(laneReason)">{{ $t('Compatible mode') }}</span>
 					<span v-if="status === 'connected' && pingMs !== null" class="ping-pill" :class="pingClass" :title="$t('Round-trip time to this host')">
 						<b-icon icon="wifi" custom-size="mdi-14px"></b-icon>
@@ -359,12 +359,36 @@
 								@click="qualityMenuOpen = !qualityMenuOpen"
 							>
 								<b-icon icon="speedometer" custom-size="mdi-16px"></b-icon>
-								<span>{{ qualityModeLabel }}</span>
+								<span>{{ webrtcMenu ? webrtcPresetLabel : qualityModeLabel }}</span>
 								<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
 							</button>
 							<div v-if="qualityMenuOpen" class="power-menu quality-menu" role="menu">
+								<!-- WebRTC: the server's presets for its GPU / CPU encoder. -->
+								<template v-if="webrtcMenu">
+									<p class="device-menu-title">
+										{{ $t('Stream quality') }}
+										<span v-if="webrtcEncoderLabel" class="quality-menu-encoder">{{ webrtcEncoderLabel }}</span>
+									</p>
+									<button
+										v-for="p in presetChoices"
+										:key="p"
+										type="button"
+										role="menuitemradio"
+										:aria-checked="streamPrefs.preset === p ? 'true' : 'false'"
+										class="power-menu-item quality-menu-item"
+										:class="{ active: streamPrefs.preset === p }"
+										@click.stop="setStreamPreset(p)"
+									>
+										<b-icon :icon="presetIcons[p]" custom-size="mdi-18px"></b-icon>
+										<span class="quality-menu-text">
+											<span class="quality-menu-title">{{ $t(presetLabels[p]) }}</span>
+											<span class="quality-menu-desc">{{ presetDesc(p) }}</span>
+										</span>
+										<b-icon v-if="streamPrefs.preset === p" icon="check" custom-size="mdi-16px" class="quality-menu-check"></b-icon>
+									</button>
+								</template>
 								<button
-									v-for="q in qualityOptions"
+									v-for="q in webrtcMenu ? [] : qualityOptions"
 									:key="q.mode"
 									type="button"
 									role="menuitemradio"
@@ -386,54 +410,62 @@
 									<label class="stream-setting-row" for="hd-stream-mode">
 										<span>{{ $t('Stream mode') }}</span>
 										<select id="hd-stream-mode" v-model="streamPrefs.mode" class="stream-setting-select" @change="saveStreamPrefs">
+											<option value="auto">{{ $t('Auto (WebRTC, VNC fallback)') }}</option>
+											<option value="smooth">{{ $t('WebRTC only') }}</option>
 											<option value="compatible">{{ $t('Compatible (VNC)') }}</option>
-											<option value="auto">{{ $t('Auto') }}</option>
-											<option value="smooth">{{ $t('Smooth (beta)') }}</option>
 										</select>
 									</label>
-									<template v-if="streamPrefs.mode !== 'compatible'">
-										<label class="stream-setting-row" for="hd-stream-fps">
-											<span>{{ $t('Smooth frame rate') }}</span>
-											<select id="hd-stream-fps" v-model.number="streamPrefs.fps" class="stream-setting-select" @change="saveStreamPrefs">
-												<option v-for="f in streamFpsOptions" :key="f" :value="f">{{ f }} fps</option>
-											</select>
+									<template v-if="webrtcMenu">
+										<label class="stream-setting-row" for="hd-stream-adapt">
+											<input id="hd-stream-adapt" v-model="streamPrefs.adapt" type="checkbox" :disabled="streamPrefs.preset === 'custom'" @change="saveStreamPrefs(false)" />
+											<span>{{ $t('Adapt to the network (lower the quality when it gets slow)') }}</span>
 										</label>
-										<label class="stream-setting-row" for="hd-stream-kbps">
-											<span>{{ $t('Smooth max bitrate') }}</span>
-											<select id="hd-stream-kbps" v-model.number="streamPrefs.maxKbps" class="stream-setting-select" @change="saveStreamPrefs">
-												<option v-for="k in streamKbpsOptions" :key="k" :value="k">{{ k / 1000 }} Mbit/s</option>
-											</select>
-										</label>
+										<template v-if="streamPrefs.preset === 'custom'">
+											<label class="stream-setting-row" for="hd-stream-fps">
+												<span>{{ $t('Frame rate') }}</span>
+												<select id="hd-stream-fps" v-model.number="streamPrefs.fps" class="stream-setting-select" @change="saveStreamPrefs(false)">
+													<option v-for="f in streamFpsOptions" :key="f" :value="f">{{ f }} fps</option>
+												</select>
+											</label>
+											<label class="stream-setting-row" for="hd-stream-kbps">
+												<span>{{ $t('Max bitrate') }}</span>
+												<select id="hd-stream-kbps" v-model.number="streamPrefs.maxKbps" class="stream-setting-select" @change="saveStreamPrefs(false)">
+													<option v-for="k in streamKbpsOptions" :key="k" :value="k">{{ k / 1000 }} Mbit/s</option>
+												</select>
+											</label>
+										</template>
 									</template>
-									<p class="device-menu-title device-menu-title-divided">{{ $t('Stream Settings') }}</p>
-									<label class="stream-setting-row" for="hd-noxdamage">
-										<input id="hd-noxdamage" v-model="streamSettings.noxdamage" type="checkbox" :disabled="savingSettings" />
-										<span>{{ $t('Disable X damage (for compositors)') }}</span>
-									</label>
-									<label class="stream-setting-row" for="hd-fps">
-										<span>{{ $t('Frame rate') }}</span>
-										<select id="hd-fps" v-model.number="streamSettings.fps" class="stream-setting-select" :disabled="savingSettings">
-											<option :value="0">{{ $t('Auto') }}</option>
-											<option v-for="f in [15, 24, 30, 45, 60]" :key="f" :value="f">{{ f }} fps</option>
-										</select>
-									</label>
-									<label class="stream-setting-row" for="hd-snapfb">
-										<input id="hd-snapfb" v-model="streamSettings.snapfb" type="checkbox" :disabled="savingSettings" />
-										<span>{{ $t('Capture whole frames (no boxes on motion, more CPU)') }}</span>
-									</label>
-									<label class="stream-setting-row" for="hd-fixscreen">
-										<span>{{ $t('Periodic full refresh (fixes stale patches)') }}</span>
-										<select id="hd-fixscreen" v-model.number="streamSettings.fixscreen" class="stream-setting-select" :disabled="savingSettings">
-											<option :value="0">{{ $t('Off') }}</option>
-											<option :value="5">5 s</option>
-											<option :value="15">15 s</option>
-											<option :value="60">60 s</option>
-										</select>
-									</label>
-									<button type="button" class="custom-res-btn stream-settings-save" :disabled="savingSettings" @click="saveStreamSettings">
-										<b-icon v-if="savingSettings" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
-										<span v-else>{{ $t('Apply & restart stream') }}</span>
-									</button>
+									<template v-if="!webrtcMenu">
+										<p class="device-menu-title device-menu-title-divided">{{ $t('Stream Settings') }}</p>
+										<label class="stream-setting-row" for="hd-noxdamage">
+											<input id="hd-noxdamage" v-model="streamSettings.noxdamage" type="checkbox" :disabled="savingSettings" />
+											<span>{{ $t('Disable X damage (for compositors)') }}</span>
+										</label>
+										<label class="stream-setting-row" for="hd-fps">
+											<span>{{ $t('Frame rate') }}</span>
+											<select id="hd-fps" v-model.number="streamSettings.fps" class="stream-setting-select" :disabled="savingSettings">
+												<option :value="0">{{ $t('Auto') }}</option>
+												<option v-for="f in [15, 24, 30, 45, 60]" :key="f" :value="f">{{ f }} fps</option>
+											</select>
+										</label>
+										<label class="stream-setting-row" for="hd-snapfb">
+											<input id="hd-snapfb" v-model="streamSettings.snapfb" type="checkbox" :disabled="savingSettings" />
+											<span>{{ $t('Capture whole frames (no boxes on motion, more CPU)') }}</span>
+										</label>
+										<label class="stream-setting-row" for="hd-fixscreen">
+											<span>{{ $t('Periodic full refresh (fixes stale patches)') }}</span>
+											<select id="hd-fixscreen" v-model.number="streamSettings.fixscreen" class="stream-setting-select" :disabled="savingSettings">
+												<option :value="0">{{ $t('Off') }}</option>
+												<option :value="5">5 s</option>
+												<option :value="15">15 s</option>
+												<option :value="60">60 s</option>
+											</select>
+										</label>
+										<button type="button" class="custom-res-btn stream-settings-save" :disabled="savingSettings" @click="saveStreamSettings">
+											<b-icon v-if="savingSettings" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
+											<span v-else>{{ $t('Apply & restart stream') }}</span>
+										</button>
+									</template>
 								</div>
 							</div>
 						</div>
@@ -487,11 +519,15 @@
 					:key="webrtcSession"
 					:scale-to-fit="scaleToFit"
 					:fallback="streamPrefs.mode === 'auto'"
+					:preset="streamPrefs.preset"
+					:adapt="streamPrefs.adapt"
 					:fps="streamPrefs.fps"
 					:max-kbps="streamPrefs.maxKbps"
 					@ready="(r) => (rfb = r)"
 					@state="onWebrtcState"
 					@stats="(s) => (webrtcStats = s)"
+					@caps="(c) => (webrtcCaps = c)"
+					@adapt="onWebrtcAdapt"
 					@size="(d) => (currentResolution = `${d.w}x${d.h}`)"
 					@clipboard="receiveHostClipboard"
 				></host-desktop-web-r-t-c>
@@ -680,16 +716,16 @@
 				</span>
 				<span class="statusbar-item">
 					<b-icon icon="speedometer" size="is-small"></b-icon>
-					{{ qualityModeLabel }}
+					{{ lane === 'webrtc' ? webrtcPresetLabel : qualityModeLabel }}
 				</span>
 				<span class="statusbar-item">
 					<b-icon :icon="scaleToFit ? 'fit-to-page-outline' : 'aspect-ratio'" size="is-small"></b-icon>
 					{{ scaleToFit ? $t('Fit') : $t('1:1') }}
 				</span>
 				<template v-if="lane === 'webrtc' && webrtcStats">
-					<span v-if="webrtcStats.encoder" class="statusbar-item">
+					<span v-if="webrtcEncoderLabel" class="statusbar-item" :title="webrtcStats.encoder">
 						<b-icon icon="chip" size="is-small"></b-icon>
-						{{ webrtcStats.encoder }}
+						{{ webrtcEncoderLabel }}
 					</span>
 					<span v-if="webrtcStats.fps !== null" class="statusbar-item">{{ webrtcStats.fps }} fps</span>
 					<span v-if="webrtcStats.rttMs !== null" class="statusbar-item">{{ $t('RTT {ms} ms', { ms: webrtcStats.rttMs }) }}</span>
@@ -721,7 +757,7 @@ import RemoteClipboardPanel from '@/shared/clipboard/RemoteClipboardPanel.vue'
 import { record as recordClipboard, typeText } from '@/service/remoteClipboard'
 import { reconnectDelay, watchedSocket } from '@/utils/consoleSocket'
 import HostDesktopWebRTC from './HostDesktopWebRTC.vue'
-import { STREAM_FPS, STREAM_KBPS, loadPrefs, savePrefs } from './streamMode'
+import { PRESET_CHOICES, PRESET_HINTS, PRESET_LABELS, STREAM_FPS, STREAM_KBPS, encoderLabel, loadPrefs, presetSummary, savePrefs } from './streamMode'
 
 const QUALITY_PRESETS = {
 	high: { qualityLevel: 9, compressionLevel: 1 },
@@ -971,9 +1007,13 @@ export default {
 			streamSettings: { fixscreen: 0, noxdamage: true, fps: 0, snapfb: false },
 			savingSettings: false,
 			connectedThisAttempt: false,
-			// Smooth (beta): 'webrtc' or 'vnc' once chosen ('' = choose on
+			// Stream lane: 'webrtc' or 'vnc' once chosen ('' = choose on
 			// connect); laneReason says why Auto/Smooth ended up on VNC.
 			streamPrefs: loadPrefs(),
+			presetChoices: PRESET_CHOICES,
+			presetLabels: PRESET_LABELS,
+			presetIcons: { low: 'speedometer-slow', balanced: 'speedometer-medium', high: 'speedometer', custom: 'tune-variant' },
+			webrtcCaps: null,
 			streamFpsOptions: STREAM_FPS,
 			streamKbpsOptions: STREAM_KBPS,
 			lane: '',
@@ -1029,6 +1069,21 @@ export default {
 		},
 		hostDisplayName() {
 			return this.displayName || (this.serviceStatus && this.serviceStatus.display) || ''
+		},
+		// The quality menu shows WebRTC presets unless this session is on VNC.
+		webrtcMenu() {
+			return this.lane === 'webrtc' || (!this.lane && this.streamPrefs.mode !== 'compatible')
+		},
+		webrtcEncoderLabel() {
+			const enc = (this.webrtcStats && this.webrtcStats.encoder) || (this.webrtcCaps && this.webrtcCaps.encoder) || ''
+			return encoderLabel(enc)
+		},
+		// The chosen preset, or what the network adaptation stepped down to.
+		webrtcPresetLabel() {
+			const chosen = this.streamPrefs.preset
+			const now = (this.webrtcStats && this.webrtcStats.preset) || chosen
+			const label = this.$t(PRESET_LABELS[now] || PRESET_LABELS[chosen])
+			return now !== chosen && chosen !== 'custom' ? this.$t('{preset} (network)', { preset: label }) : label
 		},
 		qualityModeLabel() {
 			const m = this.qualityOptions.find((q) => q.mode === this.qualityMode)
@@ -1345,11 +1400,31 @@ export default {
 			}
 		},
 
-		saveStreamPrefs() {
+		// relane: a new mode (pick the lane again); presets and the rest go
+		// to the running viewer as props.
+		saveStreamPrefs(relane = true) {
 			this.streamPrefs = savePrefs(this.streamPrefs)
+			if (relane === false && this.lane === 'webrtc') return
 			this.lane = ''
 			this.laneReason = ''
 			this.manualReconnect()
+		},
+		setStreamPreset(p) {
+			this.streamPrefs.preset = p
+			this.saveStreamPrefs(false)
+		},
+		presetDesc(p) {
+			const spec = this.webrtcCaps && this.webrtcCaps.presets && this.webrtcCaps.presets[p]
+			const sum = presetSummary(spec)
+			return sum ? `${this.$t(PRESET_HINTS[p])} · ${sum}` : this.$t(PRESET_HINTS[p])
+		},
+		onWebrtcAdapt({ preset, dir }) {
+			const name = this.$t(PRESET_LABELS[preset])
+			this.$buefy.toast.open({
+				message: dir === 'down' ? this.$t('The network is slow - switched to {preset}', { preset: name }) : this.$t('The network is stable again - back to {preset}', { preset: name }),
+				type: dir === 'down' ? 'is-warning' : 'is-success',
+				duration: 3500,
+			})
 		},
 
 		armConnectWatchdog(rfb) {
@@ -2606,6 +2681,18 @@ export default {
 	font-size: var(--font-2xs);
 	color: rgba(255, 255, 255, 0.5);
 	white-space: normal;
+}
+
+/* "GPU · NVENC" / "CPU · x264" next to the WebRTC presets' heading. */
+.quality-menu-encoder {
+	margin-left: var(--space-1);
+	padding: 1px 6px;
+	border-radius: 999px;
+	background: rgba(50, 152, 220, 0.2);
+	color: #6cb8ec;
+	text-transform: none;
+	letter-spacing: 0;
+	font-weight: 600;
 }
 
 .quality-menu-check {
