@@ -63,8 +63,10 @@ class StoreInstaller extends ChangeNotifier {
   /// Fetches the app's compose file from the store and installs it
   /// (`POST /v2/app_management/compose`, YAML body, port conflicts
   /// checked), the way the web store does. Throws when the server refuses;
-  /// progress arrives through [progressOf] afterwards.
-  Future<void> install(String id) async {
+  /// progress arrives through [progressOf] afterwards. An app that would
+  /// get root access to the server (host network, privileged) is refused
+  /// with HTTP 428 until the user confirms: [allowHostAccess] (audit H1).
+  Future<void> install(String id, {bool allowHostAccess = false}) async {
     if (_jobs[id]?.running ?? false) return;
     _jobs[id] = const InstallProgress();
     notifyListeners();
@@ -73,7 +75,7 @@ class StoreInstaller extends ChangeNotifier {
       if (res.statusCode != 200 || res.body.trim().isEmpty) {
         throw ApiException("The store didn't send this app's setup (HTTP ${res.statusCode}).", statusCode: res.statusCode);
       }
-      await ApiClient.instance.postBody('/v2/app_management/compose', res.body, 'application/yaml', query: {'check_port_conflict': 'true'});
+      await ApiClient.instance.postBody('/v2/app_management/compose', res.body, 'application/yaml', query: {'check_port_conflict': 'true', if (allowHostAccess) 'allow_host_access': 'true'});
     } catch (e) {
       _jobs.remove(id);
       notifyListeners();
@@ -596,7 +598,24 @@ class _StoreAppDetailScreenState extends State<StoreAppDetailScreen> {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _starting = true);
     try {
-      await StoreInstaller.instance.install(_app.id);
+      try {
+        await StoreInstaller.instance.install(_app.id);
+      } on ApiException catch (e) {
+        if (e.statusCode != 428 || !mounted) rethrow;
+        final go = await showDialog<bool>(
+          context: context,
+          builder: (d) => AlertDialog(
+            title: const Text('Give this app full access to the server?'),
+            content: SingleChildScrollView(child: Text(e.message)),
+            actions: [
+              TextButton(autofocus: true, onPressed: () => Navigator.of(d).pop(false), child: const Text('Cancel')),
+              TextButton(onPressed: () => Navigator.of(d).pop(true), child: const Text('Install anyway')),
+            ],
+          ),
+        );
+        if (go != true) return;
+        await StoreInstaller.instance.install(_app.id, allowHostAccess: true);
+      }
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text("Couldn't install ${_app.title}. ${e is ApiException ? e.message : e}")));
     } finally {

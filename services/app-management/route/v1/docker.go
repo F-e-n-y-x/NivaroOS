@@ -387,6 +387,12 @@ func UpdateSetting(ctx *echo.Context) error {
 	if err := ctx.Bind(&m); err != nil {
 		return ctx.JSON(http.StatusBadRequest, modelCommon.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})
 	}
+	// Host networking (the host's loopback, which NivaroOS's APIs trust) or
+	// privileged mode is root on this server: only with the admin's OK, as
+	// for compose installs (audit H1).
+	if (m.NetworkModel == "host" || m.Privileged) && ctx.QueryParam("allow_host_access") != "true" {
+		return ctx.JSON(http.StatusPreconditionRequired, modelCommon.Result{Success: common_err.INVALID_PARAMS, Message: "This container gets full (root) access to the server (host network or privileged). Confirm with allow_host_access=true."})
+	}
 
 	if err := service.MyService.Docker().StopContainer(id); err != nil {
 		return ctx.JSON(http.StatusInternalServerError, modelCommon.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})

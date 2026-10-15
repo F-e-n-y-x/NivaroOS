@@ -92,6 +92,25 @@ void main() {
     StoreInstaller.instance.debugSet('jellyfin', null);
   });
 
+  test('an app with root access to the server waits for the OK (428), then installs with it (H1)', () async {
+    final posts = <String>[];
+    final client = MockClient((req) async {
+      if (req.method == 'GET') return http.Response('name: ha\nservices: {}\n', 200);
+      posts.add(req.url.query);
+      return req.url.queryParameters['allow_host_access'] == 'true'
+          ? http.Response(jsonEncode({'message': 'ok'}), 200)
+          : http.Response(jsonEncode({'message': 'This app gets full (root) access to the server (web: host network).', 'data': {'host_access': ['web: host network']}}), 428);
+    });
+    await expectLater(
+      http.runWithClient(() => StoreInstaller.instance.install('ha'), () => client),
+      throwsA(isA<ApiException>().having((e) => e.statusCode, 'statusCode', 428).having((e) => e.message, 'message', contains('root'))),
+    );
+    expect(StoreInstaller.instance.progressOf('ha'), isNull);
+    await http.runWithClient(() => StoreInstaller.instance.install('ha', allowHostAccess: true), () => client);
+    expect(posts.last, contains('allow_host_access=true'));
+    StoreInstaller.instance.debugSet('ha', null);
+  });
+
   test('a refused install is reported and forgotten', () async {
     final client = MockClient((req) async => req.method == 'GET'
         ? http.Response('services: {}', 200)

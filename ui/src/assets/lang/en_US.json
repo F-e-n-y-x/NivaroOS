@@ -3558,5 +3558,9 @@
   "No H.264 video encoder found on this server": "No H.264 video encoder found on this server",
   "The Host Desktop VNC server is not running": "The Host Desktop VNC server is not running",
   "This server has no LAN or Tailscale address for Smooth video": "This server has no LAN or Tailscale address for Smooth video",
-  "Smooth video failed to start on this server": "Smooth video failed to start on this server"
+  "Smooth video failed to start on this server": "Smooth video failed to start on this server",
+  "Give this app full access to the server?": "Give this app full access to the server?",
+  "This app gets full (root) access to the server: it can read and change everything on it. Install it only if you trust it.": "This app gets full (root) access to the server: it can read and change everything on it. Install it only if you trust it.",
+  "Install anyway": "Install anyway",
+  "Not installed": "Not installed"
 }

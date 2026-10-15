@@ -180,6 +180,7 @@ import YAML from "yaml";
 import commonI18n, { ice_i18n } from "@/mixins/base/common-i18n";
 import FileSaver from 'file-saver';
 import { confirmWindowMixin } from '@/mixins/confirmWindow';
+import { withHostAccessConfirm } from './hostAccess';
 import { apiErrorHtml, apiErrorText } from '@/mixins/app/apiError';
 
 const REBUILD_DONE_EVENT = 'APP_CARD_REBUILD_DONE'
@@ -1014,13 +1015,14 @@ export default {
 			if (pendingRebuilds[app.name]) return
 			this.isRebuilding = true;
 			// 1. export yaml - nothing has been changed yet if this fails
-			let file
+			let file, hostOK
 			try {
 				file = await this.$api.container.exportAsCompose(app.name).then(res => res.data)
 				if (!file) throw new Error(this.$t('The exported compose file is empty'))
 				// 2. validate it before removing anything (dry run, the old
-				// container still holds its ports so skip the port check)
-				await this.$openAPI.appManagement.compose.installComposeApp(file, true, false)
+				// container still holds its ports so skip the port check);
+				// host networking/privileged is confirmed here, once.
+				hostOK = (await withHostAccessConfirm(this, (o) => this.$openAPI.appManagement.compose.installComposeApp(file, true, false, undefined, o)))[1]
 			} catch (e) {
 				this.isRebuilding = false;
 				console.error('rebuild Error:', e)
@@ -1040,7 +1042,7 @@ export default {
 			// watched outside this component (see watchRebuild).
 			const watch = watchRebuild(this, app.name, file)
 			try {
-				await this.$openAPI.appManagement.compose.installComposeApp(file, false, true)
+				await this.$openAPI.appManagement.compose.installComposeApp(file, false, true, undefined, hostOK)
 			} catch (e) {
 				console.error('rebuild install Error:', e)
 				watch.fail(apiErrorText(e, this.$t('Rebuild error')))

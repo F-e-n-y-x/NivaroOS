@@ -970,6 +970,7 @@ import FileSaver from 'file-saver'
 import copy from 'clipboard-copy'
 import { escapeHtml } from '@/utils/escapeHtml'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
+import { withHostAccessConfirm } from './hostAccess'
 import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
 import StoreAppCard from './StoreAppCard.vue'
 import { applyFormToDoc, docToFormState, isValidWebUIHost, parsePortSpec, webUILink } from './composeForm'
@@ -1634,7 +1635,7 @@ export default {
 		},
 		async executeInstall(yamlData, item) {
 			try {
-				const installRes = await this.$openAPI.appManagement.compose.installComposeApp(yamlData, false, true)
+				const [installRes] = await withHostAccessConfirm(this, (o) => this.$openAPI.appManagement.compose.installComposeApp(yamlData, false, true, undefined, o))
 				if (installRes.status === 200) {
 					this.toast(this.$t('Installation started for {title}', { title: item?.title || 'app' }), 'is-success', 3000)
 				} else {
@@ -1821,12 +1822,10 @@ export default {
 
 			this.isDeployingCustom = true
 			try {
-				let res
-				if (this.formState.isEditing) {
-					res = await this.$openAPI.appManagement.compose.applyComposeAppSettings(this.formState.appName, finalYaml, false, true)
-				} else {
-					res = await this.$openAPI.appManagement.compose.installComposeApp(finalYaml, false, true)
-				}
+				const compose = this.$openAPI.appManagement.compose
+				const res = (await withHostAccessConfirm(this, (o) => this.formState.isEditing
+					? compose.applyComposeAppSettings(this.formState.appName, finalYaml, false, true, undefined, o)
+					: compose.installComposeApp(finalYaml, false, true, undefined, o)))[0]
 
 				if (res.status === 200) {
 					this.toast(this.formState.isEditing ? this.$t('Container settings saved successfully!') : this.$t('Application installation started!'), 'is-success', 4000)

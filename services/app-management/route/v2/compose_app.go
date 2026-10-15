@@ -175,6 +175,10 @@ func (a *AppManagement) ApplyComposeAppSettings(ctx *echo.Context, id codegen.Co
 		})
 	}
 
+	if refused, err := refuseHostAccess(ctx, newComposeApp, composeApp); refused {
+		return err
+	}
+
 	uncontrolled, err := a.IsNewComposeUncontrolled(newComposeApp)
 	if err != nil {
 		message := err.Error()
@@ -288,6 +292,10 @@ func (a *AppManagement) InstallComposeApp(ctx *echo.Context, params codegen.Inst
 		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{
 			Message: &message,
 		})
+	}
+
+	if refused, err := refuseHostAccess(ctx, composeApp, nil); refused {
+		return err
 	}
 
 	uncontrolled, err := a.IsNewComposeUncontrolled(composeApp)

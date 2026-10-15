@@ -1416,3 +1416,22 @@ func (a *ComposeApp) SetUncontrolled(uncontrolled bool) error {
 
 	return nil
 }
+
+// HostAccess says why a would get root-equivalent access to this server
+// ("<service>: <reason>", sorted), or nil: network_mode host puts it on the
+// host's loopback, which NivaroOS's APIs trust (audit H1), and privileged
+// is root outright. Installing such an app needs the admin's explicit OK.
+func (a *ComposeApp) HostAccess() []string {
+	var why []string
+	for _, name := range lo.Keys(a.Services) {
+		s := a.Services[name]
+		if s.NetworkMode == "host" {
+			why = append(why, name+": host network")
+		}
+		if s.Privileged {
+			why = append(why, name+": privileged")
+		}
+	}
+	sort.Strings(why)
+	return why
+}
