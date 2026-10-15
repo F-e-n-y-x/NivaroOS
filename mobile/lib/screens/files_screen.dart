@@ -10,6 +10,7 @@ import 'package:open_filex/open_filex.dart';
 import '../models/cloud_account.dart';
 import '../models/favorite_folder.dart';
 import '../models/file_entry.dart';
+import '../models/server_health.dart' show diskCriticalAt, diskWarnAt;
 import '../services/api_client.dart';
 import '../services/device_sync_service.dart';
 import '../services/offline_cache.dart';
@@ -1328,7 +1329,7 @@ class FilesScreenState extends State<FilesScreen> {
                   style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: Space.md),
-                UsageBar(value: used.toDouble(), max: total.toDouble(), label: 'Used', warnAt: 0.85, criticalAt: 0.95),
+                UsageBar(value: used.toDouble(), max: total.toDouble(), label: 'Used', warnAt: diskWarnAt, criticalAt: diskCriticalAt),
               ],
             ),
           ),

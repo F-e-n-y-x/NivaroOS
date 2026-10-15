@@ -213,8 +213,8 @@ class SharingBrief {
 
 /// Drive fill levels that need attention (the same thresholds UsageBar
 /// colours at).
-const diskWarnAt = 0.8;
-const diskCriticalAt = 0.9;
+const diskWarnAt = 0.9;
+const diskCriticalAt = 0.98;
 
 /// Processor temperatures that need attention, °C.
 const cpuHotAt = 80.0;

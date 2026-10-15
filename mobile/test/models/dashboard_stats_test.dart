@@ -122,7 +122,7 @@ void main() {
     test('worst first: a full disk and a failed backup before updates', () {
       final items = buildAttention(
         updates: const UpdateSummary(serverUpdate: false, packages: 12, security: 2),
-        disks: [_disk('tank', 95, 100), _disk('blue', 85, 100), _disk('ok', 10, 100)],
+        disks: [_disk('tank', 98, 100), _disk('blue', 90, 100), _disk('ok', 85, 100)],
         backups: const [BackupJobBrief(name: 'Photos', health: 'problem', lastStatus: 'failed'), BackupJobBrief(name: 'Docs', health: 'ok')],
         apps: const AppCounts(running: 3, stopped: [], failed: ['a', 'b', 'c', 'd']),
       );

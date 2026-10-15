@@ -114,13 +114,18 @@ void main() {
   });
 
   group('drives', () {
-    test('space: 80% is filling up, 90% almost full, the rest fine', () {
-      final h = _health(stats: _stats(disks: [_disk('tank', 50, 100), _disk('blue', 85, 100), _disk('tower', 95, 100)]));
+    test('space: 90% is filling up, 98% almost full, 85% and below fine', () {
+      final h = _health(stats: _stats(disks: [
+        _disk('tank', 50, 100),
+        _disk('mid', 85, 100),
+        _disk('blue', 90, 100),
+        _disk('tower', 98, 100),
+      ]));
       expect(h.attention.map((a) => (a.title, a.severity)), [
         ('tower is almost full', AttentionSeverity.error),
         ('blue is filling up', AttentionSeverity.warning),
       ]);
-      expect(_titles(h.fine), contains('tank'));
+      expect(_titles(h.fine), containsAll(['tank', 'mid']));
     });
 
     test('a failing drive is a problem; asleep or unknown is not checked', () {
@@ -297,7 +302,7 @@ void main() {
 
   test('worst first across every source', () {
     final h = _health(
-      stats: _stats(temp: 85, disks: [_disk('tower', 95, 100)]),
+      stats: _stats(temp: 85, disks: [_disk('tower', 98, 100)]),
       updates: const UpdateSummary(serverUpdate: true, packages: 0),
     );
     expect(h.attention.map((a) => a.severity), [AttentionSeverity.error, AttentionSeverity.warning, AttentionSeverity.info]);
@@ -306,7 +311,7 @@ void main() {
 
   test('buildAttention is the same list Home shows', () {
     final updates = const UpdateSummary(serverUpdate: true, packages: 3);
-    final disks = [_disk('blue', 85, 100)];
+    final disks = [_disk('blue', 90, 100)];
     expect(
       buildAttention(updates: updates, disks: disks).map((a) => a.title),
       buildHealth(stats: _stats(disks: disks), updates: updates, drives: const [], tailnet: TailnetState.notInstalled).attention.map((a) => a.title),
