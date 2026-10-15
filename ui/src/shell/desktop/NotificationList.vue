@@ -12,11 +12,11 @@
 			<div class="notif-header-title">
 				<b-icon icon="bell-outline" pack="mdi" custom-size="mdi-18px" class="mr-2 notif-accent"></b-icon>
 				<span class="notif-title">{{ $t('Activity & Notifications') }}</span>
-				<span v-if="unreadCount > 0" class="unread-pill ml-2">{{ $t('{count} new', { count: unreadCount }) }}</span>
+				<span v-if="freshCount > 0" class="unread-pill ml-2">{{ $t('{count} new', { count: freshCount }) }}</span>
 			</div>
 
 			<div class="notif-header-actions">
-				<button v-if="unreadCount > 0" type="button" class="hdr-action-btn" :title="$t('Mark all as read')"
+				<button v-if="freshCount > 0" type="button" class="hdr-action-btn" :title="$t('Mark all as read')"
 					:aria-label="$t('Mark all as read')" @click="markAllRead">
 					<b-icon icon="check-all" pack="mdi" custom-size="mdi-16px"></b-icon>
 				</button>
@@ -48,7 +48,7 @@
 			</div>
 
 			<ul v-else class="notif-list">
-				<li v-for="item in filteredActivities" :key="item.id" class="notif-item" :class="{ 'is-unread': !item.read }">
+				<li v-for="item in filteredActivities" :key="item.id" class="notif-item" :class="{ 'is-unread': isNew(item) }">
 					<button type="button" class="notif-main" :aria-label="itemLabel(item)" @click="markRead(item)">
 						<span class="notif-avatar" :class="[item.type, item.status]" aria-hidden="true">
 							<img v-if="item.icon && !brokenIcons[item.id]" :src="item.icon" alt="" class="notif-app-icon" @error="brokenIcons[item.id] = true">
@@ -61,7 +61,7 @@
 							</span>
 							<span v-if="item.message" class="notif-msg">{{ item.message }}</span>
 						</span>
-						<span v-if="!item.read" class="unread-dot" aria-hidden="true"></span>
+						<span v-if="isNew(item)" class="unread-dot" aria-hidden="true"></span>
 					</button>
 
 					<div v-if="item.action" class="notif-action-wrap">
@@ -138,12 +138,16 @@ export default {
 			activities: [],
 			currentFilter: 'all',
 			now: Date.now(),
-			brokenIcons: {}
+			brokenIcons: {},
+			// Ids that were unread when the list opened (or arrived while it
+			// is open). They are marked read on the server after a moment,
+			// but keep their "new" look until the list closes.
+			fresh: {}
 		}
 	},
 	computed: {
-		unreadCount() {
-			return this.activities.filter(a => !a.read).length
+		freshCount() {
+			return this.activities.filter(this.isNew).length
 		},
 		filterTabs() {
 			return [
@@ -168,7 +172,9 @@ export default {
 	},
 	created() {
 		this.activities = activityService.getAll()
+		this.noteFresh(this.activities)
 		this.unsubscribe = activityService.subscribe(list => {
+			this.noteFresh(list)
 			this.activities = list
 		})
 	},
@@ -194,12 +200,20 @@ export default {
 	},
 	methods: {
 		itemLabel(item) {
-			return [item.title, item.message, this.formatTimeAgo(item.timestamp), item.read ? '' : this.$t('Unread')].filter(Boolean).join('. ')
+			return [item.title, item.message, this.formatTimeAgo(item.timestamp), this.isNew(item) ? this.$t('Unread') : ''].filter(Boolean).join('. ')
+		},
+		noteFresh(list) {
+			for (const a of list) if (!a.read) this.fresh[a.id] = true
+		},
+		isNew(item) {
+			return !item.read || !!this.fresh[item.id]
 		},
 		markRead(item) {
+			delete this.fresh[item.id]
 			activityService.markAsRead(item.id)
 		},
 		markAllRead() {
+			this.fresh = {}
 			activityService.markAllAsRead()
 		},
 		removeItem(id) {
