@@ -37,6 +37,7 @@ var (
 	kbps    = flag.Int("kbps", 12000, "bitrate")
 	rfbSock = flag.String("rfb", "", "RFB unix socket for input (empty = view only)")
 	pipe    = flag.String("pipeline", "", "custom encoder command run via sh -c; {host} {port} = RTP target (e.g. a gst-launch ... ! rtph264pay ! udpsink pipeline)")
+	delayMs = flag.Int("bench-delay", 0, "bench only: add this one-way delay (ms) to video and to input, emulating a slow link")
 	xtestIn = flag.Bool("xtest", false, "inject input via XTEST on -display instead of RFB")
 )
 
@@ -127,7 +128,13 @@ func offer(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
-		dc.OnMessage(func(m webrtc.DataChannelMessage) { s.input(m.Data) })
+		dc.OnMessage(func(m webrtc.DataChannelMessage) {
+			if *delayMs > 0 {
+				benchDelay(func() { s.input(m.Data) })
+				return
+			}
+			s.input(m.Data)
+		})
 	})
 	pc.OnConnectionStateChange(func(st webrtc.PeerConnectionState) {
 		log.Printf("peer %s", st)
@@ -200,6 +207,11 @@ func (s *session) start(track *webrtc.TrackLocalStaticRTP) {
 			if err != nil {
 				log.Printf("rtp: %v", err)
 				return
+			}
+			if *delayMs > 0 {
+				pkt := append([]byte(nil), b[:n]...)
+				benchDelay(func() { track.Write(pkt) })
+				continue
 			}
 			if _, err := track.Write(b[:n]); err != nil {
 				return
@@ -274,4 +286,30 @@ func (s *session) input(b []byte) {
 		}
 		s.rfb.Write([]byte{4, d, 0, 0, byte(m.K >> 24), byte(m.K >> 16), byte(m.K >> 8), byte(m.K)})
 	}
+}
+
+// benchDelay runs f after -bench-delay, in order (one FIFO for everything; bench only).
+var delayQ = make(chan func(), 1<<16)
+var delayOnce sync.Once
+
+func benchDelay(f func()) {
+	delayOnce.Do(func() {
+		go func() {
+			type item struct {
+				at time.Time
+				f  func()
+			}
+			in := make(chan item, 1<<16)
+			go func() {
+				for f := range delayQ {
+					in <- item{time.Now().Add(time.Duration(*delayMs) * time.Millisecond), f}
+				}
+			}()
+			for it := range in {
+				time.Sleep(time.Until(it.at))
+				it.f()
+			}
+		}()
+	})
+	delayQ <- f
 }
