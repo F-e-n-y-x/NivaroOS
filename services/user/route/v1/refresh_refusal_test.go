@@ -38,7 +38,7 @@ func TestRefreshRefusalIsLoggedWithItsReason(t *testing.T) {
 
 	f := withAuthRoutes(t)
 	setPassword(t, f.alice, "pw for alice")
-	loginLimiter.reset("ip:192.168.1.50", "user:alice")
+	loginLimiter = newLoginLimits()
 	w := post(f, "/v1/users/login", map[string]string{"username": "alice", "password": "pw for alice"})
 	if w.Code != http.StatusOK {
 		t.Fatalf("login: %d %s", w.Code, w.Body)

@@ -29,7 +29,6 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
-	"golang.org/x/time/rate"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/user/service"
 	"github.com/gin-gonic/gin"
@@ -119,8 +118,6 @@ func PostGenerateRegisterKey(c *gin.Context) {
 	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: key})
 }
 
-var limiter = rate.NewLimiter(rate.Every(time.Minute), 5)
-
 // @Summary login
 // @Produce  application/json
 // @Accept application/json
@@ -134,8 +131,9 @@ func PostUserLogin(c *gin.Context) {
 	c.ShouldBind(&json)
 
 	username := json["username"]
-	limitKeys := []string{"ip:" + c.ClientIP(), "user:" + strings.ToLower(username)}
+	limitKeys := loginKeys(username, c.ClientIP())
 	if !loginLimiter.allow(limitKeys...) {
+		logger.Info("login refused: too many attempts", zap.String("username", username), zap.String("remote_ip", c.ClientIP()))
 		c.JSON(common_err.TOO_MANY_REQUEST,
 			model.Result{
 				Success: common_err.TOO_MANY_LOGIN_REQUESTS,
@@ -155,17 +153,14 @@ func PostUserLogin(c *gin.Context) {
 		return
 	}
 	user := service.MyService.User().GetUserAllInfoByName(username)
-	if user.Id == 0 {
+	if user.Id == 0 || !verifyPassword(&user, password) {
+		loginLimiter.fail(limitKeys...)
+		logger.Info("login failed", zap.String("username", username), zap.String("remote_ip", c.ClientIP()))
 		c.JSON(common_err.CLIENT_ERROR,
 			model.Result{Success: common_err.USER_NOT_EXIST_OR_PWD_INVALID, Message: common_err.GetMsg(common_err.USER_NOT_EXIST_OR_PWD_INVALID)})
 		return
 	}
-	if !verifyPassword(&user, password) {
-		c.JSON(common_err.CLIENT_ERROR,
-			model.Result{Success: common_err.USER_NOT_EXIST_OR_PWD_INVALID, Message: common_err.GetMsg(common_err.USER_NOT_EXIST_OR_PWD_INVALID)})
-		return
-	}
-	loginLimiter.reset("ip:" + c.ClientIP())
+	loginLimiter.reset(limitKeys...)
 
 	privateKey, _ := service.MyService.User().GetKeyPair()
 

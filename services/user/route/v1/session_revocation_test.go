@@ -59,7 +59,7 @@ func TestLoginSessionsCanBeEndedOneByOne(t *testing.T) {
 	setPassword(t, f.alice, "pw for alice")
 	login := func() (string, string) {
 		// Other tests' failed logins share the process-wide limiter.
-		loginLimiter.reset("ip:192.168.1.50", "user:alice")
+		loginLimiter = newLoginLimits()
 		w := post(f, "/v1/users/login", map[string]string{"username": "alice", "password": "pw for alice"})
 		if w.Code != http.StatusOK {
 			t.Fatalf("login: %d %s", w.Code, w.Body)

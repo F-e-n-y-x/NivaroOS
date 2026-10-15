@@ -2,6 +2,7 @@ package route
 
 import (
 	"io"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"strings"
@@ -243,6 +244,14 @@ func rewriteRequestSourceIP(r *http.Request) {
 	// Note: the X-Forwarded-For depend the correct config from reverse proxy.
 	// otherwise the X-Forwarded-For may be empty.
 	remoteIP := r.RemoteAddr[:strings.LastIndex(r.RemoteAddr, ":")]
+	// cloudflared on this box dials the gateway (on the LAN address or
+	// loopback) for every internet client, so the peer IP is the box itself.
+	// Its Cf-Connecting-Ip is the real client - trust it only from a
+	// same-host peer (nobody off-box can send from the box's own address).
+	if cf := net.ParseIP(r.Header.Get("Cf-Connecting-Ip")); cf != nil && isHostAddr(remoteIP) {
+		r.Header.Set("X-Forwarded-For", cf.String())
+		return
+	}
 	if len(ipList) > 0 && (remoteIP == "127.0.0.1" || remoteIP == "::1") {
 		// to process the request from reverse proxy
 
@@ -254,6 +263,25 @@ func rewriteRequestSourceIP(r *http.Request) {
 	// to process the request from client.
 	// the gateway will add the X-Forwarded-For to request header.
 	// So we didn't need to add it.
+}
+
+// isHostAddr reports whether ip (as in RemoteAddr, maybe [bracketed]) is
+// one of this machine's own addresses.
+func isHostAddr(ip string) bool {
+	peer := net.ParseIP(strings.Trim(ip, "[]"))
+	if peer == nil {
+		return false
+	}
+	if peer.IsLoopback() {
+		return true
+	}
+	addrs, _ := net.InterfaceAddrs()
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok && n.IP.Equal(peer) {
+			return true
+		}
+	}
+	return false
 }
 
 func (g *GatewayRoute) GetRoute() *http.ServeMux {

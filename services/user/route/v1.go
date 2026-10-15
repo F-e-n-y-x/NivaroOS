@@ -25,7 +25,6 @@ func InitRouter() *gin.Engine {
 
 	r.POST("/v1/users/register", v1.PostUserRegister)
 	r.POST("/v1/users/login", v1.PostUserLogin)
-	r.GET("/v1/users/name", v1.GetUserAllUsername) // all/name
 	r.POST("/v1/users/refresh", v1.PostUserRefreshToken)
 	r.GET("/v1/users/image", v1.GetUserImage)
 	r.GET("/v1/users/wallpaper", v1.GetPublicWallpaper)
@@ -46,6 +45,9 @@ func InitRouter() *gin.Engine {
 		v1UsersGroup := v1Group.Group("/users")
 		v1UsersGroup.Use()
 		{
+			// The account list (Settings > Users). It was public, handing the
+			// internet the name to brute-force.
+			v1UsersGroup.GET("/name", v1.GetUserAllUsername)
 			v1UsersGroup.GET("/current", v1.GetUserInfo)
 			v1UsersGroup.PUT("/current", v1.PutUserInfo)
 			v1UsersGroup.PUT("/current/password", v1.PutUserPassword)
