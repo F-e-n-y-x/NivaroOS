@@ -117,9 +117,6 @@ importers:
       iconfonts-casaos:
         specifier: ^1.0.4
         version: 1.0.10
-      is-valid-hostname:
-        specifier: ^1.0.2
-        version: 1.0.2
       js-yaml:
         specifier: ^4.1.0
         version: 4.3.2
@@ -153,15 +150,9 @@ importers:
       util:
         specifier: 0.12.5
         version: 0.12.5
-      uuid-validate:
-        specifier: ^0.0.3
-        version: 0.0.3
       v-viewer:
         specifier: ^3.0.23
         version: 3.0.23(viewerjs@1.12.0)(vue@3.5.43(typescript@5.9.3))
-      validator:
-        specifier: ^13.9.0
-        version: 13.15.35
       viewerjs:
         specifier: ^1.11.7
         version: 1.12.0
@@ -2223,9 +2214,6 @@ packages:
     resolution: {integrity: sha512-p3EcsicXjit7SaskXHs1hA91QxgTw46Fv6EFKKGS5DRFLD8yKnohjF3hxoju94b/OcMZoQukzpPpBE9uLVKzgQ==}
     engines: {node: '>= 0.4'}
 
-  is-valid-hostname@1.0.2:
-    resolution: {integrity: sha512-X/kiF3Xndj6WI7l/yLyzR7V1IbQd6L4S4cewSL0fRciemPmHbaXIKR2qtf+zseH+lbMG0vFp4HvCUe7amGZVhw==}
-
   isarray@0.0.1:
     resolution: {integrity: sha512-D2S+3GLxWH+uhrNEcoh/fnmYeP8E8/zHl644d/jdA0g2uyXvy3sb0qxotE+ne0LtccHknQzWwZEzhak7oJ0COQ==}
 
@@ -3094,9 +3082,6 @@ packages:
   util@0.12.5:
     resolution: {integrity: sha512-kZf/K6hEIrWHI6XqOFUiiMa+79wE/D8Q+NCNAWclkyg3b4d2k7s0QGepNjiABc+aR3N1PAyHL7p6UcLY6LmrnA==}
 
-  uuid-validate@0.0.3:
-    resolution: {integrity: sha512-Fykw5U4eZESbq739BeLvEBFRuJODfrlmjx5eJux7W817LjRaq4b7/i4t2zxQmhcX+fAj4nMfRdTzO4tmwLKn0w==}
-
   v-viewer@3.0.23:
     resolution: {integrity: sha512-u/Zd/FXTdtdE2k2YeYMf6mU4oL0ILEZ9STHnZT7myyfRwQot68GO3O+6DwxNnHTaATiiAJTrz2MXjaqYKoB7iA==}
     peerDependencies:
@@ -3105,10 +3090,6 @@ packages:
 
   validate-npm-package-license@3.0.4:
     resolution: {integrity: sha512-DpKm2Ui/xN7/HQKCtpZxoRWBhZ9Z0kqtygG8XCgNQ8ZlDnxuQmWhj566j8fN4Cu3/JmbhsDo7fcAJq4s9h27Ew==}
-
-  validator@13.15.35:
-    resolution: {integrity: sha512-TQ5pAGhd5whStmqWvYF4OjQROlmv9SMFVt37qoCBdqRffuuklWYQlCNnEs2ZaIBD1kZRNnikiZOS1eqgkar0iw==}
-    engines: {node: '>= 0.10'}
 
   viewerjs@1.12.0:
     resolution: {integrity: sha512-eQrV7FvqXj2Ysavd9LINI6bFAvXtw5YbdlMtdIo6Bmrv25hEOBeXoOX9E7cJwYuFAOPFzmppFvDn02QNHB120w==}
@@ -5392,8 +5373,6 @@ snapshots:
     dependencies:
       which-typed-array: 1.1.24
 
-  is-valid-hostname@1.0.2: {}
-
   isarray@0.0.1: {}
 
   isexe@2.0.0: {}
@@ -6300,8 +6279,6 @@ snapshots:
       is-typed-array: 1.1.15
       which-typed-array: 1.1.24
 
-  uuid-validate@0.0.3: {}
-
   v-viewer@3.0.23(viewerjs@1.12.0)(vue@3.5.43(typescript@5.9.3)):
     dependencies:
       lodash-es: 4.18.1
@@ -6312,8 +6289,6 @@ snapshots:
     dependencies:
       spdx-correct: 3.2.0
       spdx-expression-parse: 3.0.1
-
-  validator@13.15.35: {}
 
   viewerjs@1.12.0: {}
 
