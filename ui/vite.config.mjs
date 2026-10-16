@@ -20,7 +20,7 @@ const stripCssBom = {
 }
 
 // A Node builtin with no browser package installed becomes an empty stub
-// that crashes at runtime (jshint's `new EventEmitter` blanked the whole
+// that crashes at runtime (an `events` stub's `new EventEmitter` once blanked the whole
 // dashboard). Fail the build instead: add the browser package (events,
 // util, assert...) as a dependency.
 const requireBrowserBuiltins = {
@@ -78,7 +78,7 @@ export default defineConfig(({ mode }) => {
 			extensions: ['.mjs', '.js', '.json', '.vue'],
 		},
 		define: {
-			// jshint's bundled Node shims (util, console-browserify) read process.env.
+			// Some CommonJS dependencies still read process.env.
 			'process.env': '{}',
 			__VUE_PROD_DEVTOOLS__: false,
 			__VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,

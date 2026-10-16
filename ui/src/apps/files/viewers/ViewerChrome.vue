@@ -40,7 +40,7 @@ export default {
 		},
 	},
 	// Every viewer here embeds a third-party rendering library (viewerjs,
-	// Artplayer, CodeMirror, @vue-office/*) that draws into a canvas or
+	// Artplayer, @vue-office/*) that draws into a canvas or
 	// otherwise computes its layout in JS rather than relying purely on
 	// CSS - most of them size that layout once, at mount/init time, and
 	// never re-check it afterwards. A NivaroOS desktop window resizing

@@ -65,7 +65,7 @@ export default {
 		// @vue-office/docx exposes no resize/redraw API and doesn't observe
 		// its own container, so a resized window left the document's page
 		// layout stuck at whatever width it first rendered at. There's
-		// nothing to call here the way viewerjs/CodeMirror/Artplayer allow
+		// nothing to call here the way viewerjs/Artplayer allow
 		// - re-keying to force a full remount is the only way to make an
 		// opaque third-party component like this one re-render at a new
 		// size. Debounced to when resizing has actually stopped (not on
