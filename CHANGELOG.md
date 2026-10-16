@@ -8,8 +8,12 @@ updated from `master` by re-running the installer.
 
 ## [Unreleased]
 
-Server, web and app changes on `master` since v1.4.11. The server gets them
-by re-running the installer; the app changes ship in the next APK.
+## [server 1.5.0] - 2026-10-16
+
+The first signed server release. From here the server updates itself
+(Settings > Updates: at about 04:00 by default, when nothing is running,
+with automatic rollback; or only announced). Android app releases keep
+their own `vX.Y.Z` tags. Server, web and app changes since v1.4.11:
 
 ### Added
 
