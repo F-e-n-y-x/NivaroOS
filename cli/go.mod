@@ -1,6 +1,6 @@
 module github.com/F-e-n-y-x/NivaroOS/cli
 
-go 1.27.2
+go 1.27.0
 
 require (
 	github.com/F-e-n-y-x/NivaroOS/services/app-management v0.0.0-00010101000000-000000000000
