@@ -10,7 +10,19 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+// plantPartial writes an interrupted upload's leftover, age old.
+func plantPartial(t *testing.T, repo, rel string, age time.Duration) string {
+	t.Helper()
+	p := filepath.Join(repo, rel)
+	must(t, os.MkdirAll(filepath.Dir(p), 0o700))
+	must(t, os.WriteFile(p, []byte("cut off"), 0o600))
+	ts := time.Now().Add(-age)
+	must(t, os.Chtimes(p, ts, ts))
+	return p
+}
 
 // needRestic skips a test when restic isn't installed (set NIVAROOS_RESTIC
 // to a restic binary to run them).
@@ -62,11 +74,25 @@ func TestResticBackupDedupsBrowsesRestoresAndForgets(t *testing.T) {
 		t.Fatalf("first run counts %+v", first)
 	}
 
+	// Uploads a crash cut off: stale ones go at the next run, a fresh one
+	// (maybe a running upload) and files that aren't restic's stay.
+	repoDir := filepath.Join(dst.MountPoint, "repo")
+	stalePartial := plantPartial(t, repoDir, "data/ab/ab01.partial", 25*time.Hour)
+	staleConfig := plantPartial(t, repoDir, "config.partial", 25*time.Hour)
+	fresh := plantPartial(t, repoDir, "data/ab/ab02.partial", time.Hour)
+	foreign := plantPartial(t, repoDir, "notes.partial", 25*time.Hour)
+
 	// Second run: one small change; only it is uploaded.
 	must(t, os.WriteFile(filepath.Join(root, "keep/a.txt"), []byte("AA"), 0o644))
 	req.FirstRun = false
 	st = runJob(t, e, req)
 	expectState(t, st, JobDone, "")
+	for p, keep := range map[string]bool{stalePartial: false, staleConfig: false, fresh: true, foreign: true} {
+		if _, err := os.Stat(p); os.IsNotExist(err) == keep {
+			t.Errorf("%s: kept=%v, want %v", p, !keep, keep)
+		}
+	}
+	forgetPartial := plantPartial(t, repoDir, "index/cd03.partial", 25*time.Hour)
 	if c := st.Result.Counts; c.Changed != 1 || c.Added != 0 || c.BytesTransferred > 1<<20 {
 		t.Fatalf("second run counts %+v: it should upload only the change", c)
 	}
@@ -158,6 +184,9 @@ func TestResticBackupDedupsBrowsesRestoresAndForgets(t *testing.T) {
 	expectState(t, st, JobDone, "")
 	if st.Result.Counts.Deleted != 1 {
 		t.Errorf("forget deleted %d", st.Result.Counts.Deleted)
+	}
+	if _, err := os.Stat(forgetPartial); !os.IsNotExist(err) {
+		t.Errorf("forget left a stale partial: %v", err)
 	}
 	if vs := versions(t, e, dstEP); len(vs) != 1 {
 		t.Errorf("after forget: %d versions", len(vs))

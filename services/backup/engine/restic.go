@@ -281,9 +281,7 @@ func (r *resticRepo) object(w http.ResponseWriter, req *http.Request, remote str
 		// leave a short pack that fails every check. Written beside, then
 		// moved, where the backend can rename; object stores only show an
 		// object once its upload finished. The .partial name never matches
-		// a restic name, so lists skip it.
-		// ponytail: partials of a crash stay until the folder is purged;
-		// sweep them on list if they ever add up.
+		// a restic name, so lists skip it; sweepPartials removes a crash's.
 		name := remote
 		if operations.CanServerSideMove(r.f) {
 			name = remote + ".partial"
@@ -345,6 +343,47 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	n, err := c.r.Read(p)
 	c.n.Add(int64(n))
 	return n, err
+}
+
+// partialMaxAge is when a .partial is a crash's leftover, not an upload
+// under way: an upload is one pack (at most 64 MiB) and restic gives up
+// on a stalled one within minutes.
+const partialMaxAge = 24 * time.Hour
+
+// sweepPartials removes stale .partial uploads of the repository - its
+// own files only (config and the restic folders), nothing else in the
+// destination folder. A failure is only logged: they are just space.
+func (r *resticRepo) sweepPartials(ctx context.Context) {
+	if !operations.CanServerSideMove(r.f) {
+		return // uploads were written in place, never as .partial
+	}
+	cutoff := time.Now().Add(-partialMaxAge)
+	n := 0
+	err := walk.ListR(ctx, r.f, "", true, -1, walk.ListObjects, func(entries fs.DirEntries) error {
+		for _, en := range entries {
+			o, ok := en.(fs.Object)
+			if !ok {
+				continue
+			}
+			remote, partial := strings.CutSuffix(o.Remote(), ".partial")
+			typ, _, _ := strings.Cut(remote, "/")
+			own := remote == "config" || (slicesContains(resticDirs, typ) && resticNameRe.MatchString(path.Base(remote)))
+			if !partial || !own || o.ModTime(ctx).After(cutoff) {
+				continue
+			}
+			if err := o.Remove(ctx); err != nil {
+				return err
+			}
+			n++
+		}
+		return nil
+	})
+	if err != nil {
+		r.log(LogWarn, "removing interrupted uploads: "+err.Error())
+	}
+	if n > 0 {
+		r.log(LogInfo, fmt.Sprintf("removed %d interrupted uploads", n))
+	}
 }
 
 // exists reports whether the folder already holds a repository.
@@ -683,6 +722,7 @@ func (e *Engine) runBackup(ctx context.Context, j *job, dry bool) (Result, error
 		if err := repo.unlockStale(); err != nil {
 			return res, err
 		}
+		repo.sweepPartials(rctx)
 	}
 	j.phase(stepTransfer, "backup.phase.transfer")
 	exFile := filepath.Join(repo.dir, "excludes")
@@ -829,6 +869,7 @@ func (e *Engine) runForget(ctx context.Context, j *job) (Result, error) {
 	if err := repo.unlockStale(); err != nil {
 		return res, err
 	}
+	repo.sweepPartials(rctx)
 	var groups []struct {
 		Remove []struct {
 			ID   string    `json:"id"`
