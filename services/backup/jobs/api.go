@@ -57,7 +57,12 @@ func (s *Service) Handler() http.Handler {
 		// /devices/{id}/* take the device token (devices.go); the owner's
 		// routes there (and the reads both may use) take the JWT when the
 		// bearer isn't a device token.
-		// The Welcome screen restores settings before any account exists.
+		// The Welcome screen restores settings before any account exists,
+		// and then follows its apps with the restore's token.
+		if r.URL.Path == "/config-restore/status" && r.Method == http.MethodPost {
+			s.handleConfigRestoreStatus(w, r)
+			return
+		}
 		if strings.HasPrefix(r.URL.Path, "/config-restore/") && r.Method == http.MethodPost && s.freshInstall(r.Context()) {
 			api.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), callerKey{}, Caller{User: "setup"})))
 			return

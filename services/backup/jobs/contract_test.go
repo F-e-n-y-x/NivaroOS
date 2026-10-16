@@ -54,6 +54,8 @@ var apiTypes = map[string]func() interface{}{
 	"ConfigRestoreOpened":   func() interface{} { return new(ConfigRestoreOpened) },
 	"ConfigRestoreApply":    func() interface{} { return new(ConfigRestoreApply) },
 	"ConfigPlan":            func() interface{} { return new(ConfigPlan) },
+	"ConfigRestoreStatus":   func() interface{} { return new(ConfigRestoreStatus) },
+	"AppsRestoreStatus":     func() interface{} { return new(AppsRestoreStatus) },
 	"ValidateResult":        func() interface{} { return new(ValidateResult) },
 	"CronPreviewRequest":    func() interface{} { return new(CronPreviewRequest) },
 	"CronPreview":           func() interface{} { return new(CronPreview) },

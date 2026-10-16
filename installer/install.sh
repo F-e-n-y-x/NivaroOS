@@ -1934,6 +1934,10 @@ restore_settings() {
 	fi
 	run_step "Restoring NivaroOS settings" "\"$bin\" config-restore -root \"$root\" -file \"$RESTORE_FILE\" -yes"
 	RESTORED=yes
+	# the restored apps, recreated by app-management: ok / failed / skipped
+	if [ -f "$root/var/lib/nivaroos/app-management/restore.json" ]; then
+		"$bin" config-restore -root "$root" -apps-status || true
+	fi
 }
 
 main() {

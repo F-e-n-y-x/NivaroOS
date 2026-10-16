@@ -69,6 +69,10 @@ check '[[ "$out" == *"replace  /etc/nivaroos/gateway.ini"* ]]' "the plan is show
 check '[[ "$out" != *ABCDEF* ]]' "the key is never printed"
 
 rm -f "$CALLS"
+mkdir -p "$NV_ROOT/var/lib/nivaroos/app-management" && echo '{}' >"$NV_ROOT/var/lib/nivaroos/app-management/restore.json"
+restore_settings >/dev/null 2>&1
+check '[ "$(tail -n 1 "$CALLS")" = "config-restore -root $NV_ROOT -apps-status key=ABCDEF-GHIJKL" ]' "the restored apps' results are shown"
+rm -rf "$CALLS" "$NV_ROOT/var/lib/nivaroos/app-management"
 (REFUSE=1 restore_settings) >/dev/null 2>&1
 check '[ $? != 0 ] && [ "$(wc -l <"$CALLS")" = 1 ] && ! grep -q -- -yes "$CALLS"' "a refused dry run restores nothing"
 

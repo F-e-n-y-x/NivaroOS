@@ -545,7 +545,7 @@ func (s *Service) handleConfigRestoreApply(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	out, err := rs.host(r.Context(), "systemd-run", "--unit=nivaroos-config-restore-"+req.Token[:8], "--collect", "--quiet", "--",
-		exe, "config-restore", "-root", rs.Root, "-dir", bundle, "-remove-dir", "-yes")
+		exe, "config-restore", "-root", rs.Root, "-dir", bundle, "-remove-dir", "-yes", "-status-id", tokenID(req.Token))
 	if err != nil {
 		s.fail(w, fmt.Errorf("starting the restore: %v: %s", err, strings.TrimSpace(string(out))))
 		return

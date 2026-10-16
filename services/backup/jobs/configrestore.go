@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -241,6 +242,11 @@ type ConfigRestorer struct {
 	Out   io.Writer
 	Run   func(ctx context.Context, name string, args ...string) ([]byte, error) // default hostCommand
 	Now   func() time.Time
+	// StatusID marks the apps' progress as this restore's (tokenID of
+	// the Welcome screen's token).
+	StatusID string
+
+	appsQueued, appMgmtStarted bool // configapps.go
 }
 
 func (c *ConfigRestorer) root() string {
@@ -373,6 +379,7 @@ func (c *ConfigRestorer) Apply(ctx context.Context, dir string, man *ConfigManif
 		}
 	}
 	defer c.start(context.WithoutCancel(ctx), active)
+	c.appMgmtStarted = slices.Contains(active, "nivaroos-app-management.service")
 	for i := len(active) - 1; i >= 0; i-- {
 		if active[i] == restartOnly {
 			continue
@@ -411,6 +418,9 @@ func (c *ConfigRestorer) Apply(ctx context.Context, dir string, man *ConfigManif
 	}
 	if len(done) > 0 {
 		c.say("the files it replaced are in %s", aside)
+	}
+	if err := c.queueApps(man); err != nil {
+		c.say("warning: the apps won't be recreated: %v", err)
 	}
 	return nil
 }
@@ -529,15 +539,26 @@ func RunConfigRestore(args []string, stdin io.Reader, out io.Writer) int {
 	yes := fs.Bool("yes", false, "restore; without it only the plan is shown")
 	force := fs.Bool("force", false, "restore a backup from a newer NivaroOS anyway")
 	removeDir := fs.Bool("remove-dir", false, "remove -dir afterwards")
+	statusID := fs.String("status-id", "", "mark the apps' progress as this restore's (the web restore)")
+	appsStatus := fs.Bool("apps-status", false, "only show the restored apps' progress and results")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+	if *appsStatus {
+		st, err := readAppsStatus(filepath.Join(*root, appsRestoreFile))
+		if err != nil {
+			fmt.Fprintln(out, "config-restore: no restored apps")
+			return 1
+		}
+		printAppsResult(out, st)
+		return 0
 	}
 	if (*file == "") == (*dir == "") {
 		fmt.Fprintln(out, "config-restore: give -file or -dir")
 		return 2
 	}
 	ctx := context.Background()
-	c := &ConfigRestorer{Root: *root, Force: *force, Out: out}
+	c := &ConfigRestorer{Root: *root, Force: *force, Out: out, StatusID: *statusID}
 	bundle := *dir
 	if *file != "" {
 		key := os.Getenv("NIVAROOS_RESTORE_KEY")
@@ -585,6 +606,7 @@ func RunConfigRestore(args []string, stdin io.Reader, out io.Writer) int {
 		fmt.Fprintln(out, "config-restore: failed:", err)
 		return 1
 	}
+	c.waitApps(ctx)
 	fmt.Fprintln(out, "config-restore: done")
 	return 0
 }

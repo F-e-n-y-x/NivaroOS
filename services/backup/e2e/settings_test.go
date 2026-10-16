@@ -21,15 +21,50 @@ import (
 
 // fakeHost stands in for systemctl, systemd-run, pdbedit, id and useradd
 // (NIVAROOS_HOST_CMD): it logs each command; the gateway and Backup are
-// "active".
+// "active", and App Management (fakeAppManagement).
 const fakeHost = `#!/bin/sh
 echo "$*" >> "$FAKE_HOST_LOG"
 if [ "$1 $2" = "systemctl is-active" ]; then
-	case "$3" in nivaroos-gateway.service|nivaroos-backup.service) echo active; exit 0 ;; esac
+	case "$3" in nivaroos-gateway.service|nivaroos-backup.service|nivaroos-app-management.service) echo active; exit 0 ;; esac
 	echo inactive; exit 3
 fi
 exit 0
 `
+
+// fakeAppManagement stands in for app-management under root (its
+// recreating is tested in services/app-management): a pending restore
+// becomes installing, then each app ok without its data.
+func fakeAppManagement(t *testing.T, root string) {
+	file := filepath.Join(root, "var/lib/nivaroos/app-management/restore.json")
+	done := make(chan struct{})
+	t.Cleanup(func() { close(done) })
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case <-time.After(50 * time.Millisecond):
+			}
+			var st jobs.AppsRestoreStatus
+			if raw, err := os.ReadFile(file); err != nil || json.Unmarshal(raw, &st) != nil || st.State != "pending" {
+				continue
+			}
+			for _, status := range []string{"installing", "ok"} {
+				st.State = "running"
+				for i := range st.Apps {
+					st.Apps[i].Status, st.Apps[i].DataMissing = status, true
+				}
+				if status == "ok" {
+					st.State = "done"
+				}
+				raw, _ := json.Marshal(st)
+				_ = os.WriteFile(file+".tmp", raw, 0o600)
+				_ = os.Rename(file+".tmp", file)
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+	}()
+}
 
 func settingsRoot(t *testing.T, name string, files map[string]string) string {
 	t.Helper()
@@ -125,7 +160,13 @@ func TestSettingsBackupAndRestore(t *testing.T) {
 		t.Fatal("the dry run changed gateway.ini")
 	}
 
+	fakeAppManagement(t, rootB)
 	out = restore("-yes")
+	for _, want := range []string{"1 app(s) to recreate", "app immich: ok", "ok         immich (data not found - restore it from your backups)"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("restore output lacks %q:\n%s", want, out)
+		}
+	}
 	for _, p := range []string{"etc/nivaroos/gateway.ini", "var/lib/nivaroos/db/user.db", "var/lib/nivaroos/apps/immich/docker-compose.yml", "root/.config/rclone/rclone.conf", "etc/nivaroos/secret.key"} {
 		want, _ := os.ReadFile(filepath.Join(rootA, p))
 		got, err := os.ReadFile(filepath.Join(rootB, p))
@@ -203,5 +244,27 @@ func TestSettingsBackupAndRestore(t *testing.T) {
 	if !strings.Contains(string(logged), "systemd-run --unit=nivaroos-config-restore-"+env1.Data.Token[:8]+" --collect --quiet -- ") ||
 		!strings.Contains(string(logged), "config-restore -root "+rootB+" -dir ") {
 		t.Fatalf("apply didn't start the restore unit:\n%s", logged)
+	}
+
+	// Run what the unit runs; the Welcome screen follows the apps with
+	// its token (no other token, no JWT needed).
+	var unit []string
+	for _, line := range strings.Split(string(logged), "\n") {
+		if _, cmd, ok := strings.Cut(line, "--unit=nivaroos-config-restore-"+env1.Data.Token[:8]+" --collect --quiet -- "); ok {
+			unit = strings.Fields(cmd)
+		}
+	}
+	cmd := exec.Command(unit[0], unit[1:]...)
+	cmd.Env = append(os.Environ(), env...)
+	if raw, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(raw), "app immich: ok") {
+		t.Fatalf("the restore unit: %v\n%s", err, raw)
+	}
+	var apps jobs.AppsRestoreStatus
+	if st := b.call("POST", "/config-restore/status", jobs.ConfigRestoreStatus{Token: env1.Data.Token}, &apps); st != 200 ||
+		apps.State != "done" || len(apps.Apps) != 1 || apps.Apps[0].Name != "immich" || !apps.Apps[0].DataMissing {
+		t.Fatalf("status: %d %+v", st, apps)
+	}
+	if st := b.call("POST", "/config-restore/status", jobs.ConfigRestoreStatus{Token: strings.Repeat("0", 32)}, nil); st != 404 {
+		t.Fatalf("status with another token: %d", st)
 	}
 }

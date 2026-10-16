@@ -271,6 +271,11 @@ func TestConfigRestorePlanAndApply(t *testing.T) {
 	if st, _ := os.Stat(filepath.Join(dst, "etc/nivaroos/secret.key")); st.Mode().Perm() != 0o600 {
 		t.Fatalf("secret.key mode %v", st.Mode())
 	}
+	// the apps go to app-management (not running here: nothing to wait for)
+	if st, err := readAppsStatus(filepath.Join(dst, appsRestoreFile)); err != nil || st.State != "pending" ||
+		!reflect.DeepEqual(st.Apps, []AppRestoreState{{Name: "immich", Status: "waiting"}}) {
+		t.Fatalf("apps queued: %+v %v", st, err)
+	}
 }
 
 func TestConfigRestoreRefusesANewerBackup(t *testing.T) {
