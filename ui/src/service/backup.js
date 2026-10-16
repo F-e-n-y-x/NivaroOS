@@ -102,8 +102,9 @@ export function axiosTransport(req) {
 }
 
 export function createBackupClient(transport = axiosTransport) {
-	async function call(method, path, { params, data, signal, enveloped = true } = {}) {
+	async function call(method, path, { params, data, signal, headers, enveloped = true } = {}) {
 		const req = { method, url: `${BACKUP_BASE}${path}` }
+		if (headers) req.headers = headers
 		const p = cleanParams(params)
 		if (p) req.params = p
 		if (data !== undefined) req.data = data
@@ -145,6 +146,15 @@ export function createBackupClient(transport = axiosTransport) {
 		runJob: (id, { preview = false, check = false } = {}, opts) => post(`/jobs/${enc(id)}/run`, check ? { preview: false, check: true } : { preview: !!preview }, opts),
 		// "Test password" of an encrypted job: { ok } (a recovery key works too).
 		testEncryption: (id, password, opts) => post(`/jobs/${enc(id)}/encryption/test`, { password }, opts),
+		// The generated key of the default "NivaroOS settings" job: { key }.
+		settingsKey: (id, opts) => get(`/jobs/${enc(id)}/settings-key`, undefined, opts),
+		// Restore NivaroOS settings (also from the Welcome screen, before any
+		// account exists): open takes a FormData with bundle, key and an
+		// optional key_file and answers { token, plan }; apply starts it.
+		// (multipart: the shared instance's JSON default would turn the
+		// FormData into JSON)
+		openSettingsRestore: (form, opts = {}) => post('/config-restore/open', form, { ...opts, headers: { 'Content-Type': 'multipart/form-data' } }),
+		applySettingsRestore: (token, opts) => post('/config-restore/apply', { token }, opts),
 		// adoptOtherJob confirms taking over a folder whose marker names
 		// another job (409 dest_marker_mismatch without it).
 		reconnectDest: (id, opts, { adoptOtherJob = false } = {}) => post(`/jobs/${enc(id)}/reconnect-dest`, { adopt_other_job: adoptOtherJob }, opts),

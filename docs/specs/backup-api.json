@@ -1547,6 +1547,121 @@
       "notes": "\"Test password\": whether the password (or the recovery key) unlocks this job's encrypted backup. Compared in constant time; the stored password is never returned."
     },
     {
+      "id": "jobs_settings_key",
+      "method": "GET",
+      "path": "/jobs/:id/settings-key",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "ConfigKey",
+      "response": {
+        "key": "QWERTY-ASDFGH-ZXCVBN-QWERTY-ASDFGH-ZXCVBN-QWERTY-ASDFGH"
+      },
+      "errors": [
+        "forbidden (403: not an admin)",
+        "not_found (404: not the default NivaroOS settings job - a job with the user's own password never sends it)",
+        "encryption_locked (409)"
+      ],
+      "notes": "The generated key of the default \"NivaroOS settings\" job (jobs/configbundle.go): its 7z password, the one thing a restore on a new server needs."
+    },
+    {
+      "id": "config_restore_open",
+      "method": "POST",
+      "path": "/config-restore/open",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "ConfigRestoreOpened",
+      "response": {
+        "token": "0123456789abcdef0123456789abcdef",
+        "plan": {
+          "from_version": "1.5.0",
+          "from_hostname": "nivaro-box",
+          "created": "2026-10-16T03:30:00Z",
+          "installed_version": "1.5.1",
+          "warnings": [],
+          "items": [
+            {
+              "path": "/etc/nivaroos/gateway.ini",
+              "action": "replace",
+              "size": 119
+            },
+            {
+              "path": "/var/lib/nivaroos/db/user.db",
+              "action": "add",
+              "size": 65536
+            },
+            {
+              "path": "/var/lib/samba/private/passdb.tdb",
+              "action": "import",
+              "size": 421888
+            }
+          ],
+          "smb_users": [
+            "ayush"
+          ],
+          "gateway_port": "80"
+        }
+      },
+      "errors": [
+        "validation (400: no bundle, or not a NivaroOS settings backup)",
+        "wrong_password (400)",
+        "seven_zip_missing",
+        "rate_limited (429)"
+      ],
+      "notes": "multipart/form-data: bundle (the backup's .7z.001), key (settings key, password or recovery key), key_file (optional .nivaroos-encryption.json, for a recovery key). Opens the bundle into the service's state folder and answers the dry run; nothing changes. Needs no JWT while no account exists yet (the Welcome screen)."
+    },
+    {
+      "id": "config_restore_apply",
+      "method": "POST",
+      "path": "/config-restore/apply",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 202,
+      "request_type": "ConfigRestoreApply",
+      "request": {
+        "token": "0123456789abcdef0123456789abcdef"
+      },
+      "response_type": "ConfigPlan",
+      "response": {
+        "from_version": "1.5.0",
+        "from_hostname": "nivaro-box",
+        "created": "2026-10-16T03:30:00Z",
+        "installed_version": "1.5.1",
+        "warnings": [],
+        "items": [
+          {
+            "path": "/etc/nivaroos/gateway.ini",
+            "action": "replace",
+            "size": 119
+          },
+          {
+            "path": "/var/lib/nivaroos/db/user.db",
+            "action": "add",
+            "size": 65536
+          },
+          {
+            "path": "/var/lib/samba/private/passdb.tdb",
+            "action": "import",
+            "size": 421888
+          }
+        ],
+        "smb_users": [
+          "ayush"
+        ],
+        "gateway_port": "80"
+      },
+      "errors": [
+        "validation (400: bad token)",
+        "invalid_state (409: the backup is from a newer NivaroOS)"
+      ],
+      "notes": "Starts the restore in a transient systemd unit (nivaroos-backup config-restore -dir ... -yes): every NivaroOS service stops, the settings are written (never /DATA), the services start again. Needs no JWT while no account exists yet."
+    },
+    {
       "id": "validate",
       "method": "POST",
       "path": "/validate",

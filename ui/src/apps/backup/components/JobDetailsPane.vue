@@ -141,6 +141,12 @@
 					</form>
 					<p :id="uid + '-pw-result'" class="bk-secondary" role="status">{{ testResult }}</p>
 					<p class="bk-secondary">{{ $t('backup.encrypt.cant_change') }}</p>
+					<div v-if="isSettingsJob" class="bk-settings-key">
+						<p class="bk-secondary">{{ $t('backup.settings_key.hint') }}</p>
+						<code v-if="settingsKey" class="bk-settings-key-value">{{ settingsKey }}</code>
+						<button v-else type="button" class="bk-btn" @click="showSettingsKey">{{ $t('backup.settings_key.show') }}</button>
+						<p v-if="settingsKeyError" class="bk-secondary" role="status">{{ settingsKeyError }}</p>
+					</div>
 					<div class="bk-detail-actions">
 						<button type="button" class="bk-btn" @click="$emit('menu', 'new_copy', job)">{{ $t('backup.encrypt.new_copy') }}</button>
 					</div>
@@ -192,10 +198,18 @@ export default {
 			versionsLoading: false,
 			testPw: '',
 			testing: false,
-			testResult: ''
+			testResult: '',
+			settingsKey: '',
+			settingsKeyError: ''
 		}
 	},
 	computed: {
+		// The default "NivaroOS settings" job has a generated key to show
+		// (a job with the user's own password answers 404 and shows nothing).
+		isSettingsJob() {
+			const s = this.job.sources || []
+			return s.length === 1 && s[0].preset === 'nivaroos-config'
+		},
 		activeRun() {
 			const r = this.job.active_run
 			return r && isActiveStatus(r.status) ? r : null
@@ -278,6 +292,14 @@ export default {
 		else if (this.$refs.title) this.$refs.title.focus()
 	},
 	methods: {
+		async showSettingsKey() {
+			this.settingsKeyError = ''
+			try {
+				this.settingsKey = (await this.bkApi.settingsKey(this.job.id)).key
+			} catch (e) {
+				this.settingsKeyError = e.code === 'not_found' ? this.$t('backup.settings_key.own_password') : this.errText(e)
+			}
+		},
 		async testPassword() {
 			if (!this.testPw || this.testing) return
 			this.testing = true
@@ -467,6 +489,14 @@ export default {
 	align-self: center;
 	margin-top: var(--space-3);
 }
+.bk-settings-key-value {
+	display: block;
+	margin: var(--space-2) 0;
+	font-size: 1rem;
+	word-break: break-all;
+	user-select: all;
+}
+
 .bk-encryption {
 	display: flex;
 	flex-direction: column;
