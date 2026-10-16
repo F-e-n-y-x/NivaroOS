@@ -55,7 +55,7 @@
     "qs": "^6.16.0",
     "recasa-appmanagement-openapi": "link:./vendor/api-clients/recasa-appmanagement-openapi",
     "v-viewer": "^3.0.23",
-    "viewerjs": "^1.11.7",
+    "viewerjs": "1.15.2",
     "vue": "^3.5.43",
     "vue-demi": "^0.14.10",
     "vue-dompurify-html": "^5.3.0",
@@ -63,7 +63,7 @@
     "vue-router": "^4.6.4",
     "vuedraggable": "^4.1.0",
     "vuex": "^4.1.0",
-    "yaml": "^2.8.1"
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^8.3.0",
@@ -74,7 +74,7 @@
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.2.1",
     "jsdom": "^27",
-    "prettier": "^3.4.1",
+    "prettier": "3.9.9",
     "prettier-plugin-organize-attributes": "^1.0.0",
     "sass": "^1.93.0",
     "typescript": "^5.7.2",
