@@ -2,7 +2,7 @@
 // Our b-* components render the DOM Buefy's did (same classes), so Bulma,
 // Buefy's SCSS and our overrides style them the same.
 import { expect, test } from 'vitest'
-import { createApp } from 'vue'
+import { createApp, nextTick } from 'vue'
 import UI from './index'
 
 const render = (tpl) => {
@@ -28,4 +28,18 @@ test('b-button: Bulma classes, native type, icon, disabled link', () => {
 		.toBe('<button class="button is-outlined is-fullwidth" type="submit"><span class="icon is-small"><i class="mdi mdi-check mdi-16px"></i></span><span>L</span></button>')
 	expect(render('<b-button tag="a" href="/x">A</b-button>')).toBe('<a class="button" href="/x"><span>A</span></a>')
 	expect(render('<b-button tag="a" href="/x" disabled>A</b-button>')).toBe('<button class="button" type="button" href="/x" disabled=""><span>A</span></button>')
+})
+
+test('b-input in a b-field: HTML5 validity shows on blur, unless the field has its own type', async () => {
+	const el = document.createElement('div')
+	const app = createApp({ template: '<b-field label="a"><b-input model-value="" required /></b-field><b-field type="is-success"><b-input model-value="" required /></b-field>' })
+	app.use(UI)
+	app.mount(el)
+	for (const i of el.querySelectorAll('input')) i.dispatchEvent(new Event('blur'))
+	await nextTick()
+	await nextTick()
+	const [a, b] = el.querySelectorAll('.field')
+	expect(a.querySelector('.help.is-danger').textContent).toBeTruthy()
+	expect(a.querySelector('input').className).toBe('input is-danger')
+	expect(b.querySelector('input').className).toBe('input is-success')
 })

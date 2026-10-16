@@ -10,6 +10,8 @@ const props = defineProps({
 	size: String,
 	customSize: String,
 	customClass: String,
+	// 'is-primary' colours the icon: has-text-primary.
+	type: String,
 })
 // `|| 'mdi'` as Buefy did: a null or empty pack is mdi too.
 const packName = computed(() => props.pack || 'mdi')
@@ -20,10 +22,11 @@ const sizeClass = computed(() => {
 	if (!sizes) return null
 	return props.size && sizes[props.size] !== undefined ? sizes[props.size] : sizes.default
 })
+const color = computed(() => (props.type && props.type.includes('-') ? `has-text-${props.type.replace(/^[^-]*-/, '')}` : null))
 </script>
 
 <template>
-	<span class="icon" :class="size">
+	<span class="icon" :class="[color, size]">
 		<i :class="[packName, `${packOf.iconPrefix || ''}${icon}`, sizeClass, customClass]" />
 	</span>
 </template>
