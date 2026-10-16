@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/container_entry.dart';
 import '../services/api_client.dart';
+import '../ui/widgets/host_access_dialog.dart';
 import '../ui/ui.dart';
 import '../utils/app_icons.dart';
 import 'app_edit_screen.dart';
@@ -165,9 +166,12 @@ abstract final class AppsApi {
   /// Starts updating [app]: a compose app to the store's version
   /// (`PATCH /compose/{id}`), a container by pulling its image and
   /// recreating it (`POST /v1/container/{id}/update`).
-  static Future<void> startUpdate(InstalledApp app) async {
+  /// A store update whose new version wants more access to the server
+  /// than the installed one is held (HTTP 428, [hostAccessReasons]) until
+  /// it is sent again with [allowHostAccess] (audit H1).
+  static Future<void> startUpdate(InstalledApp app, {bool allowHostAccess = false}) async {
     if (app.kind == AppKind.compose) {
-      await ApiClient.instance.patch('/v2/app_management/compose/${Uri.encodeComponent(app.id)}');
+      await ApiClient.instance.patch('/v2/app_management/compose/${Uri.encodeComponent(app.id)}', query: {if (allowHostAccess) 'allow_host_access': 'true'});
     } else {
       await ApiClient.instance.post('/v1/container/${Uri.encodeComponent(app.id)}/update');
     }
@@ -211,12 +215,15 @@ abstract final class AppsApi {
   /// Settings" (`PUT …/compose/{id}`, raw YAML). The server checks it and
   /// the ports, answers, then pulls the images and recreates the app in
   /// the background.
-  static Future<void> saveComposeFile(InstalledApp app, String yaml) async {
+  /// Settings that give the app new access to the server (host network,
+  /// the Docker socket...) are refused with HTTP 428 until sent again with
+  /// [allowHostAccess] (audit H1).
+  static Future<void> saveComposeFile(InstalledApp app, String yaml, {bool allowHostAccess = false}) async {
     await ApiClient.instance.putBody(
       '/v2/app_management/compose/${Uri.encodeComponent(app.id)}',
       yaml.endsWith('\n') ? yaml : '$yaml\n',
       'application/yaml',
-      query: {'check_port_conflict': 'true'},
+      query: {'check_port_conflict': 'true', if (allowHostAccess) 'allow_host_access': 'true'},
     );
   }
 
@@ -447,20 +454,24 @@ class _AppsScreenState extends State<AppsScreen> {
     setState(() => _updatingAll = true);
     final messenger = ScaffoldMessenger.of(context);
     final failed = <String>[];
+    final held = <String>[];
     for (final a in todo) {
       try {
         await AppsApi.startUpdate(a);
-      } catch (_) {
-        failed.add(a.title);
+      } catch (e) {
+        (hostAccessReasons(e) != null ? held : failed).add(a.title);
       }
     }
     if (!mounted) return;
     setState(() => _updatingAll = false);
-    final started = todo.length - failed.length;
+    final started = todo.length - failed.length - held.length;
     messenger.showSnackBar(SnackBar(
-      content: Text(failed.isEmpty
-          ? (started == 1 ? 'Updating 1 app. It restarts when the new version is ready.' : 'Updating $started apps. Each restarts when its new version is ready.')
-          : "Couldn't start the update of ${failed.join(', ')}."),
+      content: Text([
+        if (failed.isEmpty && started > 0)
+          started == 1 ? 'Updating 1 app. It restarts when the new version is ready.' : 'Updating $started apps. Each restarts when its new version is ready.',
+        if (failed.isNotEmpty) "Couldn't start the update of ${failed.join(', ')}.",
+        if (held.isNotEmpty) '${held.join(', ')} ${held.length == 1 ? 'wants' : 'want'} more access to the server: open ${held.length == 1 ? 'it' : 'each'} and tap Update to approve.',
+      ].join(' ')),
     ));
     _load();
   }
@@ -995,7 +1006,21 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
     });
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await AppsApi.startUpdate(_app);
+      try {
+        await AppsApi.startUpdate(_app);
+      } on ApiException catch (e) {
+        final why = hostAccessReasons(e);
+        if (why == null || !mounted) rethrow;
+        final go = await confirmHostAccess(context,
+            lead: 'The new version of ${_app.title} asks for this access to the server. Until you approve, the current version keeps running.',
+            why: why,
+            confirmLabel: 'Update anyway');
+        if (!go) {
+          if (mounted) setState(() => _updating = false);
+          return;
+        }
+        await AppsApi.startUpdate(_app, allowHostAccess: true);
+      }
     } catch (e) {
       if (mounted) setState(() => _updating = false);
       messenger.showSnackBar(SnackBar(content: Text("Couldn't update ${_app.title}. ${_reason(e)}")));

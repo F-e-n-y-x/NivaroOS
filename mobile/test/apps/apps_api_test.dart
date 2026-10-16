@@ -7,6 +7,7 @@ import 'package:nivaroos_mobile/models/container_entry.dart';
 import 'package:nivaroos_mobile/screens/app_store_screen.dart';
 import 'package:nivaroos_mobile/screens/apps_screen.dart';
 import 'package:nivaroos_mobile/services/api_client.dart';
+import 'package:nivaroos_mobile/ui/widgets/host_access_dialog.dart';
 
 void main() {
   setUp(() {
@@ -56,6 +57,25 @@ void main() {
       await AppsApi.startUpdate(const InstalledApp(id: 'searxng', title: 's', kind: AppKind.container));
     }, () => client);
     expect(calls, ['PATCH /v2/app_management/compose/jellyfin', 'POST /v1/container/searxng/update']);
+  });
+
+  test('a held update and a settings save go again with allow_host_access (H1)', () async {
+    final queries = <String>[];
+    final client = MockClient((req) async {
+      queries.add('${req.method} ${req.url.query}');
+      return http.Response(jsonEncode({'message': 'ok'}), 200);
+    });
+    const app = InstalledApp(id: 'jellyfin', title: 'Jellyfin', kind: AppKind.compose);
+    await http.runWithClient(() async {
+      await AppsApi.startUpdate(app);
+      await AppsApi.startUpdate(app, allowHostAccess: true);
+      await AppsApi.saveComposeFile(app, 'name: jellyfin', allowHostAccess: true);
+    }, () => client);
+    expect(queries, ['PATCH ', 'PATCH allow_host_access=true', 'PUT check_port_conflict=true&allow_host_access=true']);
+    final held = ApiException('x', statusCode: 428, data: {'host_access': ['web: privileged']});
+    expect(hostAccessReasons(held), ['web: privileged']);
+    expect(hostAccessReasons(ApiException('x', statusCode: 400, data: {'host_access': ['a']})), isNull);
+    expect(hostAccessReasons(ApiException('x', statusCode: 428)), isNull);
   });
 
   test('uninstall: compose by query, container by body', () async {

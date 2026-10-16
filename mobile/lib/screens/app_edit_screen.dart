@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/compose_edit.dart';
 import '../models/container_entry.dart';
 import '../services/api_client.dart';
+import '../ui/widgets/host_access_dialog.dart';
 import '../ui/ui.dart';
 import '../utils/app_icons.dart';
 import 'apps_screen.dart';
@@ -316,7 +317,21 @@ class _AppEditScreenState extends State<AppEditScreen> {
     });
     final nav = Navigator.of(context);
     try {
-      await AppsApi.saveComposeFile(widget.app, text);
+      try {
+        await AppsApi.saveComposeFile(widget.app, text);
+      } on ApiException catch (e) {
+        final why = hostAccessReasons(e);
+        if (why == null || !mounted) rethrow;
+        final go = await confirmHostAccess(context,
+            lead: 'With these settings $_title can read and change everything on the server. Save them only if you trust it.',
+            why: why,
+            confirmLabel: 'Save anyway');
+        if (!go) {
+          if (mounted) setState(() => _saving = false);
+          return;
+        }
+        await AppsApi.saveComposeFile(widget.app, text, allowHostAccess: true);
+      }
       if (!mounted) return;
       setState(() => _saving = false);
       nav.pop(AppEditSaved(recreates: recreates));

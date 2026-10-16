@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../models/container_entry.dart';
 import '../services/api_client.dart';
+import '../ui/widgets/host_access_dialog.dart';
 import '../ui/ui.dart';
 import '../utils/app_icons.dart';
 import 'custom_install_screen.dart';
@@ -601,19 +602,11 @@ class _StoreAppDetailScreenState extends State<StoreAppDetailScreen> {
       try {
         await StoreInstaller.instance.install(_app.id);
       } on ApiException catch (e) {
-        if (e.statusCode != 428 || !mounted) rethrow;
-        final go = await showDialog<bool>(
-          context: context,
-          builder: (d) => AlertDialog(
-            title: const Text('Give this app full access to the server?'),
-            content: SingleChildScrollView(child: Text(e.message)),
-            actions: [
-              TextButton(autofocus: true, onPressed: () => Navigator.of(d).pop(false), child: const Text('Cancel')),
-              TextButton(onPressed: () => Navigator.of(d).pop(true), child: const Text('Install anyway')),
-            ],
-          ),
-        );
-        if (go != true) return;
+        final why = hostAccessReasons(e);
+        if (why == null || !mounted) rethrow;
+        final go = await confirmHostAccess(context,
+            lead: 'It can read and change everything on the server. Install it only if you trust it.', why: why, confirmLabel: 'Install anyway');
+        if (!go) return;
         await StoreInstaller.instance.install(_app.id, allowHostAccess: true);
       }
     } catch (e) {

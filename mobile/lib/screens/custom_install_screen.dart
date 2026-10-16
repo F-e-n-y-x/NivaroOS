@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../ui/widgets/host_access_dialog.dart';
 import '../ui/ui.dart';
 
 /// A starting point for the compose editor.
@@ -108,11 +109,23 @@ class _CustomInstallScreenState extends State<CustomInstallScreen> {
     setState(() => _busy = dryRun ? _Busy.checking : _Busy.installing);
     final nav = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    Future<void> send({bool allowHostAccess = false}) => ApiClient.instance.postBody('/v2/app_management/compose', '$yaml\n', 'application/yaml', query: {
+          'check_port_conflict': 'true',
+          if (dryRun) 'dry_run': 'true',
+          if (allowHostAccess) 'allow_host_access': 'true',
+        });
     try {
-      await ApiClient.instance.postBody('/v2/app_management/compose', '$yaml\n', 'application/yaml', query: {
-        'check_port_conflict': 'true',
-        if (dryRun) 'dry_run': 'true',
-      });
+      try {
+        await send();
+      } on ApiException catch (e) {
+        // An app with root access to the server: ask, as the store does.
+        final why = hostAccessReasons(e);
+        if (why == null || dryRun || !mounted) rethrow;
+        final go = await confirmHostAccess(context,
+            lead: 'It can read and change everything on the server. Install it only if you trust it.', why: why, confirmLabel: 'Install anyway');
+        if (!go) return;
+        await send(allowHostAccess: true);
+      }
       if (!mounted) return;
       if (dryRun) {
         setState(() => _result = true);

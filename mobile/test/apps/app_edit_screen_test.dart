@@ -21,9 +21,10 @@ const _path = '/v2/app_management/compose/jellyfin';
 final String _yaml = File('test/screenshots/fixtures/v2/app_management/compose/jellyfin.yaml').readAsStringSync();
 
 class _Server {
-  _Server({this.putStatus = 200, this.putBody, this.getBody});
+  _Server({this.putStatus = 200, this.putBody, this.getBody, this.needsHostOK = false});
 
   final String? getBody;
+  final bool needsHostOK;
   final int putStatus;
   final Object? putBody;
   final puts = <http.Request>[];
@@ -36,6 +37,18 @@ class _Server {
     }
     if (req.url.path == _path && req.method == 'PUT') {
       puts.add(req);
+      if (needsHostOK && req.url.queryParameters['allow_host_access'] != 'true') {
+        return http.Response(
+          jsonEncode({
+            'message': 'This app gets full (root) access to the server (jellyfin: controls the server\'s containers (mounts /var/run/docker.sock)). Install it only if you trust it.',
+            'data': {
+              'host_access': ["jellyfin: controls the server's containers (mounts /var/run/docker.sock)"],
+            },
+          }),
+          428,
+          headers: {'content-type': 'application/json'},
+        );
+      }
       return http.Response(
         jsonEncode(putBody ?? {'message': 'compose app is being applied with changes asynchroniously'}),
         putStatus,
@@ -179,6 +192,36 @@ void main() {
       expect(find.byType(AlertDialog), findsNothing);
     });
     expect(server.puts, isEmpty);
+  });
+
+  testWidgets('settings that give the app the server ask first, then save with the OK (H1)', (tester) async {
+    final server = _Server(needsHostOK: true);
+    await _open(tester, server, () async {
+      await _type(tester, 'Name', 'Movies');
+      await _saveAndConfirm(tester, restarts: false);
+      expect(find.text('Give this app full access to the server?'), findsOneWidget);
+      expect(find.textContaining("• jellyfin: controls the server's containers (mounts /var/run/docker.sock)"), findsOneWidget);
+      expect(find.textContaining('Install it only if you trust it'), findsNothing, reason: 'not the raw server message');
+      await tester.tap(find.widgetWithText(TextButton, 'Save anyway'));
+      await _settle(tester);
+      expect(find.byType(AppEditScreen), findsNothing);
+    });
+    expect(server.puts.length, 2);
+    expect(server.puts.first.url.queryParameters['allow_host_access'], isNull);
+    expect(server.puts.last.url.queryParameters['allow_host_access'], 'true');
+  });
+
+  testWidgets('saying no to full access keeps the screen and saves nothing (H1)', (tester) async {
+    final server = _Server(needsHostOK: true);
+    await _open(tester, server, () async {
+      await _type(tester, 'Name', 'Movies');
+      await _saveAndConfirm(tester, restarts: false);
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await _settle(tester);
+      expect(find.byType(AppEditScreen), findsOneWidget);
+      expect(find.textContaining('root'), findsNothing);
+    });
+    expect(server.puts.length, 1);
   });
 
   testWidgets('a port in use is explained', (tester) async {
