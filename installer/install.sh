@@ -65,6 +65,8 @@ WITH_DS_BROWSER=yes
 WITH_DS_TORRENT=yes
 DS_TORRENT_BUILD=static
 WITH_BACKUP=""
+RESTORE_FILE=""
+RESTORED=""
 FORCE=""
 YES=""
 DEBUG=""
@@ -520,6 +522,9 @@ usage() {
                                   official static build (default: static)
     --with-backup                 Backup & Sync (default)
     --without-backup
+    --restore <file>              After installing, restore the NivaroOS settings from a
+                                  backup ("NivaroOS settings" job: its .7z.001 file).
+                                  Key: NIVAROOS_RESTORE_KEY or asked for
     --port <port>                 Dashboard port (default: 80, or the next free one)
     --branch <ref>                Branch or tag to install (default: master)
     --repo <url>                  Git repository to install from
@@ -548,6 +553,11 @@ parse_args() {
 			--with-backup) WITH_BACKUP=yes ;;
 			--without-backup) WITH_BACKUP=no ;;
 			--force) FORCE=yes ;;
+			--restore=*) RESTORE_FILE="${1#*=}" ;;
+			--restore)
+				shift
+				RESTORE_FILE="${1:-}"
+				;;
 			--dry-run | -n) DRY_RUN=yes ;;
 			--port=*) CUSTOM_PORT="${1#*=}" ;;
 			--port)
@@ -587,6 +597,12 @@ parse_args() {
 		'') ;;
 		*[!0-9]*) ui_die "--port needs a number, not '${CUSTOM_PORT}'." 2 ;;
 	esac
+	if [ -n "$RESTORE_FILE" ]; then
+		[ -f "$RESTORE_FILE" ] || ui_die "--restore: no file '${RESTORE_FILE}'." 2
+		RESTORE_FILE="$(cd "$(dirname "$RESTORE_FILE")" && pwd)/$(basename "$RESTORE_FILE")"
+		[ "$WITH_BACKUP" != no ] || ui_die "--restore needs Backup & Sync (its nivaroos-backup restores the settings); drop --without-backup." 2
+		WITH_BACKUP=yes
+	fi
 }
 
 # ------------------------------------------------------------------------------
@@ -713,6 +729,10 @@ select_components() {
 	if [ "$WITH_HOST_DESKTOP" = "yes" ] && [ "$WITH_VM" != "yes" ]; then
 		ui_info "Host Desktop needs VM Manager - turning VM Manager on too."
 		WITH_VM=yes
+	fi
+	if [ -n "$RESTORE_FILE" ] && [ "$WITH_BACKUP" != "yes" ]; then
+		ui_info "Restoring settings needs Backup & Sync - turning it on too."
+		WITH_BACKUP=yes
 	fi
 
 	ui_head "Components"
@@ -1796,7 +1816,11 @@ print_summary() {
 		[ -n "$ip" ] && ui_kv "$iface" "http://${ip}${port_suffix}  ${UI_D}(VPN)${UI_R}"
 	done <<<"$(list_vpn_ips)"
 	ui_kv "local" "http://localhost${port_suffix}"
-	[ "$IS_UPGRADE" = "true" ] || printf '    %sCreate your account on first visit.%s\n' "$UI_D" "$UI_R"
+	if [ "$RESTORED" = yes ]; then
+		printf '    %sLog in with your restored account.%s\n' "$UI_D" "$UI_R"
+	elif [ "$IS_UPGRADE" != "true" ]; then
+		printf '    %sCreate your account on first visit.%s\n' "$UI_D" "$UI_R"
+	fi
 
 	ui_head "Services"
 	svc_line "Core" nivaroos.service
@@ -1870,6 +1894,46 @@ plan_steps() {
 	[ "$WITH_HOST_DESKTOP" = "yes" ] && echo install_host_desktop
 	[ "$WITH_DOWNLOAD_STATION" = "yes" ] && echo install_download_station
 	echo verify_health install_safety_net install_mdns_advertisement remove_leftovers
+	# Last: it stops and starts every service.
+	if [ -n "$RESTORE_FILE" ]; then echo restore_settings; fi
+}
+
+# ------------------------------------------------------------------------------
+# --restore: put back a "NivaroOS settings" backup (services/backup
+# jobs/configrestore.go) once everything is installed. The plan is shown
+# first (a dry run that also checks the key and the version); the restore
+# stops the services, writes the settings - never /DATA - and starts them
+# in order. NV_ROOT: tests.
+# ------------------------------------------------------------------------------
+ask_restore_key() {
+	[ -n "$RESTORE_FILE" ] || return 0
+	if [ -z "${NIVAROOS_RESTORE_KEY:-}" ]; then
+		unattended && ui_die "--restore needs the backup's key: set NIVAROOS_RESTORE_KEY (the settings key, the backup password or its recovery key)." 2
+		read -rsp "  Key for ${RESTORE_FILE##*/} (settings key, backup password or recovery key): " NIVAROOS_RESTORE_KEY </dev/tty || true
+		printf '\n'
+		[ -n "$NIVAROOS_RESTORE_KEY" ] || ui_die "No key given." 2
+	fi
+	export NIVAROOS_RESTORE_KEY
+}
+
+restore_settings() {
+	local bin="${NV_ROOT:-}/usr/bin/nivaroos-backup" root="${NV_ROOT:-/}" answer=""
+	ui_head "Settings in ${RESTORE_FILE##*/}"
+	if ! "$bin" config-restore -root "$root" -file "$RESTORE_FILE" </dev/null; then
+		ui_die "These settings can't be restored (see above). NivaroOS itself is installed; try again with: sudo nivaroos-backup config-restore -file ${RESTORE_FILE}"
+	fi
+	if ! unattended; then
+		read -rp "  Restore these settings now? NivaroOS restarts. [y/N] " answer </dev/tty || true
+		case "$answer" in
+			y | Y | yes) ;;
+			*)
+				ui_info "Not restored. Later: sudo nivaroos-backup config-restore -file ${RESTORE_FILE} -yes"
+				return 0
+				;;
+		esac
+	fi
+	run_step "Restoring NivaroOS settings" "\"$bin\" config-restore -root \"$root\" -file \"$RESTORE_FILE\" -yes"
+	RESTORED=yes
 }
 
 main() {
@@ -1899,6 +1963,8 @@ main() {
 		printf '\n'
 		exit 0
 	fi
+
+	ask_restore_key
 
 	if [ "$IS_UPGRADE" = "true" ]; then
 		ui_head "Updating"
