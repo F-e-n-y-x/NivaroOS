@@ -414,8 +414,23 @@ type rfbConn struct {
 
 // dialHostRFB: an RFB 3.8 client, security None (all the root-only socket
 // offers). Every byte goes through hostInputTracker so it can release what
-// this viewer held when it closes.
-func dialHostRFB(path string) (*rfbConn, error) {
+// this viewer held when it closes. x11vnc -unixsock sometimes drops a new
+// connection right after the previous viewer left ("accept_unix: accept:
+// Invalid argument" in its log, EOF here) - which is every re-offer - so
+// it tries again.
+func dialHostRFB(path string) (c *rfbConn, err error) {
+	for try := 0; try < 3; try++ {
+		if try > 0 {
+			time.Sleep(250 * time.Millisecond)
+		}
+		if c, err = dialHostRFBOnce(path); err == nil {
+			return c, nil
+		}
+	}
+	return nil, err
+}
+
+func dialHostRFBOnce(path string) (*rfbConn, error) {
 	nc, err := net.DialTimeout("unix", path, 5*time.Second)
 	if err != nil {
 		return nil, err

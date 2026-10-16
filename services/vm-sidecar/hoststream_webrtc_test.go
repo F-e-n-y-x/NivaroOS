@@ -183,7 +183,12 @@ type fakeVNC struct {
 	conn net.Conn
 }
 
-func startFakeVNC(t *testing.T, w, h int) *fakeVNC {
+func startFakeVNC(t *testing.T, w, h int) *fakeVNC { return startFakeVNCDropping(t, w, h, 0) }
+
+// startFakeVNCDropping: the first drop connections are closed at once, the
+// way x11vnc -unixsock sometimes drops one right after a client left
+// ("accept_unix: accept: Invalid argument").
+func startFakeVNCDropping(t *testing.T, w, h, drop int) *fakeVNC {
 	f := &fakeVNC{path: t.TempDir() + "/vnc.sock"}
 	ln, err := net.Listen("unix", f.path)
 	if err != nil {
@@ -192,6 +197,10 @@ func startFakeVNC(t *testing.T, w, h int) *fakeVNC {
 	t.Cleanup(func() { ln.Close() })
 	go func() {
 		c, err := ln.Accept()
+		for ; err == nil && drop > 0; drop-- {
+			c.Close()
+			c, err = ln.Accept()
+		}
 		if err != nil {
 			return
 		}
@@ -260,6 +269,18 @@ func TestRFBInputReleasedOnClose(t *testing.T) {
 	if got := f.received(); len(got) != 32+len(want) {
 		t.Errorf("unexpected bytes: % x", got)
 	}
+}
+
+// Owner bug (Firefox, 2026-10-16): every re-offer closed the old viewer's
+// RFB connection and x11vnc dropped the new one (EOF), so the offer failed
+// and the browser waited out a retry backoff - a freeze + reload each time.
+func TestDialHostRFBRetriesDroppedConnection(t *testing.T) {
+	f := startFakeVNCDropping(t, 1280, 720, 1)
+	c, err := dialHostRFB(f.path)
+	if err != nil {
+		t.Fatalf("dial after one dropped connection: %v", err)
+	}
+	c.close()
 }
 
 func TestRFBReleaseMessage(t *testing.T) {
