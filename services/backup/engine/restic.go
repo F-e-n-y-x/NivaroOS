@@ -89,9 +89,10 @@ type resticRepo struct {
 	cancel context.CancelCauseFunc
 	log    func(lvl, msg string)
 
-	uploaded atomic.Int64
-	errMu    sync.Mutex
-	lastErr  error
+	uploaded  atomic.Int64
+	errMu     sync.Mutex
+	lastErr   error
+	closeOnce sync.Once
 }
 
 // openRepo serves f, the destination folder, to restic until close.
@@ -113,6 +114,9 @@ func (e *Engine) openRepo(ctx context.Context, t *target, f fs.Fs, log func(lvl,
 		log = func(string, string) {}
 	}
 	r := &resticRepo{e: e, t: t, f: f, bin: bin, dir: dir, log: log}
+	e.resticMu.Lock() // waits out a cache trim
+	e.resticOpen++
+	e.resticMu.Unlock()
 	r.ctx, r.cancel = context.WithCancelCause(ctx)
 	r.srv = &http.Server{Handler: r, ReadHeaderTimeout: time.Minute,
 		BaseContext: func(net.Listener) context.Context { return r.ctx }}
@@ -121,9 +125,75 @@ func (e *Engine) openRepo(ctx context.Context, t *target, f fs.Fs, log func(lvl,
 }
 
 func (r *resticRepo) close() {
-	r.cancel(nil)
-	_ = r.srv.Close()
-	_ = os.RemoveAll(r.dir)
+	r.closeOnce.Do(func() {
+		r.cancel(nil)
+		_ = r.srv.Close()
+		_ = os.RemoveAll(r.dir)
+		e := r.e
+		e.resticMu.Lock()
+		defer e.resticMu.Unlock()
+		if e.resticOpen--; e.resticOpen == 0 {
+			if err := trimResticCache(e.cfg.ResticCacheDir); err != nil {
+				e.cfg.Logf("engine: trimming the restic cache: %v", err)
+			}
+		}
+	})
+}
+
+// resticCacheMax caps restic's cache (var for tests); it is also kept
+// under a quarter of the disk space it shares with the free space.
+var resticCacheMax int64 = 2 << 30
+
+// trimResticCache removes whole repository caches (restic's cache holds
+// one folder per repository, its mtime the last use), least recently
+// used first, until the rest fits the cap. restic rebuilds a removed one
+// from the repository on its next run.
+func trimResticCache(dir string) error {
+	ents, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	type cache struct {
+		path string
+		used time.Time
+		size int64
+	}
+	var caches []cache
+	var total int64
+	for _, en := range ents {
+		fi, err := en.Info()
+		if err != nil || !fi.IsDir() {
+			continue
+		}
+		c := cache{path: filepath.Join(dir, en.Name()), used: fi.ModTime()}
+		_ = filepath.Walk(c.path, func(_ string, fi os.FileInfo, err error) error {
+			if err == nil && fi.Mode().IsRegular() {
+				c.size += fi.Size()
+			}
+			return nil
+		})
+		caches = append(caches, c)
+		total += c.size
+	}
+	limit := resticCacheMax
+	var st syscall.Statfs_t
+	if syscall.Statfs(dir, &st) == nil {
+		limit = min(limit, (int64(st.Bavail)*int64(st.Bsize)+total)/4)
+	}
+	sort.Slice(caches, func(i, k int) bool { return caches[i].used.Before(caches[k].used) })
+	for _, c := range caches {
+		if total <= limit {
+			break
+		}
+		if err := os.RemoveAll(c.path); err != nil {
+			return err
+		}
+		total -= c.size
+	}
+	return nil
 }
 
 // backendErr records a destination error for the run's result; one that

@@ -118,6 +118,11 @@ type Engine struct {
 	snapMu sync.RWMutex
 	snap   *snapshot
 
+	// resticOpen counts open restic repositories; the cache is trimmed
+	// when the last one closes, never under a running restic.
+	resticMu   sync.Mutex
+	resticOpen int
+
 	about *aboutCache
 	jobs  *jobManager
 	watch *mountWatch
