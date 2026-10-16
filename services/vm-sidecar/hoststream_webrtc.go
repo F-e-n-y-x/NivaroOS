@@ -184,6 +184,7 @@ type encParams struct {
 	FPS, Kbps int
 	MaxW      int   // scale down to at most this wide; 0 = native
 	CudaScale bool  // nvh264enc: scale on the GPU (cudaconvertscale, GStreamer 1.22+)
+	Main      bool  // the browser offered H.264 Main (offerMain); else constrained baseline
 	W, H      int   // framebuffer size
 	Seq       int   // first RTP sequence number, -1: random
 	TS        int64 // first RTP timestamp, -1: random
@@ -280,7 +281,7 @@ func gstTail(p encParams) []string {
 		if p.Preset == "high" {
 			a = append(a, "spatial-aq=true")
 		}
-		a = append(a, "!", "video/x-h264,profile=main")
+		a = append(a, "!", "video/x-h264,profile="+h264Profile(p.Main))
 	case "vah264enc":
 		// target-usage: 1 best quality .. 7 fastest.
 		tu := map[string]string{"low": "4", "high": "4"}[p.Preset]
@@ -288,14 +289,14 @@ func gstTail(p encParams) []string {
 			tu = "7"
 		}
 		a = append(a, "!", "videoconvert", "n-threads=0", "!", "video/x-raw,format=NV12", "!", "vah264enc", "rate-control=vbr",
-			"bitrate="+kb, "key-int-max="+gop, "b-frames=0", "target-usage="+tu, "!", "video/x-h264,profile=main")
+			"bitrate="+kb, "key-int-max="+gop, "b-frames=0", "target-usage="+tu, "!", "video/x-h264,profile="+h264Profile(p.Main))
 	default:
 		// ultrafast is the cheapest per pixel; Low's few pixels can afford
-		// veryfast + CABAC (main), which needs far fewer bits for the same
-		// picture.
-		speed, profile := "ultrafast", "constrained-baseline"
+		// veryfast + CABAC (main, when the browser takes it), which needs
+		// far fewer bits for the same picture.
+		speed, profile := "ultrafast", h264Profile(false)
 		if p.Preset == "low" {
-			speed, profile = "veryfast", "main"
+			speed, profile = "veryfast", h264Profile(p.Main)
 		}
 		a = append(a, "!", "videoconvert", "n-threads=0", "!", "video/x-raw,format=I420", "!", "x264enc", "tune=zerolatency",
 			"speed-preset="+speed, "bitrate="+kb, "vbv-buf-capacity=1000", "key-int-max="+gop, "bframes=0",
@@ -309,6 +310,28 @@ func gstTail(p encParams) []string {
 		a = append(a, "timestamp-offset="+strconv.FormatInt(p.TS, 10))
 	}
 	return append(a, "!", "udpsink", "host=127.0.0.1", "port="+strconv.Itoa(p.Port), "sync=false", "async=false")
+}
+
+// h264Profile: what the encoder must emit - exactly what the SDP answer
+// says (offerMain), or a browser that only offered constrained baseline
+// (Firefox, Safari) may not decode it.
+func h264Profile(main bool) string {
+	if main {
+		return "main"
+	}
+	return "constrained-baseline"
+}
+
+// offerMain: the offer has H.264 Main (profile-level-id 4d00xx) with
+// packetization-mode=1, so the answer can say Main and the encoders use
+// CABAC. Chrome offers it; Firefox and Safari offer constrained baseline only.
+func offerMain(sdp string) bool {
+	for _, l := range strings.Split(strings.ToLower(sdp), "\n") {
+		if strings.HasPrefix(l, "a=fmtp:") && strings.Contains(l, "packetization-mode=1") && strings.Contains(l, "profile-level-id=4d00") {
+			return true
+		}
+	}
+	return false
 }
 
 func x11Argv(display string, p encParams) []string {
@@ -633,6 +656,7 @@ type webrtcSession struct {
 	claims *jwt.Claims
 	cap    captureTarget
 	have   map[string]bool
+	main   bool                      // H.264 Main negotiated (offerMain)
 	spawn  func(encParams) *exec.Cmd // encoderCmd; tests swap it
 
 	sizeMu sync.Mutex
@@ -889,7 +913,7 @@ func (s *webrtcSession) superviseEncoder() {
 		preset, fps, kbps := s.stream()
 		sp := resolvePreset(enc, preset, fps, kbps)
 		seq, ts, before, _ := rs.next(time.Now())
-		cmd := s.spawn(encParams{Encoder: enc, Preset: preset, FPS: sp.FPS, Kbps: sp.Kbps, MaxW: sp.MaxW, CudaScale: s.have["cudaconvertscale"],
+		cmd := s.spawn(encParams{Encoder: enc, Preset: preset, FPS: sp.FPS, Kbps: sp.Kbps, MaxW: sp.MaxW, CudaScale: s.have["cudaconvertscale"], Main: s.main,
 			W: w, H: h, Seq: seq, TS: ts, Port: port})
 		started := time.Now()
 		if err := cmd.Start(); err != nil {
@@ -1155,10 +1179,14 @@ func (s *webrtcSession) answer(offer webrtc.SessionDescription) (*webrtc.Session
 		return nil, err
 	}
 	s.pc = pc
-	// ponytail: the SDP says constrained baseline for every encoder (what
-	// every browser offers); nvenc/va send Main, which they all decode.
+	// The answer's profile is the one the encoders emit (h264Profile).
+	s.main = offerMain(offer.SDP)
+	plid := "42e01f"
+	if s.main {
+		plid = "4d001f"
+	}
 	track, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000,
-		SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f"}, "video", "hostdesk")
+		SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=" + plid}, "video", "hostdesk")
 	if err != nil {
 		return nil, err
 	}

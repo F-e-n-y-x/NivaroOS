@@ -58,10 +58,36 @@ func TestResolvePreset(t *testing.T) {
 }
 
 // argv: the gst-launch line one encoder run gets for a preset.
-func argv(enc, preset string, w, h int) string {
+func argv(enc, preset string, w, h int) string { return argvProfile(enc, preset, w, h, true) }
+
+func argvProfile(enc, preset string, w, h int, main bool) string {
 	sp := resolvePreset(enc, preset, 0, 0)
 	return strings.Join(x11Argv(":5", encParams{Encoder: enc, Preset: preset, FPS: sp.FPS, Kbps: sp.Kbps, MaxW: sp.MaxW,
-		W: w, H: h, Seq: -1, TS: -1, Port: 5004}), " ")
+		W: w, H: h, Seq: -1, TS: -1, Port: 5004, Main: main}), " ")
+}
+
+// Owner bug (Firefox, 2026-10-16): the answer said constrained baseline
+// (Firefox offers nothing else) while nvenc/va and x264 Low sent Main. The
+// encoders must emit exactly the negotiated profile.
+func TestEncoderProfileFollowsOffer(t *testing.T) {
+	for _, enc := range []string{"nvh264enc", "vah264enc", "x264enc"} {
+		for _, preset := range []string{"low", "balanced", "high", ""} {
+			if a := argvProfile(enc, preset, 3398, 1220, false); strings.Contains(a, "profile=main") || !strings.Contains(a, "profile=constrained-baseline") {
+				t.Errorf("%s %q without Main in the offer:\n%s", enc, preset, a)
+			}
+			if a := argvProfile(enc, preset, 3398, 1220, true); enc != "x264enc" && !strings.Contains(a, "profile=main") {
+				t.Errorf("%s %q with Main offered should use it:\n%s", enc, preset, a)
+			}
+		}
+	}
+	firefox := "m=video 9 UDP/TLS/RTP/SAVPF 126 97 105\r\na=rtpmap:126 H264/90000\r\n" +
+		"a=fmtp:126 profile-level-id=42e01f;level-asymmetry-allowed=1;packetization-mode=1\r\n" +
+		"a=fmtp:97 profile-level-id=42e01f;level-asymmetry-allowed=1\r\n"
+	chrome := firefox + "a=fmtp:102 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=4d001f\r\n"
+	mode0 := firefox + "a=fmtp:103 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=4D001F\r\n"
+	if offerMain(firefox) || !offerMain(chrome) || offerMain(mode0) {
+		t.Errorf("offerMain: firefox %v chrome %v mode0 %v", offerMain(firefox), offerMain(chrome), offerMain(mode0))
+	}
 }
 
 func TestPresetArgv(t *testing.T) {
