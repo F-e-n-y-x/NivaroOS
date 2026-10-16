@@ -20,7 +20,7 @@ const open = (trigger) => {
 </script>
 
 <template>
-	<div class="b-tooltip" :class="[type, position, 'is-medium', { 'is-always': always }]">
+	<div class="b-tooltip is-medium" :class="[type, position, { 'is-always': always }]">
 		<transition :name="animated ? animation : undefined">
 			<div v-show="active || always" class="tooltip-content">{{ label }}</div>
 		</transition>

@@ -1,7 +1,7 @@
 // Icon packs for <b-icon> (ui/Icon.vue): the class prefix and the size
 // class each `size` maps to.
 export const iconPacks = {
-	'casa': {
+	casa: {
 		sizes: {
 			'default': 'is-size-4',
 			'is-20': 'is-size-5',
@@ -18,7 +18,7 @@ export const iconPacks = {
 	// row (e.g. the Settings sidebar nav) it visibly renders larger and
 	// can overflow/clip its container. Mirrors casa's own size keys,
 	// mapped to this project's .mdi-XXpx utility classes (_size.scss).
-	'mdi': {
+	mdi: {
 		iconPrefix: 'mdi-',
 		sizes: {
 			'default': 'mdi-24px',

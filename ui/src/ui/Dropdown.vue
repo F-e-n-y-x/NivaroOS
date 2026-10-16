@@ -100,7 +100,7 @@ export default {
 </script>
 
 <template>
-	<div ref="dropdown" class="dropdown dropdown-menu-animation" :class="[position, stateClasses]">
+	<div class="dropdown dropdown-menu-animation" :class="[position, stateClasses]">
 		<div ref="trigger" :tabindex="disabled ? undefined : 0" class="dropdown-trigger" aria-haspopup="true" @click="toggle">
 			<slot name="trigger" :active="isActive" />
 		</div>

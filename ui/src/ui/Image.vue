@@ -18,7 +18,7 @@ const failed = ref(false)
 const width = ref(0)
 const figure = ref(null)
 const currentSrc = computed(() => (failed.value && props.srcFallback ? props.srcFallback : props.src))
-const hasRatio = computed(() => !!props.ratio && /([0-9]+)by([0-9]+)/.test(props.ratio))
+const hasRatio = computed(() => !!props.ratio && /\d+by\d+/.test(props.ratio))
 const setWidth = () => (width.value = figure.value ? figure.value.clientWidth : 0)
 onMounted(() => {
 	setWidth()
@@ -29,15 +29,13 @@ onBeforeUnmount(() => window.removeEventListener('resize', setWidth))
 
 <template>
 	<figure ref="figure" class="b-image-wrapper image" :class="hasRatio ? `is-${ratio}` : null">
-		<transition name="fade">
-			<img
-				:src="currentSrc"
-				:alt="alt"
-				:class="{ 'is-rounded': rounded, 'has-ratio': hasRatio }"
-				:width="width > 0 ? width : undefined"
-				:loading="lazy ? 'lazy' : undefined"
-				@error="failed = true"
-			/>
-		</transition>
+		<img
+			:src="currentSrc"
+			:alt="alt"
+			:class="{ 'is-rounded': rounded, 'has-ratio': hasRatio }"
+			:width="width > 0 ? width : undefined"
+			:loading="lazy ? 'lazy' : undefined"
+			@error="failed = true"
+		/>
 	</figure>
 </template>
