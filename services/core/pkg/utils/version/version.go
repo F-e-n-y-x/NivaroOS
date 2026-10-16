@@ -153,13 +153,16 @@ func Compare(commit string) Status {
 				} `json:"committer"`
 			} `json:"commit"`
 		} `json:"commits"`
+		Files []struct {
+			Filename string `json:"filename"`
+		} `json:"files"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&body); err != nil || body.AheadBy == nil || body.Status == "" {
 		s.Reason = "unexpected answer from GitHub"
 		return s
 	}
 	s.AheadBy = *body.AheadBy
-	if s.AheadBy == 0 {
+	if s.AheadBy == 0 || (len(body.Files) > 0 && !touchesServer(body.Files)) {
 		s.State = StateUpToDate
 		return s
 	}
@@ -169,6 +172,24 @@ func Compare(commit string) Status {
 		s.LatestCommit, s.LatestMessage, s.LatestDate = last.SHA, last.Commit.Message, last.Commit.Committer.Date
 	}
 	return s
+}
+
+// touchesServer: anything but the Android app and docs. GitHub lists at most
+// 300 files; a cut-off list may hide a server file, so only a full list that
+// is all app/docs counts as "nothing for this server" (no list = behind).
+func touchesServer(files []struct {
+	Filename string `json:"filename"`
+}) bool {
+	if len(files) >= 300 {
+		return true
+	}
+	for _, f := range files {
+		n := f.Filename
+		if !strings.HasPrefix(n, "mobile/") && !strings.HasPrefix(n, "docs/") && !strings.HasSuffix(n, ".md") {
+			return true
+		}
+	}
+	return false
 }
 
 var (

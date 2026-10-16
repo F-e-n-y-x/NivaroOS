@@ -50,6 +50,16 @@ func TestCompare(t *testing.T) {
 	if s := Compare("abc"); s.State != StateUpToDate {
 		t.Fatalf("identical: %+v", s)
 	}
+	// Only the Android app or docs changed: nothing for this server.
+	serve(t, 200, `{"status":"ahead","ahead_by":2,"commits":[{"sha":"s1","commit":{"message":"mobile: 1.4.18"}}],"files":[{"filename":"mobile/pubspec.yaml"},{"filename":"docs/guides/x.md"},{"filename":"CHANGELOG.md"}]}`)
+	if s := Compare("abc"); s.State != StateUpToDate {
+		t.Fatalf("app-only changes: %+v", s)
+	}
+	// One server file among them: behind.
+	serve(t, 200, `{"status":"ahead","ahead_by":2,"commits":[{"sha":"s1","commit":{"message":"core"}}],"files":[{"filename":"mobile/a.dart"},{"filename":"services/core/main.go"}]}`)
+	if s := Compare("abc"); s.State != StateBehind {
+		t.Fatalf("server change: %+v", s)
+	}
 	// Built from a commit master doesn't have yet.
 	serve(t, 200, `{"status":"behind","ahead_by":0,"behind_by":2}`)
 	if s := Compare("abc"); s.State != StateUpToDate {
