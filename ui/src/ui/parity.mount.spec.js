@@ -123,3 +123,13 @@ same(['BSelect', 'BField', 'BIcon'], [
 	`<b-field label="Exp"><b-select v-model="s2" expanded>${opts}</b-select></b-field>`,
 	[`<b-select v-model="sel">${opts}</b-select>`, pick],
 ])
+
+const hover = async function hover(el) { el.querySelector('.tooltip-trigger').dispatchEvent(new Event('mouseenter')) }
+const leave = async function leave(el) { await hover(el); el.querySelector('.tooltip-trigger').dispatchEvent(new Event('mouseleave')) }
+same(['BTooltip'], [
+	'<b-tooltip label="Create" position="is-right" type="is-dark"><a class="add">x</a></b-tooltip>',
+	['<b-tooltip label="Create" position="is-left" type="is-dark"><button>x</button></b-tooltip>', hover],
+	['<b-tooltip label="Create"><button>x</button></b-tooltip>', leave],
+	'<b-tooltip :always="true" :animated="true" label="Running" :triggers="[\'hover\']" animation="fade1" class="in-card" type="is-white"><div>x</div></b-tooltip>',
+	['<b-tooltip :always="false" label="L" :triggers="[]" class="in-card" type="is-white"><div>x</div></b-tooltip>', hover],
+])

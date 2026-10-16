@@ -3,7 +3,7 @@
 // from Buefy until our own component takes it over, so no template changes.
 import {
 	BAutocomplete, BDropdown, BDropdownItem, BImage, BLoading,
-	BNotification, BNumberinput, BProgress, BTabItem, BTabs, BTooltip, BUpload,
+	BNotification, BNumberinput, BProgress, BTabItem, BTabs, BUpload,
 	ConfigProgrammatic,
 } from '@ntohq/buefy-next'
 import notices from './notices'
@@ -14,11 +14,12 @@ import Input from './Input.vue'
 import Switch from './Switch.vue'
 import Checkbox from './Checkbox.vue'
 import Select from './Select.vue'
+import Tooltip from './Tooltip.vue'
 
 const components = {
 	// Still Buefy's.
 	BAutocomplete, BDropdown, BDropdownItem, BImage, BLoading,
-	BNotification, BNumberinput, BProgress, BTabItem, BTabs, BTooltip, BUpload,
+	BNotification, BNumberinput, BProgress, BTabItem, BTabs, BUpload,
 	// Ours.
 	BIcon: Icon,
 	BButton: Button,
@@ -27,6 +28,7 @@ const components = {
 	BSwitch: Switch,
 	BCheckbox: Checkbox,
 	BSelect: Select,
+	BTooltip: Tooltip,
 }
 
 export default {
