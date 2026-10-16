@@ -123,9 +123,6 @@ importers:
       dompurify:
         specifier: ^3.4.16
         version: 3.4.16
-      iconfonts-casaos:
-        specifier: ^1.0.4
-        version: 1.0.10
       lodash:
         specifier: ^4.18.1
         version: 4.18.1
@@ -2114,9 +2111,6 @@ packages:
   https-proxy-agent@7.0.6:
     resolution: {integrity: sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==}
     engines: {node: '>= 14'}
-
-  iconfonts-casaos@1.0.10:
-    resolution: {integrity: sha512-SaWpdjoh5hVmFd3z55wxMiXXqo+bWMGR74fXelQaievubheFT/dafhEK8383Rq+iPc5XjOvPGcc4S0MFwXrB8A==}
 
   ieee754@1.2.1:
     resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
@@ -5379,8 +5373,6 @@ snapshots:
       debug: 4.4.3
     transitivePeerDependencies:
       - supports-color
-
-  iconfonts-casaos@1.0.10: {}
 
   ieee754@1.2.1: {}
 

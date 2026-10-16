@@ -6,7 +6,7 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-// Some vendored stylesheets (@mdi/font, iconfonts-casaos) start with a
+// Some vendored stylesheets (@mdi/font, the vendored casaos icon font) start with a
 // UTF-8 BOM. Concatenated into one CSS file it lands right in front of
 // their @font-face rules - browsers then drop those rules and every icon
 // in the UI vanishes.
