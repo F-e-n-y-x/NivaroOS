@@ -619,7 +619,12 @@ func Run(ctx context.Context, out io.Writer) error {
 		}
 		return fmt.Errorf("unknown request %q", req.Action)
 	}
-	return Nightly(ctx, out)
+	// The timer firing during a manual update is not a failed night.
+	if err := Nightly(ctx, out); !errors.Is(err, ErrBusy) {
+		return err
+	}
+	fmt.Fprintln(out, "an update is already running - nothing to do now")
+	return nil
 }
 
 func Nightly(ctx context.Context, out io.Writer) error {

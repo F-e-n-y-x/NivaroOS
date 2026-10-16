@@ -220,5 +220,10 @@ func init() {
 	}
 
 	updateCmd.AddCommand(check, download, verify, apply, rollback, set, history, run, resume)
+	// An update error is the answer; cobra's usage text only buries it
+	// (SilenceUsage is read on the command that ran, not its parent).
+	for _, c := range updateCmd.Commands() {
+		c.SilenceUsage = true
+	}
 	rootCmd.AddCommand(updateCmd)
 }

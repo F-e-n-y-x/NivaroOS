@@ -452,3 +452,21 @@ func TestReleaseBundle(t *testing.T) {
 		}
 	}
 }
+
+// The timer fired while a manual `update apply` held the lock: the unit
+// failed ("an update is already running") and sat in systemctl --failed.
+func TestNightlyWhileAnUpdateRunsIsNotAFailure(t *testing.T) {
+	setup(t, "1.5.0", nil)
+	f, err := lock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	var out bytes.Buffer
+	if err := Run(context.Background(), &out); err != nil {
+		t.Fatalf("nightly run while busy: %v", err)
+	}
+	if !strings.Contains(out.String(), "already running") {
+		t.Fatalf("no word about it: %q", out.String())
+	}
+}

@@ -171,6 +171,9 @@ func currentRelease() release {
 
 // lock: one update at a time (UI + CLI + timer). The lock is released when
 // the process exits, however it exits.
+// ErrBusy: another update (manual, or from Settings) holds the lock.
+var ErrBusy = errors.New("an update is already running")
+
 func lock() (*os.File, error) {
 	if err := os.MkdirAll(Dir, 0o700); err != nil {
 		return nil, err
@@ -181,7 +184,7 @@ func lock() (*os.File, error) {
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
-		return nil, errors.New("an update is already running")
+		return nil, ErrBusy
 	}
 	return f, nil
 }
