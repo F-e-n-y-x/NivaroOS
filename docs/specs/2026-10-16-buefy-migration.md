@@ -1,6 +1,6 @@
 # Replacing `@ntohq/buefy-next` in ui/
 
-Status: plan (Phase 1). Owner request 2026-10-16. Agent: ui-buefy.
+Status: done 2026-10-16 (see §4). Owner request 2026-10-16. Agent: ui-buefy.
 
 `@ntohq/buefy-next` 0.2.0 is an archived Vue 3 fork of Buefy. It gets no
 fixes (security or Vue updates) any more. This doc lists what ui/ uses, picks
@@ -138,3 +138,26 @@ pixels identical and leaves no dependency to go stale again.
 3. Phase 3: loading, image, dropdown(+item), tabs(+item), upload, progress,
    autocomplete, numberinput, notification. Then vendor the SCSS and remove
    the package.
+
+## 4. Outcome (2026-10-16)
+
+- Every component and the programmatic API moved: `ui/src/ui/` (one SFC
+  per component, `notices.js`, `field.js` for field/control status,
+  `focus.js` for the Tab trap). Registered under the old global names by
+  `@/ui`, so no template changed.
+- `ui/parity.mount.spec.js`: 97 cases (each usage pattern, plus clicks,
+  typing, blur, picks, drops, key presses). They ran against Buefy's
+  components side by side and matched exactly. They are now snapshots.
+- Screenshots: login, desktop, 22 windows, toasts/snackbar/dialogs and
+  open menus/tooltips, light and dark (78 shots). Pixel-identical to the
+  all-Buefy build, apart from antialiasing noise.
+- Dropped on purpose because nothing used them: b-image webp fallback,
+  tab slide animation, autocomplete groups/header/footer/keep-first.
+  Each one is marked with a `ponytail:` comment.
+- Styles: 19 of Buefy's 37 sheets are vendored in `assets/scss/buefy`
+  (MIT). Entry JS chunk went from 470 to 174 KB (122 to 53 KB gzip); the
+  main CSS went from 956 to 862 KB.
+- Left: `@ntohq/buefy-next` is still a devDependency, only for
+  `shell/desktop/HostDesktopPanel.connect.spec.js`, which another session
+  was editing. When that work lands, switch its import to `@/ui` and
+  remove the package.
