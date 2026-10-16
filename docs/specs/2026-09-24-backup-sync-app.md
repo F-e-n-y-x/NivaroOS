@@ -2,7 +2,8 @@
 
 Status: built (spec 2026-09-24; built from 2026-09-30). Packaging: optional
 module, see §0. Where the code differs: "Built: differences from this spec"
-before §19. restic (v1.1) is not built.
+before §19. restic (v1.1) is built as job type "backup" (2026-10-16): see
+services/backup/README.md "Versioned backups" for how it differs from §18.
 Owner ask: "make an app so users can add scheduled backups, sync and other types
 of backup periodically to any type of storage in Nivaro, and condition based
 also ... better UI and UX ... not only work on this PC but all ... quality work."

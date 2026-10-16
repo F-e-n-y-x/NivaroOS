@@ -8,6 +8,18 @@ updated from `master` by re-running the installer.
 
 ## [Unreleased]
 
+### Added
+
+- Backup & Sync: **Versioned (deduplicated)** backups. Every run is a
+  restic snapshot of one or more folders; unchanged data is stored once,
+  so a daily run uploads only what changed. Works with every destination
+  (drives, USB, network shares, every cloud account), optionally encrypted
+  with your password (recovery key as for encrypted folders), keeps
+  7 daily / 4 weekly / 12 monthly snapshots by default, checks itself
+  monthly, and restores any snapshot (files, folders or all of it, back in
+  place or elsewhere) from the web and the app. The installer now ships
+  restic 0.19.1.
+
 ## [server 1.5.1] - 2026-10-16
 
 ### Fixed
