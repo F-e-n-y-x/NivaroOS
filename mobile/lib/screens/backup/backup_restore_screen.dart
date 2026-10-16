@@ -51,6 +51,11 @@ class BackupRestoreScreenState extends State<BackupRestoreScreen> {
 
   static const conflicts = ['keep_both', 'overwrite', 'skip'];
 
+  /// A version of several folders (an archive or versioned backup of more
+  /// than one) has no single original place: it goes to a chosen folder.
+  bool get _canOriginal => (_job?.sources.length ?? 1) == 1;
+  String get _target => _canOriginal ? _mode : 'other';
+
   @override
   void initState() {
     super.initState();
@@ -133,7 +138,7 @@ class BackupRestoreScreenState extends State<BackupRestoreScreen> {
   String? get blocker {
     if (_job == null) return bt('backup.restore.no_jobs');
     if (_versionId == null) return bt('backup.restore.no_versions');
-    if (_mode == 'other' && _other == null) return bt('backup.restore.no_folder_yet');
+    if (_target == 'other' && _other == null) return bt('backup.restore.no_folder_yet');
     return null;
   }
 
@@ -146,7 +151,7 @@ class BackupRestoreScreenState extends State<BackupRestoreScreen> {
     });
     try {
       final runId = await _api.restore(job.id,
-          versionId: versionId, paths: _paths, target: _mode == 'other' ? _other : null, conflict: _conflict, dryRun: _dryRun);
+          versionId: versionId, paths: _paths, target: _target == 'other' ? _other : null, conflict: _conflict, dryRun: _dryRun);
       if (!mounted) return;
       await Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => BackupRunScreen(runId: runId, api: widget.api)));
     } catch (e) {
@@ -236,7 +241,7 @@ class BackupRestoreScreenState extends State<BackupRestoreScreen> {
           ]),
           TileGroup(title: bt('backup.restore.where'), children: [
             RadioGroup<String>(
-              groupValue: _mode,
+              groupValue: _target,
               onChanged: (m) => setState(() {
                 _mode = m ?? 'original';
                 _error = null;
@@ -244,20 +249,21 @@ class BackupRestoreScreenState extends State<BackupRestoreScreen> {
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 RadioListTile<String>(
                   value: 'original',
+                  enabled: _canOriginal,
                   title: Text(bt('backup.restore.to_original')),
-                  subtitle: Text(formatList([for (final s in job.sources) s.display])),
+                  subtitle: Text(_canOriginal ? formatList([for (final s in job.sources) s.display]) : bt('backup.restore.original_many')),
                 ),
                 RadioListTile<String>(
                   value: 'other',
                   title: Text(bt('backup.restore.to_other')),
                   subtitle: Text(
                     targetError ?? (_other?.display ?? bt('backup.restore.no_folder_yet')),
-                    style: targetError != null || (_mode == 'other' && _other == null) ? TextStyle(color: scheme.error) : null,
+                    style: targetError != null || (_target == 'other' && _other == null) ? TextStyle(color: scheme.error) : null,
                   ),
                 ),
               ]),
             ),
-            if (_mode == 'other')
+            if (_target == 'other')
               ListTile(
                 leading: const Icon(Icons.folder_open_outlined),
                 title: Text(_other == null ? bt('backup.restore.choose_folder') : bt('backup.restore.change_folder')),

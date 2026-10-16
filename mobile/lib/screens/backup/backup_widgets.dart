@@ -39,6 +39,7 @@ import '../../utils/format.dart';
 IconData jobTypeIcon(String type) => switch (type) {
       'mirror' => Icons.sync_outlined,
       'archive' => Icons.inventory_2_outlined,
+      'backup' => Icons.history_outlined,
       _ => Icons.file_copy_outlined,
     };
 

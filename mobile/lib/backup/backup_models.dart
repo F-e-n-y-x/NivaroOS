@@ -172,7 +172,7 @@ class BackupJob {
   final String id;
   final String name;
 
-  /// copy | mirror | archive
+  /// copy | mirror | archive | backup (versioned, restic)
   final String type;
   final bool enabled;
   final int revision;
@@ -577,7 +577,7 @@ class BackupVersion {
   /// "current", `v_<ts>` or `a_<file>`.
   final String id;
 
-  /// current | recycle | archive
+  /// current | recycle | archive | snapshot
   final String kind;
   final DateTime? time;
   final String labelKey;

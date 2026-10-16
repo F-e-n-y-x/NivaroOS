@@ -360,4 +360,33 @@ void main() {
       expect(_body(sent, 'POST /v1/backup/jobs/bk_photos/reconnect-dest'), {'adopt_other_job': false});
     });
   });
+
+  group('versioned backup', () {
+    testWidgets('switching to Versioned sends restic keep rules and no recycle days', (tester) async {
+      final sent = await _run(tester, BackupJobFormScreen(job: photosJob()), () async {
+        await _tap(tester, find.text('Versioned'));
+        await _type(tester, 'keep_daily', '3');
+        await _save(tester);
+      }, overrides: {'PUT /v1/backup/jobs/bk_photos': _saved});
+      final j = _body(sent, 'PUT /v1/backup/jobs/bk_photos');
+      expect(j['type'], 'backup');
+      expect(j['retention'], {'keep_daily': 3, 'keep_weekly': 4, 'keep_monthly': 12});
+    });
+
+    testWidgets('a network share can not be versioned: caught before saving', (tester) async {
+      final job = BackupJob.fromJson({
+        ..._photosRaw(),
+        'type': 'backup',
+        'sources': [
+          {'kind': 'smb', 'ref_id': '3', 'sub_path': 'share/photos', 'label': 'NAS'},
+        ],
+        'retention': {'keep_daily': 7},
+      });
+      final sent = await _run(tester, BackupJobFormScreen(job: job), () async {
+        await _save(tester);
+        expect(find.textContaining("Only for folders on this server's drives"), findsWidgets);
+      });
+      expect(sent.any((s) => s.$1.startsWith('PUT')), isFalse);
+    });
+  });
 }

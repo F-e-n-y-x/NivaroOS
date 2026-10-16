@@ -432,7 +432,7 @@ class _BackupJobScreenState extends State<BackupJobScreen> with WidgetsBindingOb
                 title: Text(bt('backup.jobs.fact.keep')),
                 subtitle: Text(retentionText(job)!),
               ),
-            if (job.type != 'archive')
+            if (job.type != 'archive' && job.type != 'backup')
               ListTile(
                 leading: const Icon(Icons.shield_outlined),
                 title: Text(bt('backup.jobs.fact.safety')),

@@ -82,6 +82,13 @@ class BackupJobFormScreenState extends State<BackupJobFormScreen> {
   late final _cron = TextEditingController();
   late final _keep = TextEditingController();
 
+  /// A versioned backup's keep rules (restic forget), daily/weekly/monthly
+  /// snapshots; keep_last rides along unchanged.
+  late final _keepDaily = TextEditingController(text: _snapKeep('keep_daily', 7));
+  late final _keepWeekly = TextEditingController(text: _snapKeep('keep_weekly', 4));
+  late final _keepMonthly = TextEditingController(text: _snapKeep('keep_monthly', 12));
+  String _snapKeep(String k, int def) => _from?.type == 'backup' ? '${(_section('retention')[k] as num?)?.round() ?? 0}' : '$def';
+
   late String _type = _from?.type ?? 'mirror';
   late List<BackupEndpoint> _sources = [...?_from?.sources];
   late BackupEndpoint? _dest = _from?.dest.withSubPath('');
@@ -248,7 +255,7 @@ class BackupJobFormScreenState extends State<BackupJobFormScreen> {
 
   @override
   void dispose() {
-    for (final c in [_name, _folder, _cron, _keep, _exclude, _include, _maxSizeGb, _plugGap, _deletePct, _changePct, _emptyPct, _maxHours, _password, _confirm, _recoveryKey]) {
+    for (final c in [_name, _folder, _cron, _keep, _keepDaily, _keepWeekly, _keepMonthly, _exclude, _include, _maxSizeGb, _plugGap, _deletePct, _changePct, _emptyPct, _maxHours, _password, _confirm, _recoveryKey]) {
       c.dispose();
     }
     for (final g in _groups.values) {
@@ -357,7 +364,8 @@ class BackupJobFormScreenState extends State<BackupJobFormScreen> {
     final e = <String, String>{};
     String f(String code) => BackupError.fieldText(code);
     if (_sources.isEmpty) e['sources'] = f('required');
-    if (_type != 'archive' && _sources.length > 1) e['sources'] = bt('backup.wizard.what.many_needs_archive');
+    if (!_multiSource && _sources.length > 1) e['sources'] = bt('backup.wizard.what.many_needs_archive');
+    if (_type == 'backup' && _sources.any((s) => !const ['volume', 'usb', 'merge'].contains(s.kind))) e['sources'] = bt('backup.wizard.what.type_needs_local');
     if (_sources.length > 16) e['sources'] = f('too_many');
     if (_dest == null) e['dest'] = f('required');
     if (_effectiveName.isEmpty) e['name'] = f('required');
@@ -367,6 +375,8 @@ class BackupJobFormScreenState extends State<BackupJobFormScreen> {
     }
     if (_type == 'mirror' && !_intIn(_keep, 0, 3650)) e['retention'] = f('out_of_range');
     if (_type == 'archive' && !_intIn(_keep, 1, 1000)) e['retention'] = f('out_of_range');
+    if (_type == 'backup' && ![_keepDaily, _keepWeekly, _keepMonthly].every((c) => _intIn(c, 0, 1000))) e['retention'] = f('out_of_range');
+    if (_type == 'backup' && _lines(_include.text).isNotEmpty) e['filters.include'] = f('invalid');
     if (_maxSizeOn && !((double.tryParse(_maxSizeGb.text.trim()) ?? 0) > 0)) e['filters.max_size_bytes'] = f('out_of_range');
     if (_plug && _plugPossible && !_intIn(_plugGap, 0, 720)) e['plug'] = f('out_of_range');
     if (_windowOn && _windowStart == _windowEnd) e['conditions.window'] = f('invalid');
@@ -375,6 +385,7 @@ class BackupJobFormScreenState extends State<BackupJobFormScreen> {
     }
     if (!_intIn(_maxHours, 1, 720)) e['options.max_duration_sec'] = f('out_of_range');
     if (_encryptMode == 'archive' && _type != 'archive') e['dest.encryption'] = f('invalid');
+    if (_encryptMode.isNotEmpty && (_encryptMode == 'restic') != (_type == 'backup')) e['dest.encryption'] = f('invalid');
     if (!_isEdit && _encryptMode.isNotEmpty) {
       if (_useRecovery) {
         if (_recoveryKey.text.trim().isEmpty) e['encryption_secret.recovery_key'] = f('required');
@@ -469,10 +480,12 @@ class BackupJobFormScreenState extends State<BackupJobFormScreen> {
         'change_pct': _int(_changePct) ?? 30,
         'allow_empty_source': _allowEmpty,
       },
-      'retention': {
-        if (_type == 'mirror') 'versions_days': keep,
-        if (_type == 'archive') 'keep_last': keep,
-      },
+      'retention': _type == 'backup'
+          ? _snapshotRetention()
+          : {
+              if (_type == 'mirror') 'versions_days': keep,
+              if (_type == 'archive') 'keep_last': keep,
+            },
       'hooks': _hooks(),
       'retry': {'max': _retryMax, 'backoff_sec': _backoff.isEmpty ? const [60, 600, 3600] : _backoff},
       // 0 lets the server pick (twice the schedule's interval, 48 h at least).
@@ -484,6 +497,20 @@ class BackupJobFormScreenState extends State<BackupJobFormScreen> {
       if (_isEdit) 'id': widget.job!.id,
       if (_isEdit) 'revision': widget.job!.revision,
     };
+  }
+
+  bool get _multiSource => _type == 'archive' || _type == 'backup';
+
+  /// restic forget's rules; every one off keeps everything (an empty
+  /// retention would get the server's defaults).
+  Map<String, Object?> _snapshotRetention() {
+    final last = (_section('retention')['keep_last'] as num?)?.round() ?? 0;
+    final r = <String, Object?>{
+      for (final (k, c) in [('keep_daily', _keepDaily), ('keep_weekly', _keepWeekly), ('keep_monthly', _keepMonthly)])
+        if ((_int(c) ?? 0) > 0) k: _int(c),
+      if (_from?.type == 'backup' && last > 0) 'keep_last': last,
+    };
+    return r.isEmpty ? {'keep_last': 1000} : r;
   }
 
   /// The collapsed group a field lives in.
@@ -746,7 +773,8 @@ class BackupJobFormScreenState extends State<BackupJobFormScreen> {
         groupValue: _encryptMode,
         onChanged: (m) => setState(() => _encryptMode = m ?? ''),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          for (final m in const ['', 'folder', 'archive'])
+          // restic encrypts a versioned backup's repository itself.
+          for (final m in _type == 'backup' ? const ['', 'restic'] : const ['', 'folder', 'archive'])
             RadioListTile<String>(
               value: m,
               enabled: m != 'archive' || _type == 'archive',
@@ -911,7 +939,7 @@ class BackupJobFormScreenState extends State<BackupJobFormScreen> {
             ? bt('backup.summary.guard_change', {'change': _changePct.text.trim()})
             : null;
     return _group('safety', bt('backup.wizard.keep.safety_heading'), summary, [
-      if (_type != 'archive') ...[
+      if (_type != 'archive' && _type != 'backup') ...[
         _hint('${bt('backup.wizard.keep.guard_intro')} …'),
         if (_type == 'mirror') _number(_deletePct, bt('backup.wizard.keep.delete_more'), suffix: '%', error: _err('guards.delete_pct'), key: 'delete-pct'),
         _number(_changePct, _type == 'mirror' ? bt('backup.wizard.keep.or_change_more') : bt('backup.wizard.keep.change_more'),
@@ -1017,8 +1045,8 @@ class BackupJobFormScreenState extends State<BackupJobFormScreen> {
             padding: EdgeInsets.symmetric(horizontal: gutter),
             child: SegmentedButton<String>(
               segments: [
-                for (final t in const ['mirror', 'copy', 'archive'])
-                  ButtonSegment(value: t, label: Text(t == 'copy' ? 'Copy' : bt('backup.type.$t.label'))),
+                for (final t in const ['mirror', 'copy', 'archive', 'backup'])
+                  ButtonSegment(value: t, label: Text(t == 'copy' ? 'Copy' : (t == 'backup' ? 'Versioned' : bt('backup.type.$t.label')))),
               ],
               selected: {_type},
               onSelectionChanged: (s) => setState(() {
@@ -1026,8 +1054,11 @@ class BackupJobFormScreenState extends State<BackupJobFormScreen> {
                 _type = s.first;
                 if (was != _type && (_type == 'archive' || was == 'archive')) _keep.text = _type == 'archive' ? '8' : '30';
                 if (!_previewTouched) _previewFirst = _type == 'mirror';
-                // An encrypted archive is an Archive's: others encrypt the folder.
+                // An encrypted archive is an Archive's: others encrypt the folder;
+                // a versioned backup is encrypted by restic.
                 if (!_isEdit && _type != 'archive' && _encryptMode == 'archive') _encryptMode = 'folder';
+                if (!_isEdit && _type == 'backup' && _encryptMode.isNotEmpty) _encryptMode = 'restic';
+                if (!_isEdit && _type != 'backup' && _encryptMode == 'restic') _encryptMode = 'folder';
               }),
             ),
           ),
@@ -1053,7 +1084,7 @@ class BackupJobFormScreenState extends State<BackupJobFormScreen> {
                       )
                     : const Icon(Icons.chevron_right),
               ),
-            if (_sources.isEmpty || _type == 'archive')
+            if (_sources.isEmpty || _multiSource)
               ListTile(
                 leading: const Icon(Icons.add),
                 title: Text(_sources.isEmpty ? bt('backup.wizard.what.choose_source') : bt('backup.wizard.what.add_folder')),
@@ -1061,7 +1092,7 @@ class BackupJobFormScreenState extends State<BackupJobFormScreen> {
                 onTap: () => _pickSource(),
               ),
           ]),
-          if (_sources.length > 1 && _type != 'archive')
+          if (_sources.length > 1 && !_multiSource)
             Padding(padding: EdgeInsets.symmetric(horizontal: gutter), child: Text(bt('backup.wizard.what.many_needs_archive'), style: errStyle)),
           ..._appsGroup(),
           _skipGroup(),
@@ -1146,7 +1177,24 @@ class BackupJobFormScreenState extends State<BackupJobFormScreen> {
               subtitle: Text(bt('backup.wizard.when.plug_gap_hint')),
             ),
           _whenGroup(),
-          if (_type != 'copy') ...[
+          if (_type == 'backup') ...[
+            SectionHeader(title: bt('backup.wizard.keep.title')),
+            for (final (c, k) in [(_keepDaily, 'keep_daily'), (_keepWeekly, 'keep_weekly'), (_keepMonthly, 'keep_monthly')])
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: gutter),
+                child: TextField(
+                  key: Key(k),
+                  controller: c,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(labelText: bt('backup.wizard.keep.$k')),
+                ),
+              ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, 0),
+              child: Text(bt('backup.wizard.keep.snapshots_hint'), style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+            ),
+            if (_err('retention') != null) _errorText(_err('retention')),
+          ] else if (_type != 'copy') ...[
             SectionHeader(title: bt('backup.wizard.keep.title')),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: gutter),

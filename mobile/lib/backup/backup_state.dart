@@ -253,6 +253,9 @@ String jobDescribeLine(BackupJob job) {
 String? retentionText(BackupJob job) => switch (job.type) {
       'mirror' => job.versionsDays > 0 ? bt('backup.keep.recycle_days', {'days': '${job.versionsDays}'}) : bt('backup.keep.recycle_forever'),
       'archive' => bt('backup.keep.last_archives', {'keep': '${job.keepLast > 0 ? job.keepLast : 8}'}),
+      'backup' => bt('backup.keep.snapshots', {
+          for (final k in const ['daily', 'weekly', 'monthly']) k: '${((job.raw['retention'] as Map?)?['keep_$k'] as num?)?.round() ?? 0}',
+        }),
       _ => null,
     };
 

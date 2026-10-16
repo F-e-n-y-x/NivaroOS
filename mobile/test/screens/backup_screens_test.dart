@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:nivaroos_mobile/backup/backup_models.dart';
 import 'package:nivaroos_mobile/screens/backup/backup_decide_screen.dart';
 import 'package:nivaroos_mobile/screens/backup/backup_job_screen.dart';
 import 'package:nivaroos_mobile/screens/backup/backup_restore_screen.dart';
@@ -255,6 +256,22 @@ void main() {
 
   group('restore wizard', () {
     Widget screen() => BackupRestoreScreen(jobs: [photosJob()], job: photosJob());
+
+    testWidgets('a versioned backup of several folders goes to a chosen folder, not back in place', (tester) async {
+      final raw = Map<String, Object?>.from(fixture('backup/job_photos')['data'] as Map);
+      final two = BackupJob.fromJson({
+        ...raw,
+        'type': 'backup',
+        'sources': [...(raw['sources'] as List), {'kind': 'volume', 'ref_id': 'x', 'sub_path': 'docs', 'label': 'tower'}],
+      });
+      await _run(tester, BackupRestoreScreen(jobs: [two], job: two), () async {
+        final original = find.byWidgetPredicate((w) => w is RadioListTile<String> && w.value == 'original');
+        await tester.scrollUntilVisible(original, 300, scrollable: find.byType(Scrollable).first);
+        expect(tester.widget<RadioListTile<String>>(original).enabled, isFalse);
+        expect(find.textContaining('This backup holds several folders'), findsOneWidget);
+        expect(find.text('No folder chosen yet'), findsWidgets, reason: 'another folder is the target');
+      });
+    });
 
     final button = find.byWidgetPredicate((w) => w is FilledButton);
     Future<FilledButton> restoreButton(WidgetTester tester) async {
