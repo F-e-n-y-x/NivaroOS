@@ -27,7 +27,10 @@ import (
 
 // TestMain keeps the service's log lines (audit, retries, migration
 // notes) out of a plain `go test`; -v shows them.
+// The harness calls the API as loopback automation: the host's strict
+// local-automation flag (a deployed box has it) must not leak in.
 func TestMain(m *testing.M) {
+	middleware.LocalStrictPath = filepath.Join(os.TempDir(), "nivaroos-backup-test-no-strict")
 	flag.Parse()
 	// Loopback requests stand for local automation as on a box without
 	// the strict marker, whatever this host's /etc/nivaroos has.
