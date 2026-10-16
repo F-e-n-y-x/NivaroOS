@@ -31,7 +31,7 @@ export const STATUS_VIEW = Object.freeze({
 	interrupted: { tone: 'warn', icon: 'restart-alert' }
 })
 
-export const TYPE_ICON = Object.freeze({ copy: 'content-copy', mirror: 'mirror', archive: 'archive-outline' })
+export const TYPE_ICON = Object.freeze({ copy: 'content-copy', mirror: 'mirror', archive: 'archive-outline', backup: 'history' })
 
 const ACTIVE = ['queued', 'running', 'waiting_user']
 const FINAL = ['success', 'partial', 'failed', 'cancelled', 'skipped', 'interrupted']
@@ -191,6 +191,7 @@ export function retentionMessage(job) {
 	const r = (job && job.retention) || {}
 	if (job && job.type === 'mirror') return r.versions_days ? { key: 'backup.keep.recycle_days', args: { days: r.versions_days } } : { key: 'backup.keep.recycle_forever' }
 	if (job && job.type === 'archive') return { key: 'backup.keep.last_archives', args: { keep: r.keep_last || 8 } }
+	if (job && job.type === 'backup') return { key: 'backup.keep.snapshots', args: { daily: r.keep_daily || 0, weekly: r.keep_weekly || 0, monthly: r.keep_monthly || 0 } }
 	return null
 }
 

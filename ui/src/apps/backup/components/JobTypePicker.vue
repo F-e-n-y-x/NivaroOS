@@ -1,5 +1,5 @@
 <!-- "What kind of job?" (spec §12.4 What): Mirror / Copy new files /
-     Archive in plain words, as a radio group with arrow keys and a roving
+     Archive / Versioned (deduplicated) in plain words, as a radio group with arrow keys and a roving
      tabindex. Types the destination can't take (app data to a cloud) are
      disabled with the reason. -->
 <template>
@@ -14,7 +14,7 @@
 					<span class="jt-title">{{ $t('backup.type.' + t + '.label') }}</span>
 					<span :id="idp + '-type-' + t + '-desc'" class="jt-desc">
 						{{ $t('backup.type.' + t + '.promise') }}
-						<span v-if="isDisabled(t)" class="jt-disabled-reason">{{ $t('backup.wizard.what.type_needs_archive') }}</span>
+						<span v-if="isDisabled(t)" class="jt-disabled-reason">{{ $t(t === 'backup' ? 'backup.wizard.what.type_needs_local' : 'backup.wizard.what.type_needs_archive') }}</span>
 					</span>
 				</span>
 			</div>
@@ -28,6 +28,7 @@
 						<dd>{{ $t('backup.type.' + t + '.deleted') }}</dd>
 					</template>
 				</dl>
+				<p class="wz-hint">{{ $t('backup.wizard.what.explainer_versioned') }}</p>
 				<p class="wz-hint">{{ $t('backup.wizard.what.explainer_sync') }}</p>
 			</div>
 		</details>
@@ -43,14 +44,14 @@ export default {
 	props: {
 		modelValue: { type: String, default: 'copy' },
 		// Types that may be picked (the rest are shown disabled).
-		allowed: { type: Array, default: () => ['mirror', 'copy', 'archive'] },
+		allowed: { type: Array, default: () => ['mirror', 'copy', 'archive', 'backup'] },
 		idp: { type: String, required: true },
 		labelledby: { type: String, default: null }
 	},
 	data() {
 		return {
-			types: ['mirror', 'copy', 'archive'],
-			icons: { mirror: 'mirror', copy: 'content-copy', archive: 'archive-outline' }
+			types: ['mirror', 'copy', 'archive', 'backup'],
+			icons: { mirror: 'mirror', copy: 'content-copy', archive: 'archive-outline', backup: 'history' }
 		}
 	},
 	computed: {

@@ -26,7 +26,7 @@
 					<input type="radio" :name="idp + '-encrypt'" :value="m.id" :checked="mode === m.id" :disabled="m.disabled" @change="choose(m.id)" />
 					<span>
 						<strong>{{ $t('backup.encrypt.mode_' + (m.id || 'off')) }}</strong>
-						<span v-if="m.id === 'folder'" class="wz-pill tone-ok ee-rec">{{ $t('backup.encrypt.recommended') }}</span>
+						<span v-if="m.id === 'folder' || m.id === 'restic'" class="wz-pill tone-ok ee-rec">{{ $t('backup.encrypt.recommended') }}</span>
 						<span class="wz-hint ee-block">{{ $t('backup.encrypt.mode_' + (m.id || 'off') + '_hint', { size: volumeText }) }}</span>
 						<span v-if="m.id === 'archive' && !sevenZip" class="wz-hint ee-block">{{ $t('backup.encrypt.no_7z') }}</span>
 					</span>
@@ -122,6 +122,9 @@ export default {
 	},
 	computed: {
 		modes() {
+			// restic encrypts its repository itself: that is a versioned
+			// backup's only kind of encryption, and only its.
+			if (this.type === 'backup') return [{ id: '' }, { id: 'restic' }]
 			return [{ id: '' }, { id: 'folder' }, { id: 'archive', disabled: !this.sevenZip && this.mode !== 'archive' }]
 		},
 		volumeGb() {

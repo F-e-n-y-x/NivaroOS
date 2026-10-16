@@ -293,9 +293,9 @@ describe('presets', () => {
 	})
 
 	test('safe types per destination', () => {
-		expect(safeTypes([immich], 'cloud')).toEqual(['archive'])
-		expect(safeTypes([immich], 'usb')).toEqual(['mirror', 'copy', 'archive'])
-		expect(safeTypes([tower], 'cloud')).toEqual(['mirror', 'copy', 'archive'])
+		expect(safeTypes([immich], 'cloud')).toEqual(['archive', 'backup'])
+		expect(safeTypes([immich], 'usb')).toEqual(['mirror', 'copy', 'archive', 'backup'])
+		expect(safeTypes([tower], 'cloud')).toEqual(['mirror', 'copy', 'archive', 'backup'])
 		expect(autoTypeForDest(presetById('apps'), 'cloud')).toBe('archive')
 		expect(autoTypeForDest(presetById('apps'), 'volume')).toBe('mirror')
 		expect(autoTypeForDest(presetById('scratch'), 'cloud')).toBeNull()

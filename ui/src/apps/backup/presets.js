@@ -141,9 +141,17 @@ export function autoTypeForDest(preset, destKind) {
 
 // safeTypes are the job types allowed for these sources toward a
 // destination kind (the server rejects the rest with
-// appdata_cloud_needs_archive).
+// appdata_cloud_needs_archive). A versioned backup (restic) keeps owners
+// and modes in its repository, so it may go to a cloud too, but it reads
+// local folders only (not network shares or clouds).
 export function safeTypes(sources, destKind) {
-	const all = ['mirror', 'copy', 'archive']
-	if (destKind === 'cloud' && (sources || []).some(isAppOrVmSource)) return ['archive']
-	return all
+	const list = sources || []
+	const versioned = list.every(s => ['volume', 'usb', 'merge'].includes(s.kind)) ? ['backup'] : []
+	if (destKind === 'cloud' && list.some(isAppOrVmSource)) return ['archive', ...versioned]
+	return ['mirror', 'copy', 'archive', ...versioned]
+}
+
+// multiSourceType: the types that take several folders into one version.
+export function multiSourceType(t) {
+	return t === 'archive' || t === 'backup'
 }

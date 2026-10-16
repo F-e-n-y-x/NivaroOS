@@ -1,6 +1,7 @@
 <!-- "Keep" (spec §12.4): what each job type keeps, and the safety stops.
      Mirror: recycle days, delete/change guards, preview of the first run.
-     Archive: how many archives. Copy: nothing is ever deleted. Every type:
+     Archive: how many archives. Versioned: daily / weekly / monthly
+     snapshots kept (restic forget). Copy: nothing is ever deleted. Every type:
      the empty-source guard and "check files after copying" (disabled, with
      the reason, when the destination has no checksums). -->
 <template>
@@ -17,6 +18,16 @@
 				</div>
 				<p :id="daysId + '-hint'" class="wz-hint">{{ Number(versionsDays) === 0 ? $t('backup.wizard.keep.recycle_forever_hint') : $t('backup.wizard.keep.recycle_hint') }}</p>
 				<field-error :idp="idp" field="retention.versions_days" :errors="errors"></field-error>
+			</template>
+			<template v-else-if="type === 'backup'">
+				<div v-for="k in snapshotKeeps" :key="k.field" class="wz-row">
+					<label :for="k.id" class="wz-label">{{ $t('backup.wizard.keep.' + k.field) }}</label>
+					<input :id="k.id" class="wz-number" type="number" min="0" max="1000" step="1" inputmode="numeric" :value="k.value"
+						:aria-invalid="errors['retention.' + k.field] ? 'true' : 'false'" :aria-describedby="snapshotHintId"
+						@input="patchInt(k.prop, $event.target.value)" />
+				</div>
+				<p :id="snapshotHintId" class="wz-hint">{{ $t('backup.wizard.keep.snapshots_hint') }}</p>
+				<field-error v-for="k in snapshotKeeps" :key="'e-' + k.field" :idp="idp" :field="'retention.' + k.field" :errors="errors"></field-error>
 			</template>
 			<template v-else-if="type === 'archive'">
 				<div class="wz-row">
@@ -37,7 +48,7 @@
 
 		<section class="wz-section">
 			<h3 class="wz-heading">{{ $t('backup.wizard.keep.safety_heading') }}</h3>
-			<div v-if="type !== 'archive'" class="ke-guard">
+			<div v-if="type !== 'archive' && type !== 'backup'" class="ke-guard">
 				<span class="wz-label">{{ $t('backup.wizard.keep.guard_intro') }}</span>
 				<div class="wz-row">
 					<template v-if="type === 'mirror'">
@@ -98,6 +109,9 @@ export default {
 		type: { type: String, required: true },
 		versionsDays: { type: [Number, String], default: 30 },
 		keepLast: { type: [Number, String], default: 8 },
+		keepDaily: { type: [Number, String], default: 7 },
+		keepWeekly: { type: [Number, String], default: 4 },
+		keepMonthly: { type: [Number, String], default: 12 },
 		deletePct: { type: [Number, String], default: 10 },
 		changePct: { type: [Number, String], default: 30 },
 		emptySourcePct: { type: [Number, String], default: 50 },
@@ -114,6 +128,16 @@ export default {
 		},
 		keepId() {
 			return fieldId(this.idp, 'retention.keep_last')
+		},
+		snapshotKeeps() {
+			return [
+				{ field: 'keep_daily', prop: 'keepDaily', value: this.keepDaily },
+				{ field: 'keep_weekly', prop: 'keepWeekly', value: this.keepWeekly },
+				{ field: 'keep_monthly', prop: 'keepMonthly', value: this.keepMonthly }
+			].map(k => ({ ...k, id: fieldId(this.idp, 'retention.' + k.field) }))
+		},
+		snapshotHintId() {
+			return fieldId(this.idp, 'retention.keep_daily') + '-hint'
 		},
 		deleteId() {
 			return fieldId(this.idp, 'guards.delete_pct')

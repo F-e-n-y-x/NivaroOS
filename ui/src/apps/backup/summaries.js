@@ -33,11 +33,12 @@ export function jobSummary(job) {
 	const out = []
 	const source = sourcesLabel(job.sources)
 	const dest = epLabel(job.dest)
-	const what = { mirror: 'backup.summary.mirror', copy: 'backup.summary.copy', archive: 'backup.summary.archive' }[job.type]
+	const what = { mirror: 'backup.summary.mirror', copy: 'backup.summary.copy', archive: 'backup.summary.archive', backup: 'backup.summary.backup' }[job.type]
 	if (what) out.push({ key: what, args: { source, dest } })
 	const enc = job.dest && job.dest.encryption
 	if (enc && enc.mode === 'archive') out.push({ key: 'backup.summary.encrypted_archive', args: { volume_bytes: enc.volume_bytes || 3900000000 } })
 	else if (enc && enc.mode === 'folder') out.push({ key: 'backup.summary.encrypted_folder', args: {} })
+	else if (enc && enc.mode === 'restic') out.push({ key: 'backup.summary.encrypted_restic', args: {} })
 
 	const triggers = job.triggers || []
 	const schedules = triggers.filter(t => t.kind === 'schedule' && t.cron)
@@ -65,6 +66,8 @@ export function jobSummary(job) {
 		out.push(r.versions_days ? { key: 'backup.keep.recycle_days', args: { days: r.versions_days } } : { key: 'backup.keep.recycle_forever', args: {} })
 	} else if (job.type === 'archive') {
 		out.push({ key: 'backup.keep.last_archives', args: { keep: r.keep_last || 8 } })
+	} else if (job.type === 'backup') {
+		out.push({ key: 'backup.keep.snapshots', args: { daily: r.keep_daily || 0, weekly: r.keep_weekly || 0, monthly: r.keep_monthly || 0 } })
 	} else if (job.type === 'copy') {
 		out.push({ key: 'backup.keep.copy_never_deletes', args: {} })
 	}

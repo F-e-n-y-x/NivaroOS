@@ -9,11 +9,11 @@
 // field_errors, both mapped onto the same field ids by serverFieldToUi).
 import { validateCron, nextRuns } from '../../../shared/scheduling/cronPatterns'
 import { cleanSubPath, isSameOrInside, validFolderName } from '../../../shared/storage/locations'
-import { isAppOrVmSource, safeTypes } from '../presets'
+import { isAppOrVmSource, multiSourceType, safeTypes } from '../presets'
 import { sourcesLabel } from '../summaries'
 
 export const STEPS = Object.freeze(['start', 'what', 'where', 'when', 'keep', 'review'])
-export const JOB_TYPES = Object.freeze(['mirror', 'copy', 'archive'])
+export const JOB_TYPES = Object.freeze(['mirror', 'copy', 'archive', 'backup'])
 export const MAX_ARCHIVE_SOURCES = 16
 
 // Defaults (services/backup/jobs/model.go).
@@ -23,6 +23,9 @@ export const DEFAULTS = Object.freeze({
 	changePct: 30,
 	versionsDays: 30,
 	keepLast: 8,
+	keepDaily: 7, // versioned (restic forget)
+	keepWeekly: 4,
+	keepMonthly: 12,
 	waitMaxMin: 360,
 	maxDurationSec: 86400,
 	hookTimeoutSec: 300,
@@ -38,7 +41,7 @@ export const BACKUPS_FOLDER = 'NivaroOS Backups'
 // Encrypted backups (spec §18). The password itself never enters the
 // draft (the draft is autosaved to localStorage); the wizard keeps it in
 // a separate secret object that only POST /jobs gets.
-export const ENCRYPT_MODES = Object.freeze(['', 'folder', 'archive'])
+export const ENCRYPT_MODES = Object.freeze(['', 'folder', 'archive', 'restic'])
 export const DEFAULT_VOLUME_BYTES = 3900000000 // under TeraBox's (free plan) and FAT32's 4 GB file limit
 export const MIN_VOLUME_BYTES = 100000000
 export const MAX_VOLUME_BYTES = 4 * 1024 ** 3 - 1024 ** 2
@@ -170,6 +173,10 @@ export function newDraft({ settings = null, preset = null, locations = [], sourc
 		retryBackoffSec: DEFAULTS.retryBackoffSec.slice(),
 		versionsDays: s.default_versions_days !== undefined ? s.default_versions_days : DEFAULTS.versionsDays,
 		keepLast: DEFAULTS.keepLast,
+		keepDaily: DEFAULTS.keepDaily,
+		keepWeekly: DEFAULTS.keepWeekly,
+		keepMonthly: DEFAULTS.keepMonthly,
+		snapKeepLast: 0,
 		deletePct: s.default_delete_pct || DEFAULTS.deletePct,
 		changePct: s.default_change_pct || DEFAULTS.changePct,
 		emptySourcePct: DEFAULTS.emptySourcePct,
@@ -267,7 +274,11 @@ export function draftFromJob(job, { settings = null } = {}) {
 		retryMax: job.retry && Number.isInteger(job.retry.max) ? job.retry.max : DEFAULTS.retryMax,
 		retryBackoffSec: job.retry && Array.isArray(job.retry.backoff_sec) && job.retry.backoff_sec.length ? job.retry.backoff_sec.slice() : DEFAULTS.retryBackoffSec.slice(),
 		versionsDays: r.versions_days !== undefined ? r.versions_days : job.type === 'mirror' ? 0 : d.versionsDays,
-		keepLast: r.keep_last || DEFAULTS.keepLast,
+		keepLast: (job.type !== 'backup' && r.keep_last) || DEFAULTS.keepLast,
+		keepDaily: job.type === 'backup' ? r.keep_daily || 0 : DEFAULTS.keepDaily,
+		keepWeekly: job.type === 'backup' ? r.keep_weekly || 0 : DEFAULTS.keepWeekly,
+		keepMonthly: job.type === 'backup' ? r.keep_monthly || 0 : DEFAULTS.keepMonthly,
+		snapKeepLast: job.type === 'backup' ? r.keep_last || 0 : 0,
 		deletePct: g.delete_pct || d.deletePct,
 		changePct: g.change_pct || d.changePct,
 		emptySourcePct: g.empty_source_pct || DEFAULTS.emptySourcePct,
@@ -400,6 +411,15 @@ export function draftToJob(d, { now = new Date() } = {}) {
 	const retention = {}
 	if (d.type === 'mirror') retention.versions_days = Math.round(Number(d.versionsDays) || 0)
 	if (d.type === 'archive') retention.keep_last = Math.round(Number(d.keepLast) || DEFAULTS.keepLast)
+	if (d.type === 'backup') {
+		for (const [k, f] of [['keep_daily', 'keepDaily'], ['keep_weekly', 'keepWeekly'], ['keep_monthly', 'keepMonthly'], ['keep_last', 'snapKeepLast']]) {
+			const n = Math.round(Number(d[f]) || 0)
+			if (n > 0) retention[k] = n
+		}
+		// Every rule off means keep everything; an empty retention would
+		// get the server's defaults instead.
+		if (!Object.keys(retention).length) retention.keep_last = 1000
+	}
 
 	const name = d.name.trim() || defaultName(d)
 	const dest = d.dest ? clone(d.dest) : { kind: '', ref_id: '', sub_path: '', label: '' }
@@ -466,6 +486,9 @@ export const FIELD_STEP = Object.freeze({
 	'retry.max': 'when',
 	'retention.versions_days': 'keep',
 	'retention.keep_last': 'keep',
+	'retention.keep_daily': 'keep',
+	'retention.keep_weekly': 'keep',
+	'retention.keep_monthly': 'keep',
 	'guards.delete_pct': 'keep',
 	'guards.change_pct': 'keep',
 	'guards.empty_source_pct': 'keep',
@@ -495,7 +518,7 @@ export function validateDraft(d, secret = null) {
 
 	const n = d.sources.length
 	if (!n) e.sources = 'required'
-	else if (d.type !== 'archive' && n > 1) e.sources = 'too_many'
+	else if (!multiSourceType(d.type) && n > 1) e.sources = 'too_many'
 	else if (n > MAX_ARCHIVE_SOURCES) e.sources = 'too_many'
 	else if (d.sources.some(s => cleanSubPath(s.sub_path).error)) e.sources = 'path_not_allowed'
 
@@ -512,6 +535,7 @@ export function validateDraft(d, secret = null) {
 	}
 
 	if (!ENCRYPT_MODES.includes(d.encryptMode)) e['dest.encryption'] = 'invalid'
+	else if ((d.encryptMode === 'restic') !== (d.type === 'backup') && d.encryptMode) e['dest.encryption'] = 'invalid'
 	else if (d.encryptMode === 'archive') {
 		if (d.type !== 'archive') e['dest.encryption'] = 'invalid'
 		const v = Number(d.volumeBytes)
@@ -545,6 +569,13 @@ export function validateDraft(d, secret = null) {
 
 	if (d.type === 'mirror' && !intIn(d.versionsDays, 0, 3650)) e['retention.versions_days'] = 'out_of_range'
 	if (d.type === 'archive' && !intIn(d.keepLast, 1, 1000)) e['retention.keep_last'] = 'out_of_range'
+	if (d.type === 'backup') {
+		if (!intIn(d.keepDaily, 0, 1000)) e['retention.keep_daily'] = 'out_of_range'
+		if (!intIn(d.keepWeekly, 0, 1000)) e['retention.keep_weekly'] = 'out_of_range'
+		if (!intIn(d.keepMonthly, 0, 1000)) e['retention.keep_monthly'] = 'out_of_range'
+		if (d.include.some(s => String(s).trim())) e['filters.include'] = 'invalid'
+		if (d.exclude.some(s => /[{}]/.test(s))) e['filters.exclude'] = 'invalid_filter'
+	}
 	if (!intIn(d.deletePct, 1, 100)) e['guards.delete_pct'] = 'out_of_range'
 	if (!intIn(d.changePct, 1, 100)) e['guards.change_pct'] = 'out_of_range'
 	if (!intIn(d.emptySourcePct, 1, 100)) e['guards.empty_source_pct'] = 'out_of_range'

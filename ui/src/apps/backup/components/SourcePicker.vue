@@ -45,7 +45,7 @@
 				</span>
 			</template>
 		</div>
-		<p v-if="type !== 'archive' && quickGroups.length" class="wz-hint">{{ $t('backup.wizard.what.one_source_hint') }}</p>
+		<p v-if="type !== 'archive' && type !== 'backup' && quickGroups.length" class="wz-hint">{{ $t('backup.wizard.what.one_source_hint') }}</p>
 	</div>
 </template>
 
@@ -74,7 +74,7 @@ export default {
 			return describedBy(this.idp, 'sources', this.errors)
 		},
 		canAddMore() {
-			return this.type === 'archive' && this.sources.length < MAX_ARCHIVE_SOURCES
+			return (this.type === 'archive' || this.type === 'backup') && this.sources.length < MAX_ARCHIVE_SOURCES
 		},
 		quickGroups() {
 			const groups = [

@@ -17,10 +17,11 @@
 			<fieldset class="bk-restore-set">
 				<legend class="bk-restore-h">{{ $t('backup.restore.where') }}</legend>
 				<label class="bk-radio">
-					<input v-model="mode" type="radio" value="original" name="bk-restore-target" data-autofocus />
+					<input v-model="mode" type="radio" value="original" name="bk-restore-target" :disabled="!canRestoreOriginal" data-autofocus />
 					<span>
 						<span class="bk-radio-title">{{ $t('backup.restore.to_original') }}</span>
-						<span v-if="originalText" class="bk-radio-hint">{{ originalText }}</span>
+						<span v-if="!canRestoreOriginal" class="bk-radio-hint">{{ $t('backup.restore.original_many') }}</span>
+						<span v-else-if="originalText" class="bk-radio-hint">{{ originalText }}</span>
 					</span>
 				</label>
 				<label class="bk-radio">
@@ -110,6 +111,11 @@ export default {
 		originalText() {
 			if (!this.job) return ''
 			return this.fmt.list((this.job.sources || []).map(s => this.endpointText(s)))
+		},
+		// A version of several folders (an archive or versioned backup of
+		// more than one) has no single original place.
+		canRestoreOriginal() {
+			return !this.job || (this.job.sources || []).length === 1
 		}
 	},
 	created() {
@@ -120,6 +126,7 @@ export default {
 			try {
 				const [job, versions] = await Promise.all([this.bkApi.getJob(this.jobId), this.bkApi.listVersions(this.jobId)])
 				this.job = job
+				if (!this.canRestoreOriginal) this.mode = 'other'
 				this.version = (versions || []).find(v => v.id === this.versionId) || null
 			} catch (e) {
 				this.error = e

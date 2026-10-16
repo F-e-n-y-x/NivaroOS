@@ -113,7 +113,7 @@
 						<source-picker :sources="draft.sources" :type="draft.type" :locations="locations" :idp="idp" :errors="shownErrors" :fmt="fmt"
 							@pick="pickSource" @add="addSource" @remove="removeSource"></source-picker>
 						<field-error :idp="idp" field="sources" :errors="shownErrors"></field-error>
-						<p v-if="allErrors.sources === 'too_many' && draft.type !== 'archive'" class="wz-note tone-warn">
+						<p v-if="allErrors.sources === 'too_many' && !multiSourceType(draft.type)" class="wz-note tone-warn">
 							<b-icon icon="alert-outline" custom-size="mdi-16px" aria-hidden="true"></b-icon>
 							<span>{{ $t('backup.wizard.what.many_needs_archive') }}
 								<button type="button" class="wz-note-action" @click="setType('archive')">{{ $t('backup.action.switch_archive') }}</button>
@@ -174,7 +174,8 @@
 				<!-- Keep -->
 				<section v-else-if="step === 'keep'" class="bw-step" :aria-labelledby="idp + '-h-keep'">
 					<h2 :id="idp + '-h-keep'" ref="heading" class="bw-title" tabindex="-1">{{ $t('backup.wizard.keep.title') }}</h2>
-					<keep-editor :type="draft.type" :versions-days="draft.versionsDays" :keep-last="draft.keepLast" :delete-pct="draft.deletePct" :change-pct="draft.changePct"
+					<keep-editor :type="draft.type" :versions-days="draft.versionsDays" :keep-last="draft.keepLast"
+						:keep-daily="draft.keepDaily" :keep-weekly="draft.keepWeekly" :keep-monthly="draft.keepMonthly" :delete-pct="draft.deletePct" :change-pct="draft.changePct"
 						:empty-source-pct="draft.emptySourcePct" :preview-first="draft.previewFirst" :verify="draft.verify" :verify-blocked="verifyBlocked"
 						:idp="idp" :errors="shownErrors" @patch="applyPatch"></keep-editor>
 				</section>
@@ -232,7 +233,7 @@ import { backupMixin } from '../backupMixin'
 import { backupWindow } from '../windows'
 import { explainError } from '../messages'
 import { fieldErrorKey } from '../errorCodes'
-import { visiblePresets, presetById, autoTypeForDest, safeTypes, isAppOrVmSource } from '../presets'
+import { visiblePresets, presetById, autoTypeForDest, safeTypes, isAppOrVmSource, multiSourceType } from '../presets'
 import { plugTarget } from '../summaries'
 import {
 	STEPS, FIELD_STEP, newDraft, draftFromJob, draftToJob, validateDraft, errorsForStep, firstStepWithErrors, mapServerFieldErrors,
@@ -270,6 +271,7 @@ const PATCH_FIELD = {
 	maxSizeOn: 'filters.max_size_bytes', maxSizeGb: 'filters.max_size_bytes', dest: 'dest', cron: 'cron', scheduleOn: 'cron',
 	plugOn: 'plug.volume', plugGapHours: 'plug.min_gap_hours', windowStart: 'window.start', windowEnd: 'window.end', windowOn: 'window.end',
 	waitMaxMin: 'wait_max_min', retryMax: 'retry.max', versionsDays: 'retention.versions_days', keepLast: 'retention.keep_last',
+	keepDaily: 'retention.keep_daily', keepWeekly: 'retention.keep_weekly', keepMonthly: 'retention.keep_monthly',
 	deletePct: 'guards.delete_pct', changePct: 'guards.change_pct', emptySourcePct: 'guards.empty_source_pct', name: 'name',
 	maxDurationHours: 'options.max_duration_sec', encryptMode: 'dest.encryption', volumeBytes: 'dest.encryption.volume_bytes'
 }
@@ -472,6 +474,7 @@ export default {
 		if (!this.closing && this.dirty) this.saveDraftNow()
 	},
 	methods: {
+		multiSourceType,
 		fieldDomId(field) {
 			return fieldId(this.idp, field)
 		},
@@ -678,6 +681,9 @@ export default {
 			// Encrypted archives are archive jobs; another type keeps the
 			// files encrypted as a folder.
 			if (!this.isEdit && t !== 'archive' && d.encryptMode === 'archive') patch.encryptMode = 'folder'
+			// A versioned backup is encrypted by restic, never by rclone crypt.
+			if (!this.isEdit && t === 'backup' && d.encryptMode) patch.encryptMode = 'restic'
+			if (!this.isEdit && t !== 'backup' && d.encryptMode === 'restic') patch.encryptMode = 'folder'
 			// Mirror previews its first run unless the user said otherwise.
 			if (!d.previewTouched && !this.isEdit) patch.previewFirst = t === 'mirror'
 			this.applyPatch(patch)
@@ -703,7 +709,7 @@ export default {
 		setSource(index, ep) {
 			const list = this.draft.sources.slice()
 			if (index === null || index === undefined) {
-				if (this.draft.type === 'archive') list.push(ep)
+				if (multiSourceType(this.draft.type)) list.push(ep)
 				else list.splice(0, list.length, ep)
 			} else {
 				list.splice(index, 1, ep)
@@ -733,7 +739,7 @@ export default {
 				this.autoTypeNote = this.$t(byPreset === 'archive' ? 'backup.wizard.what.auto_archive' : 'backup.wizard.what.auto_mirror')
 				return
 			}
-			if (!d.typeTouched && d.dest.kind === 'cloud' && d.sources.some(isAppOrVmSource) && d.type !== 'archive') {
+			if (!d.typeTouched && d.dest.kind === 'cloud' && d.sources.some(isAppOrVmSource) && !multiSourceType(d.type)) {
 				this.applyPatch({ type: 'archive' })
 				this.autoTypeNote = this.$t('backup.wizard.what.auto_archive')
 			}
