@@ -29,4 +29,10 @@ describe('markdown preview sanitizing', () => {
 		expect(html).not.toMatch(/onerror|onbegin|alert\(|javascript:/i)
 		expect(el.querySelector('a[href="https://example.com"]')).not.toBeNull()
 	})
+
+	test('existing tips render as they did with marked 4', () => {
+		const md = "# Tips\n\nDefault login: **admin** / `password`, mail me@example.com\n\n1. Open http://host:8080\n2. Go to *Settings*\n   - nested\n\n> restart after changes\n\n| Port | Use |\n|---|---|\n| 80 | web |\n\n```yaml\nimage: nginx\n```\n\nLine one  \nline two\n\n- [x] done\n\n~~old~~"
+		// Output of marked 4.3 + the same sanitizing (whitespace between tags aside).
+		expect(render(md).innerHTML.replace(/>\s+</g, '><').trim()).toBe('<h1>Tips</h1><p>Default login: <strong>admin</strong> / <code>password</code>, mail <a href="mailto:me@example.com">me@example.com</a></p><ol><li>Open <a href="http://host:8080">http://host:8080</a></li><li>Go to <em>Settings</em><ul><li>nested</li></ul></li></ol><blockquote><p>restart after changes</p></blockquote><table><thead><tr><th>Port</th><th>Use</th></tr></thead><tbody><tr><td>80</td><td>web</td></tr></tbody></table><pre><code class="language-yaml">image: nginx\n</code></pre><p>Line one<br>line two</p><ul><li><input> done</li></ul><p><del>old</del></p>')
+	})
 })

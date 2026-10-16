@@ -51,7 +51,7 @@
     "dompurify": "^3.4.16",
     "lodash": "^4.18.1",
     "lottie-web": "^5.13.0",
-    "marked": "^4.3.0",
+    "marked": "^18.0.14",
     "music-metadata": "11.16.1",
     "qs": "^6.16.0",
     "recasa-appmanagement-openapi": "link:./vendor/api-clients/recasa-appmanagement-openapi",
