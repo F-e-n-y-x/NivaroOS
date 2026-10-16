@@ -50,7 +50,8 @@
 					</span>
 				</button>
 
-				<button ref="uploadTile" type="button" class="wallpaper-tile upload-tile" :class="{ active: checkActiveFrom('Upload') }" :aria-label="$t('Upload')">
+				<input ref="wallpaperInput" type="file" :accept="attributes.accept" style="display: none" @change="onWallpaperPicked" />
+				<button type="button" class="wallpaper-tile upload-tile" :class="{ active: checkActiveFrom('Upload') }" :aria-label="$t('Upload')" @click="$refs.wallpaperInput.click()">
 					<div id="upload-wallpaper" class="upload-tile-inner">
 						<b-icon icon="picture-upload-outline" pack="casa" size="is-large"></b-icon>
 						<span>{{ $t('Upload') }}</span>
@@ -74,7 +75,7 @@
 const wallpaperConfig = "wallpaper"
 const galleryPath = "/DATA/Gallery/Wallpaper"
 const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif']
-import Uploader from 'simple-uploader.js'
+import { createUploader } from '@/apps/files/chunkUploader'
 import { mixin } from '@/mixins/mixin'
 import { getEffectiveTheme, getStoredThemeMode } from '@/utils/theme'
 
@@ -99,7 +100,6 @@ export default {
 		return {
 			isLoading: false,
 			isUpLoading: false,
-			uploader: null,
 			attributes: {
 				accept: 'image/png, image/jpeg, image/svg+xml, image/bmp, image/png, image/gif'
 			},
@@ -128,53 +128,30 @@ export default {
 	},
 	created() {
 		this.loadGallery()
-		this.uploader = new Uploader({
+		// One request per wallpaper (no chunking, no resume check, no retries).
+		this.uploader = createUploader({
 			target: `${this.$protocol}//${this.$baseURL}/v2/casaos/file/upload`,
-			singleFile: true,
 			testChunks: false,
-			uploadMethod: "POST",
-			allowDuplicateUploads: true,
 			chunkSize: 1024 * 1024 * 1024 * 1024,
-			query: (file) => ({ path: galleryPath, name: file.name })
-		});
+			simultaneous: 1,
+			headers: () => ({ Authorization: this.$store.state.access_token || localStorage.getItem('access_token') }),
+			fields: (e) => ({ path: e.targetPath, name: e.name }),
+			onError: () => {
+				this.isUpLoading = false
+				this.$buefy.toast.open({
+					message: this.$t('Upload failed, please try again!'),
+					type: 'is-danger'
+				})
+			},
+			onSuccess: (e) => {
+				this.isUpLoading = false
+				this.loadGallery()
+				this.applyWallpaper(`${galleryPath}/${e.name}`, "Upload")
+			},
+		})
 	},
 	beforeUnmount() {
-		// Drop the uploader's handlers and its hidden input with the component.
-		if (this.uploader) {
-			this.uploader.cancel()
-			this.uploader.off()
-			if (this.uploader.support && this.$refs.uploadTile) {
-				this.$refs.uploadTile.querySelectorAll('input[type=file]').forEach(i => i.remove())
-			}
-			this.uploader = null
-		}
-	},
-	mounted() {
-		// The focusable button itself (Enter/Space open the picker - it was
-		// wired to an inner div), via a ref (getElementById could run before
-		// the tile existed: "Cannot read properties of null").
-		this.$nextTick(() => {
-			if (this.$refs.uploadTile) this.uploader.assignBrowse(this.$refs.uploadTile, false, true, this.attributes)
-		})
-		this.uploader.on('filesSubmitted', () => {
-			this.isUpLoading = true
-			this.$api.sys.getVersion().then(() => {
-				this.uploader.opts.headers.Authorization = this.$store.state.access_token || localStorage.getItem("access_token")
-				this.uploader.upload()
-			})
-		})
-		this.uploader.on('fileError', () => {
-			this.isUpLoading = false
-			this.$buefy.toast.open({
-				message: this.$t('Upload failed, please try again!'),
-				type: 'is-danger'
-			})
-		})
-		this.uploader.on('fileSuccess', (rootFile) => {
-			this.isUpLoading = false
-			this.loadGallery()
-			this.applyWallpaper(`${galleryPath}/${rootFile.name}`, "Upload")
-		})
+		this.uploader.files.slice().forEach((e) => this.uploader.cancel(e))
 	},
 	computed: {
 		isDirty() {
@@ -182,6 +159,14 @@ export default {
 		}
 	},
 	methods: {
+		onWallpaperPicked(event) {
+			const file = event.target.files && event.target.files[0]
+			event.target.value = ''
+			if (!file) return
+			this.isUpLoading = true
+			// Refreshes the session first if the token expired.
+			this.$api.sys.getVersion().then(() => this.uploader.add([file], { targetPath: galleryPath }), () => { this.isUpLoading = false })
+		},
 		applyWallpaper(path, from) {
 			let cleanPath = path
 			if (cleanPath && cleanPath.includes('path=')) {

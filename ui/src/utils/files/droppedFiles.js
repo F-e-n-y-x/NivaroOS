@@ -1,6 +1,6 @@
 // Turn a drop's DataTransfer into a flat list of Files, walking dropped
 // folders and tagging every file with its path relative to the drop
-// (`relativePath`, which simple-uploader.js sends and the server uses to
+// (`relativePath`, which the uploader sends and the server uses to
 // recreate the folder structure).
 //
 // Passing `dataTransfer.files` straight to the uploader - what this app

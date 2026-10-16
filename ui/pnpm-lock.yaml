@@ -144,9 +144,6 @@ importers:
       recasa-appmanagement-openapi:
         specifier: link:./vendor/api-clients/recasa-appmanagement-openapi
         version: link:vendor/api-clients/recasa-appmanagement-openapi
-      simple-uploader.js:
-        specifier: ^0.6.0
-        version: 0.6.0
       v-viewer:
         specifier: ^3.0.23
         version: 3.0.23(viewerjs@1.12.0)(vue@3.5.43(typescript@5.9.3))
@@ -2783,9 +2780,6 @@ packages:
 
   siginfo@2.0.0:
     resolution: {integrity: sha512-ybx0WO1/8bSBLEWXZvEd7gMW3Sn3JFlW3TvX1nREbDLRNQNaeNN8WK0meBwPdAaOI7TtRRRJn/Es1zhrrCHu7g==}
-
-  simple-uploader.js@0.6.0:
-    resolution: {integrity: sha512-EXN+o+LD6PVnfzTq/usP8k8yYrI6wKrAx8e+fPcPLVzzttonkyn1KT+Ycx5JnPBSnp6lpiVhNG4JhDJucdPnhA==}
 
   sisteransi@1.0.5:
     resolution: {integrity: sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==}
@@ -6055,8 +6049,6 @@ snapshots:
       side-channel-weakmap: 1.0.2
 
   siginfo@2.0.0: {}
-
-  simple-uploader.js@0.6.0: {}
 
   sisteransi@1.0.5: {}
 

@@ -56,7 +56,6 @@
     "music-metadata": "11.16.1",
     "qs": "^6.16.0",
     "recasa-appmanagement-openapi": "link:./vendor/api-clients/recasa-appmanagement-openapi",
-    "simple-uploader.js": "^0.6.0",
     "v-viewer": "^3.0.23",
     "viewerjs": "^1.11.7",
     "vue": "^3.5.43",

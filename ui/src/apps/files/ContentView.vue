@@ -681,12 +681,8 @@ export default {
 			this.dragOrigin = null
 			this.dragBox = null
 		},
-		// Drag-drop upload. Per the task-15 brief, files dropped on ContentView
-		// are handed straight to the UploadTray's live uploader instance
-		// (`uploaderInstance.addFiles`) rather than using simple-uploader.js's
-		// own `assignDrop()` DOM-binding helper - ContentView already owns the
-		// dragover/drop DOM listeners here, so there's no need for a second,
-		// independent set of listeners bound by the uploader itself.
+		// Drag-drop upload: dropped files go straight to the UploadTray's
+		// addFiles() (ContentView owns the dragover/drop listeners).
 		onDragOver() {
 			this.isDragOver = true
 		},

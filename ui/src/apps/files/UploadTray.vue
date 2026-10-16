@@ -63,36 +63,13 @@
 </template>
 
 <script>
-import Uploader from 'simple-uploader.js'
 import { formatSize } from '@/utils/formatSize'
-import { uploadIdentifier } from './uploadIdentifier'
-import { cancelUpload } from './uploadCancel'
+import { createUploader } from './chunkUploader'
 import events from '@/events/events'
 
-// Ported from src/components/filebrowser/FilePanel.vue:728-791
-// (getTargetUrl/setUploaderOpts) - see the task-15 report for the specific
-// discrepancies between that legacy code and this component:
-//   - FilePanel.vue itself only ever registers 'fileAdded'/'dragover'/
-//     'uploadStart'/'complete' handlers on the raw uploader instance; the
-//     per-file 'fileError' toast it relies on actually comes from the
-//     generic uploader.vue wrapper's own internal `fileErrorHandle`
-//     (registered in that wrapper's created() hook), not from FilePanel.vue.
-//     Since this component talks to simple-uploader.js directly instead of
-//     going through that wrapper, it registers its own 'fileError' (and
-//     'fileProgress'/'fileSuccess') handlers to drive the per-file
-//     progress/error UI this task's brief asks for.
-//   - The wrapper's filesSubmitted() is what actually calls
-//     `uploader.upload()` to kick the queue off (after an unrelated
-//     `$api.sys.getVersion()` health probe) - simple-uploader.js's Uploader
-//     does NOT auto-start uploads on addFiles()/addFile(). This component
-//     calls `.upload()` directly on 'filesSubmitted', without the version
-//     probe (not needed for a from-scratch wrapper).
-//   - The wrapper's fileError handler calls `this.uploader.pause(file)`,
-//     but `pause()` takes no argument and unconditionally pauses the WHOLE
-//     uploader (all in-flight files), not just the one that errored - this
-//     looks like a legacy bug (one failed file freezes the entire batch).
-//     This component deliberately does not replicate that: an errored file
-//     is just marked and left alone; the rest of the queue keeps going.
+// Files' upload queue: tracks each queued file for the tray. The uploader's
+// own entries (File, chunk state, XHRs) stay off Vue's reactive data; the
+// tray keeps a small reactive copy per file, updated from its callbacks.
 export default {
 	emits: ['uploaded'],
 	name: 'upload-tray',
@@ -104,14 +81,9 @@ export default {
 	},
 	data() {
 		return {
-			uploaderInstance: null,
 			trackedFiles: [],
 			visible: false,
 			status: 'uploading',
-			// simple-uploader.js tracks speed on its own plain (non-reactive)
-			// File objects, refreshed on its own interval - summed into this
-			// reactive property whenever a 'fileProgress' event fires, rather
-			// than read directly from those objects on every render.
 			totalSpeed: 0,
 		}
 	},
@@ -121,138 +93,79 @@ export default {
 		},
 	},
 	created() {
-		// Raw simple-uploader.js File handles, keyed by uid - kept off Vue's
-		// reactive data() on purpose. These are complex objects with their
-		// own internal chunk/state machinery the library mutates constantly;
-		// Vue recursively wrapping every property in getters/setters would
-		// be pure overhead for something only ever used to call
-		// .removeFile() on, never rendered.
 		this.rawFileMap = {}
-		this.uploaderInstance = new Uploader({
+		const tracked = (e) => this.trackedFiles.find((f) => f.uid === e.uniqueIdentifier)
+		this.uploader = createUploader({
 			target: `${this.$protocol}//${this.$baseURL}/v2/casaos/file/upload`,
 			// Resume: before sending a chunk, ask whether the server already
 			// has it (a network drop or retry doesn't restart the whole file).
 			testChunks: true,
-			// 8 MB chunks: far fewer requests than the 1 MB default for big
-			// files, still small enough to retry cheaply.
+			// 8 MB chunks: few requests for big files, cheap to retry.
 			chunkSize: 8 * 1024 * 1024,
-			forceChunkSize: true,
-			simultaneousUploads: 3,
+			simultaneous: 3,
 			// A transient failure (Wi-Fi blip, server busy) retries the chunk
 			// instead of failing the file; 400s (bad path) fail right away.
-			maxChunkRetries: 4,
-			chunkRetryInterval: 1500,
-			uploadMethod: 'POST',
-			successStatuses: [200, 201, 202],
+			retries: 4,
+			retryInterval: 1500,
 			permanentErrors: [400, 404, 409, 415, 501],
-			generateUniqueIdentifier: uploadIdentifier,
-			headers: {
-				Authorization: this.$store.state.access_token || localStorage.getItem('access_token'),
+			headers: () => ({ Authorization: this.$store.state.access_token || localStorage.getItem('access_token') }),
+			fields: (e) => ({ path: e.targetPath }),
+			onProgress: (e) => {
+				const t = tracked(e)
+				if (t) {
+					t.progress = Math.floor(e.progress * 100)
+					t.speed = e.speed
+				}
+				this.totalSpeed = this.uploader.files.reduce((sum, f) => sum + (f.status === 'uploading' ? f.speed : 0), 0)
 			},
-			query: (file) => {
-				return { path: file.targetPath }
+			onSuccess: (e) => {
+				const t = tracked(e)
+				if (t) {
+					t.status = 'success'
+					t.progress = 100
+				}
+				this.$emit('uploaded')
+				this.$EventBus.$emit(events.RELOAD_FILE_LIST)
+			},
+			onError: (e, message) => {
+				let parsed = message
+				try {
+					parsed = JSON.parse(message).message
+				} catch (err) {
+					// not JSON - keep the raw text
+				}
+				const t = tracked(e)
+				if (t) {
+					t.status = 'error'
+					t.message = parsed
+				}
+			},
+			onComplete: () => {
+				// The tray stays up ("Completed", each file's Done/Error) until closed.
+				this.status = 'completed'
+				this.totalSpeed = 0
+				this.$emit('uploaded')
+				this.$EventBus.$emit(events.RELOAD_FILE_LIST)
 			},
 		})
-
-		this.uploaderInstance.on('fileAdded', (file) => {
-			file.targetPath = this.currentPath
-			this.rawFileMap[file.uniqueIdentifier] = file
-			this.trackedFiles.push({
-				uid: file.uniqueIdentifier,
-				name: file.name,
-				size: file.size,
-				progress: 0,
-				status: 'uploading',
-				message: '',
-				speed: 0,
-			})
-			// Show the tray the instant a file is queued, not only once the
-			// network request actually starts (uploadStart) - a dropped file
-			// otherwise sat tracked-but-invisible for however long
-			// simple-uploader.js takes to begin reading/chunking it. The
-			// "Waiting" + indeterminate-bar state (below) already covers this
-			// gap visually once shown.
-			this.visible = true
-			this.status = 'uploading'
-		})
-
-		this.uploaderInstance.on('filesSubmitted', () => {
-			this.uploaderInstance.upload()
-		})
-
-		this.uploaderInstance.on('uploadStart', () => {
-			this.visible = true
-			this.status = 'uploading'
-		})
-
-		this.uploaderInstance.on('fileProgress', (rootFile, file) => {
-			const tracked = this.trackedFiles.find((f) => f.uid === file.uniqueIdentifier)
-			if (tracked) {
-				tracked.progress = Math.floor(file.progress() * 100)
-				tracked.speed = file.averageSpeed
-			}
-			// file.averageSpeed lives on simple-uploader.js's own plain File
-			// objects (not Vue-reactive), refreshed on the library's own
-			// interval - re-summed here, on every progress tick, into a
-			// reactive property instead.
-			this.totalSpeed = this.uploaderInstance.files.reduce((sum, f) => sum + (f.isComplete() ? 0 : f.averageSpeed), 0)
-		})
-
-		this.uploaderInstance.on('fileSuccess', (rootFile, file) => {
-			const tracked = this.trackedFiles.find((f) => f.uid === file.uniqueIdentifier)
-			if (tracked) {
-				tracked.status = 'success'
-				tracked.progress = 100
-			}
-			this.$emit('uploaded')
-			this.$EventBus.$emit(events.RELOAD_FILE_LIST)
-		})
-
-		this.uploaderInstance.on('fileError', (rootFile, file, message) => {
-			const tracked = this.trackedFiles.find((f) => f.uid === file.uniqueIdentifier)
-			let parsedMessage = message
-			try {
-				parsedMessage = JSON.parse(message).message
-			} catch (e) {
-				// message wasn't JSON - fall back to the raw string
-			}
-			if (tracked) {
-				tracked.status = 'error'
-				tracked.message = parsedMessage
-			}
-		})
-
-		this.uploaderInstance.on('complete', () => {
-			this.status = 'completed'
-			this.totalSpeed = 0
-			this.$emit('uploaded')
-			this.$EventBus.$emit(events.RELOAD_FILE_LIST)
-			// No auto-hide here - the tray stays up with its "Completed"
-			// header and each file's "Done" checkmark until the user closes
-			// it themselves via the header's close button.
-		})
 	},
-	beforeUnmount() {
-		this.uploaderInstance.off('fileAdded')
-		this.uploaderInstance.off('filesSubmitted')
-		this.uploaderInstance.off('uploadStart')
-		this.uploaderInstance.off('fileProgress')
-		this.uploaderInstance.off('fileSuccess')
-		this.uploaderInstance.off('fileError')
-		this.uploaderInstance.off('complete')
-	},
-	watch: {
-		'$store.state.access_token'(val) {
-			this.uploaderInstance.opts.headers.Authorization = val
-		},
-	},
+	// No beforeUnmount: closing the Files window lets queued uploads finish,
+	// as before.
 	methods: {
-		// Feed dropped/selected files straight into the uploader, per the
-		// task-15 brief's "feed event.dataTransfer.files directly to
-		// uploaderInstance.addFiles" option (used instead of assignDrop()
-		// since ContentView already owns the dragover/drop DOM listeners).
+		// Dropped (ContentView walks folders first) or picked files.
 		addFiles(files) {
-			this.uploaderInstance.addFiles(files)
+			const list = Array.from(files)
+			if (!list.length) return
+			// Shown the instant a file is queued ("Waiting" + indeterminate bar
+			// until its first bytes go out).
+			this.visible = true
+			this.status = 'uploading'
+			// Uploader callbacks are XHR events (async), so tracking right after add() is in time.
+			const added = this.uploader.add(list, { targetPath: this.currentPath })
+			for (const e of added) {
+				this.rawFileMap[e.uniqueIdentifier] = e
+				this.trackedFiles.push({ uid: e.uniqueIdentifier, name: e.name, size: e.size, progress: 0, status: 'uploading', message: '', speed: 0 })
+			}
 		},
 		browse() {
 			this.$refs.fileInput.click()
@@ -272,18 +185,12 @@ export default {
 			this.rawFileMap = {}
 		},
 		cancelFile(trackedFile) {
-			const rawFile = this.rawFileMap[trackedFile.uid]
-			if (rawFile) {
-				this.uploaderInstance.removeFile(rawFile)
-				if (!rawFile.isComplete()) cancelUpload(this.uploaderInstance.opts.target, this.uploaderInstance.opts.headers, rawFile)
-			}
+			const raw = this.rawFileMap[trackedFile.uid]
+			if (raw) this.uploader.cancel(raw)
 			delete this.rawFileMap[trackedFile.uid]
 			const index = this.trackedFiles.findIndex((f) => f.uid === trackedFile.uid)
 			if (index > -1) this.trackedFiles.splice(index, 1)
-			// removeFile() on the last remaining file doesn't necessarily fire
-			// the uploader's own 'complete' event, which is what normally
-			// hides the tray - without this, cancelling everything would
-			// leave an empty tray floating on screen.
+			// Cancelling everything leaves no empty tray behind.
 			if (!this.trackedFiles.length) this.visible = false
 		},
 		formatSize,

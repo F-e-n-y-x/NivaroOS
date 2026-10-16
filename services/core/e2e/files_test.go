@@ -164,7 +164,7 @@ func makeTree(t *testing.T, root string, files int) map[string]string {
 	return tree(t, root)
 }
 
-// ---- upload client (what simple-uploader.js sends) ----
+// ---- upload client (what the web UI's ui/src/apps/files/chunkUploader.js sends) ----
 
 type uploadOpts struct {
 	chunk      int64
