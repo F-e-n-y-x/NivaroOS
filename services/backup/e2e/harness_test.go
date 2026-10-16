@@ -27,6 +27,7 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/backup/engine"
 	"github.com/F-e-n-y-x/NivaroOS/services/backup/jobs"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/localtoken"
 )
 
 var (
@@ -76,17 +77,24 @@ type instance struct {
 	cmd     *exec.Cmd
 	logf    *os.File
 	env     []string
+	args    []string // extra flags (later ones win)
 }
 
 // newInstance starts a service; env adds environment variables (e.g.
 // RCLONE_BWLIMIT=1M to make a run slow enough to interrupt).
 func newInstance(t *testing.T, env ...string) *instance {
 	t.Helper()
+	return newInstanceArgs(t, nil, env...)
+}
+
+// newInstanceArgs is newInstance with extra service flags.
+func newInstanceArgs(t *testing.T, args []string, env ...string) *instance {
+	t.Helper()
 	dir, err := os.MkdirTemp(baseDir, strings.ReplaceAll(t.Name(), "/", "_")+"-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	in := &instance{t: t, dir: dir, dataDir: filepath.Join(dir, "state"), conf: filepath.Join(dir, "rclone.conf"), env: env}
+	in := &instance{t: t, dir: dir, dataDir: filepath.Join(dir, "state"), conf: filepath.Join(dir, "rclone.conf"), env: env, args: args}
 	for _, d := range []string{in.dataDir, filepath.Join(dir, "run")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
@@ -133,9 +141,10 @@ func (in *instance) start() {
 		in.t.Fatal(err)
 	}
 	in.logf = lf
-	in.cmd = exec.Command(binPath, "-addr", in.addr, "-data-dir", in.dataDir,
+	args := []string{"-addr", in.addr, "-data-dir", in.dataDir,
 		"-runtime-path", filepath.Join(in.dir, "run"), "-core-db", filepath.Join(in.dir, "no-core.db"),
-		"-rclone-config", in.conf)
+		"-rclone-config", in.conf, "-config-job=false"}
+	in.cmd = exec.Command(binPath, append(args, in.args...)...)
 	in.cmd.Stdout, in.cmd.Stderr = lf, lf
 	in.cmd.Dir = in.dir
 	in.cmd.Env = append(os.Environ(), "RCLONE_CONFIG="+in.conf)
@@ -216,7 +225,7 @@ func (in *instance) call(method, path string, body, out interface{}) int {
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := in.do(req)
 	if err != nil {
 		in.t.Fatalf("%s %s: %v", method, path, err)
 	}
@@ -237,6 +246,16 @@ func (in *instance) call(method, path string, body, out interface{}) int {
 		in.t.Logf("%s %s: %d %s", method, path, resp.StatusCode, env.Data)
 	}
 	return resp.StatusCode
+}
+
+// do sends req as same-host automation: with the local token where this
+// host has one (a box with the strict marker no longer trusts bare
+// loopback), which the throwaway instance checks the same way.
+func (in *instance) do(req *http.Request) (*http.Response, error) {
+	if tok := localtoken.Read(); tok != "" {
+		req.Header.Set(localtoken.Header, tok)
+	}
+	return http.DefaultClient.Do(req)
 }
 
 // must is call that fails the test on a non-2xx answer.
