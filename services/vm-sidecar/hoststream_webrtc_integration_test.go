@@ -47,7 +47,19 @@ func startBG(t *testing.T, name string, args ...string) *exec.Cmd {
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("%s: %v", name, err)
 	}
-	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+	// SIGTERM: Xvfb removes its /tmp/.X<n>-lock (SIGKILL leaks it, and
+	// freeDisplay runs out of numbers).
+	t.Cleanup(func() {
+		_ = cmd.Process.Signal(syscall.SIGTERM)
+		done := make(chan struct{})
+		go func() { _ = cmd.Wait(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			_ = cmd.Process.Kill()
+			<-done
+		}
+	})
 	return cmd
 }
 
@@ -281,14 +293,34 @@ func TestIntegrationWebRTCOfferStreamsAndInjects(t *testing.T) {
 // 18093) with two scratch files in ui/ (not committed):
 //
 //	webrtc-harness.html: <div id="app"></div><script type="module" src="/webrtc-harness.js"></script>
-//	webrtc-harness.js:
+//	webrtc-harness.js (?preset=, ?switch=<preset> sends that preset on the
+//	data channel after 8 s; posts states and per-second stats to /__log):
 //	  import { createApp, h } from 'vue'
 //	  import Viewer from '@/shell/desktop/HostDesktopWebRTC.vue'
+//	  const q = new URLSearchParams(location.search)
+//	  const log = (o) => fetch('/__log', { method: 'POST', body: JSON.stringify(o) })
 //	  window.__states = []
 //	  localStorage.setItem('access_token', 'test')
+//	  const pcs = []
+//	  const PC = window.RTCPeerConnection
+//	  window.RTCPeerConnection = function (...a) { const p = new PC(...a); pcs.push(p); return p }
+//	  window.RTCPeerConnection.prototype = PC.prototype
+//	  let chan = null
+//	  const send = RTCDataChannel.prototype.send
+//	  RTCDataChannel.prototype.send = function (d) { chan = this; return send.call(this, d) }
+//	  if (q.get('switch')) setTimeout(() => chan && send.call(chan, JSON.stringify({ t: 'preset', preset: q.get('switch') })), 8000)
+//	  setInterval(async () => {
+//	    const p = pcs.at(-1)
+//	    const o = { ev: 'stats', pcs: pcs.length }
+//	    if (p) (await p.getStats()).forEach((s) => {
+//	      if (s.type === 'inbound-rtp' && s.kind === 'video') Object.assign(o, { dec: s.framesDecoded, w: s.frameWidth })
+//	      if (s.type === 'codec') o.codec = s.sdpFmtpLine
+//	    })
+//	    log(o)
+//	  }, 1000)
 //	  createApp({ render: () => h('div', { style: 'position:fixed;inset:0' }, [h(Viewer, {
-//	    fallback: false, preset: 'low',
-//	    onState: (s) => window.__states.push(s.state + ':' + s.reason),
+//	    fallback: false, preset: q.get('preset') || 'low',
+//	    onState: (s) => { window.__states.push(s.state + ':' + s.reason); log({ ev: 'state', s: s.state, r: s.reason }) },
 //	    onSize: (s) => (window.__size = s), onStats: (s) => (window.__stats = s) })]) }).mount('#app')
 func TestIntegrationWebViewerInChrome(t *testing.T) {
 	ui := os.Getenv("WEBRTC_IT_UI")
@@ -305,6 +337,7 @@ func TestIntegrationWebViewerInChrome(t *testing.T) {
 	target, _ := url.Parse(ui)
 	front := http.NewServeMux()
 	front.Handle("/v1/vm-sidecar/", http.StripPrefix("/v1/vm-sidecar", api))
+	front.HandleFunc("/__log", func(http.ResponseWriter, *http.Request) {})
 	front.Handle("/", httputil.NewSingleHostReverseProxy(target))
 	srv := httptest.NewServer(front)
 	defer srv.Close()
@@ -415,4 +448,111 @@ func TestIntegrationWebViewerInChrome(t *testing.T) {
 	if st := eval("window.__stats"); !strings.Contains(st, `"fps":`) || !strings.Contains(st, `"preset":"low"`) || !strings.Contains(st, `"encoder":"`+enc+`"`) {
 		t.Errorf("stats %s", st)
 	}
+}
+
+// TestIntegrationWebViewerInFirefox: the owner's browser (2026-10-16 bug:
+// constant freezes and reloads). Headless Firefox (WEBRTC_IT_FIREFOX, the
+// binary) with OpenH264 (WEBRTC_IT_OPENH264: a dir with libgmpopenh264.so +
+// gmpopenh264.info from Mozilla's GMP download) plays the real viewer
+// (harness above, WEBRTC_IT_UI) for 20 s with a preset switch: one peer the
+// whole time (no re-offer), constrained baseline negotiated (all Firefox
+// offers), frames decoded before and after the switch.
+func TestIntegrationWebViewerInFirefox(t *testing.T) {
+	ui, ff, gmp := os.Getenv("WEBRTC_IT_UI"), os.Getenv("WEBRTC_IT_FIREFOX"), os.Getenv("WEBRTC_IT_OPENH264")
+	if ui == "" || ff == "" || gmp == "" {
+		t.Skip("WEBRTC_IT_UI, WEBRTC_IT_FIREFOX or WEBRTC_IT_OPENH264 not set")
+	}
+	testDesktop(t)
+	api := http.NewServeMux()
+	RegisterHostStreamRoutes(api)
+	target, _ := url.Parse(ui)
+	var mu sync.Mutex
+	var logs []map[string]any
+	front := http.NewServeMux()
+	front.Handle("/v1/vm-sidecar/", http.StripPrefix("/v1/vm-sidecar", api))
+	front.HandleFunc("/__log", func(_ http.ResponseWriter, r *http.Request) {
+		var m map[string]any
+		if json.NewDecoder(r.Body).Decode(&m) == nil {
+			mu.Lock()
+			logs = append(logs, m)
+			mu.Unlock()
+		}
+	})
+	front.Handle("/", httputil.NewSingleHostReverseProxy(target))
+	srv := httptest.NewServer(front)
+	defer srv.Close()
+
+	prof := t.TempDir()
+	dir := prof + "/gmp-gmpopenh264/2.6.0"
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"libgmpopenh264.so", "gmpopenh264.info"} {
+		b, err := os.ReadFile(gmp + "/" + f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = os.WriteFile(dir+"/"+f, b, 0o755)
+	}
+	_ = os.WriteFile(prof+"/user.js", []byte(`user_pref("media.gmp-gmpopenh264.version", "2.6.0");
+user_pref("media.gmp-gmpopenh264.enabled", true);
+user_pref("media.gmp-gmpopenh264.visible", true);
+user_pref("media.gmp-gmpopenh264.autoupdate", false);
+user_pref("media.gmp-manager.updateEnabled", false);
+user_pref("media.autoplay.default", 0);
+user_pref("media.peerconnection.ice.loopback", true);
+user_pref("media.peerconnection.ice.obfuscate_host_addresses", false);
+`), 0o644)
+	cmd := exec.Command(ff, "--headless", "--no-remote", "--profile", prof, "--window-size", "1280,720",
+		srv.URL+"/webrtc-harness.html?preset=low&switch=balanced")
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "DISPLAY=") && !strings.HasPrefix(e, "WAYLAND_DISPLAY=") && !strings.HasPrefix(e, "XAUTHORITY=") {
+			cmd.Env = append(cmd.Env, e)
+		}
+	}
+	cmd.Env = append(cmd.Env, "MOZ_HEADLESS=1")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); _ = cmd.Wait() })
+	time.Sleep(20 * time.Second)
+
+	mu.Lock()
+	defer mu.Unlock()
+	var states []string
+	var decEnd float64
+	codec := ""
+	for _, m := range logs {
+		switch m["ev"] {
+		case "state":
+			states = append(states, fmt.Sprint(m["s"], ":", m["r"]))
+		case "stats":
+			if m["pcs"] != 1.0 {
+				t.Errorf("re-offered: %v (states %v)", m, states)
+			}
+			decEnd, _ = m["dec"].(float64)
+			if c, _ := m["codec"].(string); c != "" {
+				codec = c
+			}
+		}
+	}
+	if len(states) < 2 || states[1] != "live:" || slicesContain(states, "reconnecting") {
+		t.Errorf("states %v", states)
+	}
+	if !strings.Contains(codec, "profile-level-id=42e01f") {
+		t.Errorf("codec %q: Firefox offers constrained baseline only", codec)
+	}
+	if decEnd < 300 { // 8 s at 20 fps (Low) + 12 s at 30 (Balanced) = ~520
+		t.Errorf("only %v frames decoded", decEnd)
+	}
+}
+
+func slicesContain(ss []string, prefix string) bool {
+	for _, s := range ss {
+		if strings.HasPrefix(s, prefix) {
+			return true
+		}
+	}
+	return false
 }
