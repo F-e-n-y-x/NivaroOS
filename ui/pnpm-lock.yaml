@@ -78,9 +78,6 @@ importers:
       axios:
         specifier: ^1.20.0
         version: 1.20.0
-      browser-info:
-        specifier: ^1.3.0
-        version: 1.3.0
       bulma:
         specifier: 0.9.4
         version: 0.9.4
@@ -1335,10 +1332,6 @@ packages:
   brace-expansion@5.0.12:
     resolution: {integrity: sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==}
     engines: {node: 20 || >=22}
-
-  browser-info@1.3.0:
-    resolution: {integrity: sha512-i7BiU89TSbcg91UYuyMJN8mw0dqzk7mmijGOgziJbkZVX/S+GDz1eDjoiZOj4usN6+I3/zZEfXIySTwPfYrP+A==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
   browserslist@4.28.8:
     resolution: {integrity: sha512-V2NpofLblG64mfOtSgDhOJESZEGogzDMBv/q+W6oc4LXWP/q75eOXoOaaOu1EOadB9U4Bwx/e0yzbvwKH8zalA==}
@@ -4454,8 +4447,6 @@ snapshots:
   brace-expansion@5.0.12:
     dependencies:
       balanced-match: 4.0.4
-
-  browser-info@1.3.0: {}
 
   browserslist@4.28.8:
     dependencies:

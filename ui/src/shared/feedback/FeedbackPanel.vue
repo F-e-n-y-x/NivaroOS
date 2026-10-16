@@ -37,11 +37,17 @@
 </template>
 
 <script>
-import browserInfo from 'browser-info'
-
 const REPO_URL = 'https://github.com/F-e-n-y-x/NivaroOS'
 // GitHub (and browsers) reject very long URLs; keep the prefilled body well under.
 const MAX_BODY_CHARS = 6000
+
+// Browser name/version for the report: UA Client Hints (Chromium), else the UA string.
+function browserInfo() {
+	const brand = navigator.userAgentData?.brands?.find(b => !/not.?a.?brand|chromium/i.test(b.brand))
+	if (brand) return { name: brand.brand, fullVersion: brand.version }
+	const m = navigator.userAgent.match(/(Firefox|Chrome|Version)\/([\d.]+)/)
+	return m ? { name: m[1] === 'Version' ? 'Safari' : m[1], fullVersion: m[2] } : null
+}
 
 export default {
 	emits: ['close'],
@@ -67,8 +73,7 @@ export default {
 			this.$api.sys.getDebugInfo().then(res => {
 				const raw = res && res.data && typeof res.data.data === 'string' ? res.data.data : ''
 				if (!raw) throw new Error('empty')
-				let browser = { name: '', fullVersion: '' }
-				try { browser = browserInfo() || browser } catch (e) { /* unknown browser */ }
+				const browser = browserInfo() || { name: '', fullVersion: '' }
 				this.systemInfo = raw
 					.replace('$Browser$', browser.name || navigator.userAgent)
 					.replace('$Version$', browser.fullVersion || '')
