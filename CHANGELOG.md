@@ -8,6 +8,8 @@ updated from `master` by re-running the installer.
 
 ## [Unreleased]
 
+## [server 1.5.2] - 2026-10-16
+
 ### Added
 
 - Backup & Sync: **Versioned (deduplicated)** backups. Every run is a
@@ -19,6 +21,26 @@ updated from `master` by re-running the installer.
   monthly, and restores any snapshot (files, folders or all of it, back in
   place or elsewhere) from the web and the app. The installer now ships
   restic 0.19.1.
+- NivaroOS settings backup: a daily encrypted "NivaroOS settings" job
+  (users, sessions, paired phones, cloud accounts, backup jobs, shares, app
+  setups, HTTPS/Host Desktop/updater settings - never /DATA). Restore it on
+  a fresh install from the Welcome screen or `install.sh --restore <file>`;
+  the job's "Show settings key" gives the key you need.
+
+### Changed
+
+- Host Desktop: the video uses the H.264 profile your browser negotiates
+  (Firefox gets constrained baseline), fewer false "frozen" restarts, and
+  reconnects retry x11vnc's flaky socket accept.
+- The web UI no longer uses Buefy or CodeMirror 5 (own components,
+  CodeMirror 6): the main script is 174 KB instead of 470 KB.
+- Go dependencies updated in every service (gin 1.12, gorm 1.31, zap 1.28,
+  ...), including fixes for two published advisories.
+
+### Fixed
+
+- The saved wallpaper shows on the login screen and the first desktop again.
+- The upload tray no longer stays on "Uploading" after a failed file.
 
 ## [server 1.5.1] - 2026-10-16
 
