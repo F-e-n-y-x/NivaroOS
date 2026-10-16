@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -214,6 +215,68 @@ func TestResticInterruptedRunResumes(t *testing.T) {
 	in.must("POST", "/jobs/"+jd.ID+"/restore", jobs.RestoreRequest{VersionID: vers[0].ID, Target: jobs.RestoreTarget{Mode: "other", Endpoint: &other}}, &started)
 	if r := in.waitRun(started.RunID, 3*time.Minute); r.Status != jobs.StatusSuccess {
 		t.Fatalf("restore: %s %s", r.Status, r.ErrorCode)
+	}
+	sameTree(t, want, tree(t, in.path("restored")))
+}
+
+// An encrypted versioned backup: the job's password is the repository's
+// (restic opens it with that password and nothing else), and a second job
+// pointed at the same folder adopts it with the recovery key - a
+// reinstall.
+func TestResticEncryptedRepoAndRecoveryKey(t *testing.T) {
+	in := resticInstance(t)
+	writeFiles(t, in.path("src"), 20, 16<<10)
+	want := tree(t, in.path("src"))
+	j := job("versioned secret", jobs.TypeBackup, in.endpoint(in.path("src")), cloud("cloud/secret"))
+	j.Dest.Encryption = &engine.Encryption{Mode: engine.EncryptRestic}
+	j.EncryptionSecret = &jobs.EncryptionSecret{Password: "correct horse battery", MakeRecoveryKey: true}
+	jd := in.createJob(j)
+	if jd.RecoveryKey == "" {
+		t.Fatal("no recovery key in the create answer")
+	}
+	if r := in.waitRun(in.runJob(jd.ID), 2*time.Minute); r.Status != jobs.StatusSuccess {
+		t.Fatalf("encrypted run: %s %s\n%s", r.Status, r.ErrorCode, tail(in.log(), 3000))
+	}
+	bin := os.Getenv("NIVAROOS_RESTIC")
+	if bin == "" {
+		bin = engine.ResticPath
+	}
+	repo := in.path("cloud", "secret")
+	open := func(withPassword bool) error {
+		args := []string{"-r", repo, "--no-cache", "snapshots"}
+		cmd := exec.Command(bin, args...)
+		cmd.Env = []string{"RESTIC_PASSWORD=correct horse battery"}
+		if !withPassword {
+			cmd = exec.Command(bin, append(args, "--insecure-no-password")...)
+			cmd.Env = []string{}
+		}
+		return cmd.Run()
+	}
+	if err := open(true); err != nil {
+		t.Fatalf("restic can't open the repository with the job's password: %v", err)
+	}
+	if err := open(false); err == nil {
+		t.Fatal("the repository opens without a password")
+	}
+
+	// The same folder, a new job, the recovery key instead of the password.
+	in.must("DELETE", "/jobs/"+jd.ID, nil, nil)
+	j2 := job("versioned secret again", jobs.TypeBackup, in.endpoint(in.path("src")), cloud("cloud/secret"))
+	j2.Dest.Encryption = &engine.Encryption{Mode: engine.EncryptRestic}
+	j2.EncryptionSecret = &jobs.EncryptionSecret{RecoveryKey: jd.RecoveryKey}
+	jd2 := in.createJob(j2)
+	// The folder's marker names the deleted job: take it over, as the
+	// app's "Reconnect to this folder" does.
+	in.must("POST", "/jobs/"+jd2.ID+"/reconnect-dest", jobs.ReconnectRequest{AdoptOtherJob: true}, nil)
+	vers := versionsOf(in, jd2.ID)
+	if len(vers) != 1 {
+		t.Fatalf("the adopted repository shows %d snapshots", len(vers))
+	}
+	var started jobs.RunStarted
+	other := in.endpoint(in.path("restored"))
+	in.must("POST", "/jobs/"+jd2.ID+"/restore", jobs.RestoreRequest{VersionID: vers[0].ID, Target: jobs.RestoreTarget{Mode: "other", Endpoint: &other}}, &started)
+	if r := in.waitRun(started.RunID, 2*time.Minute); r.Status != jobs.StatusSuccess {
+		t.Fatalf("restore with the recovery key: %s %s", r.Status, r.ErrorCode)
 	}
 	sameTree(t, want, tree(t, in.path("restored")))
 }
