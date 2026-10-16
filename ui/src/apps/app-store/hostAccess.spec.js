@@ -41,3 +41,25 @@ describe('host access confirmation (audit H1)', () => {
 		expect(vm.asked).toEqual([])
 	})
 })
+
+describe('store update that wants more access (audit H1)', () => {
+	test('asks with update wording, repeats with the OK; no means not updated', async () => {
+		const vm = vmSaying(true)
+		const sent = []
+		const call = async (o) => {
+			sent.push(o)
+			if (!o.params) throw need
+			return { status: 200 }
+		}
+		const [res] = await withHostAccessConfirm(vm, call, { update: true })
+		expect(res.status).toBe(200)
+		expect(sent[1]).toEqual({ params: { allow_host_access: true } })
+		expect(vm.asked[0].confirmText).toBe('Update anyway')
+		expect(vm.asked[0].message).toContain('current version keeps running')
+		expect(vm.asked[0].message).toContain('web: host network')
+		const refuse = async () => {
+			throw need
+		}
+		await expect(withHostAccessConfirm(vmSaying(false), refuse, { update: true })).rejects.toThrow('Not updated')
+	})
+})

@@ -1069,7 +1069,7 @@ export default {
 			this.isCheckThenUpdate = true;
 			this.updateFailed = false;
 			this.imageWasUpdated = false;
-			this.$openAPI.appManagement.compose.updateComposeApp(name).then(resp => {
+			withHostAccessConfirm(this, (o) => this.$openAPI.appManagement.compose.updateComposeApp(name, undefined, o), { update: true }).then(([resp]) => {
 				// 200:
 				if (resp.status === 200) {
 					this.$buefy.toast.open({
