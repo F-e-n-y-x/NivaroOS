@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -428,9 +429,11 @@ func TestSupervisorRestartsHungAndDemotes(t *testing.T) {
 	}
 }
 
-// rtpFeed: a fake encoder that sends an RTP packet every 20 ms.
+// rtpFeed: a fake encoder that sends an RTP packet every 20 ms. seq is
+// atomic: a restarted run's feed overlaps the previous run's.
 func rtpFeed() func(p encParams, stop <-chan struct{}) {
-	var seq uint16 = 500
+	var seq atomic.Uint32
+	seq.Store(500)
 	return func(p encParams, stop <-chan struct{}) {
 		c, err := net.Dial("udp", net.JoinHostPort("127.0.0.1", strconv.Itoa(p.Port)))
 		if err != nil {
@@ -443,8 +446,8 @@ func rtpFeed() func(p encParams, stop <-chan struct{}) {
 				return
 			case <-time.After(20 * time.Millisecond):
 			}
-			seq++
-			pkt := []byte{0x80, 96, byte(seq >> 8), byte(seq), 0, 0, 0, 0, 0, 0, 0, 1}
+			n := uint16(seq.Add(1))
+			pkt := []byte{0x80, 96, byte(n >> 8), byte(n), 0, 0, 0, 0, 0, 0, 0, 1}
 			if _, err := c.Write(pkt); err != nil {
 				return
 			}

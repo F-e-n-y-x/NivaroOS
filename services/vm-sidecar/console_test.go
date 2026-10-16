@@ -87,11 +87,21 @@ func TestVNCAddress_UnstartedVMHasUnresolvedPort(t *testing.T) {
 func TestProxyConsoleHeartbeatOnIdle(t *testing.T) {
 	old := consoleHeartbeat
 	consoleHeartbeat = 50 * time.Millisecond
-	defer func() { consoleHeartbeat = old }()
+	// Restore only after proxyConsole is gone: it reads consoleHeartbeat
+	// from a hijacked handler that srv.Close doesn't wait for.
+	served := make(chan struct{})
+	defer func() {
+		select {
+		case <-served:
+		case <-time.After(5 * time.Second): // the dial failed: no handler ran
+		}
+		consoleHeartbeat = old
+	}()
 
 	vnc, far := net.Pipe()
 	defer far.Close()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer close(served)
 		ws, err := consoleUpgrader.Upgrade(w, r, nil)
 		if err != nil {
 			return
