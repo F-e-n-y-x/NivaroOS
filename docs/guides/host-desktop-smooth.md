@@ -8,7 +8,7 @@ In **Host Desktop → Display & Bandwidth Quality** (in the app: **More → Stre
 
 | Mode | What it does |
 |---|---|
-| **Auto** (default) | Tries WebRTC first. It switches to Compatible for that session, and shows a **Compatible mode** chip with the reason, when: the page was opened through the internet (the Cloudflare tunnel or a public domain), the server has no encoder, or no picture arrives within 4 seconds (for example, UDP is blocked) |
+| **Auto** (default) | Tries WebRTC first. It switches to Compatible for that session, and shows a **Compatible mode** chip with the reason, when: the page was opened through the internet (the Cloudflare tunnel or a public domain), the server has no encoder, or no picture arrives (no connection within 8 seconds, for example because UDP is blocked, or no picture within 4 seconds of connecting) |
 | **WebRTC only** | WebRTC, never VNC. It keeps retrying instead of falling back |
 | **Compatible (VNC)** | VNC, the way Host Desktop always worked |
 

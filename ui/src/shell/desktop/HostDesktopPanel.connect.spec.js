@@ -170,7 +170,7 @@ describe('Host Desktop WebRTC lane', () => {
 		expect(menu.querySelector('.quality-menu-encoder').textContent).toContain('CPU · x264')
 		expect(menu.querySelector('#hd-noxdamage')).toBeNull()
 
-		await vi.advanceTimersByTimeAsync(5000)
+		await vi.advanceTimersByTimeAsync(9000)
 		await flush()
 		expect(sockets.length).toBe(1)
 		expect(el.querySelector('.hd-webrtc')).toBeNull()

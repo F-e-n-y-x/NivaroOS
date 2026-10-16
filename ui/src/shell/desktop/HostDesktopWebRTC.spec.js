@@ -225,9 +225,10 @@ describe('HostDesktopWebRTC', () => {
 		expect(pcs.at(-1).dc.sent.filter((m) => m.t === 'preset')).toEqual([])
 	})
 
-	test('Auto: no first frame within 4 s falls back with a reason and closes the peer', async () => {
+	test('Auto: connected but no first frame within 4 s falls back with a reason and closes the peer', async () => {
 		await mount({ fallback: true })
-		await vi.advanceTimersByTimeAsync(4000)
+		pcs[0].connectionState = 'connected' // seen by the 1 s tick
+		await vi.advanceTimersByTimeAsync(5000)
 		await flush()
 		expect(lastState().state).toBe('connecting')
 		await vi.advanceTimersByTimeAsync(1000)
@@ -264,9 +265,20 @@ describe('HostDesktopWebRTC', () => {
 		expect(lastState()).toEqual({ state: 'reconnecting', reason: REASONS.encoder })
 	})
 
+	test('a slow connection setup gets 8 s before Auto gives up', async () => {
+		await mount({ fallback: true })
+		await vi.advanceTimersByTimeAsync(7000)
+		await flush()
+		expect(lastState().state).toBe('connecting')
+		await vi.advanceTimersByTimeAsync(2000)
+		await flush()
+		expect(lastState()).toEqual({ state: 'fallback', reason: REASONS.noVideo })
+	})
+
 	test('Smooth: no first frame re-offers with backoff instead of falling back', async () => {
 		await mount({ fallback: false })
-		await vi.advanceTimersByTimeAsync(5000)
+		pcs[0].connectionState = 'connected'
+		await vi.advanceTimersByTimeAsync(6000)
 		await flush()
 		expect(lastState()).toEqual({ state: 'reconnecting', reason: REASONS.noVideo })
 		await vi.advanceTimersByTimeAsync(1000)
@@ -294,13 +306,36 @@ describe('HostDesktopWebRTC', () => {
 		expect(pcs[0].closed).toBe(true)
 	})
 
-	test('live, heartbeats fine but the picture freezes for 3 s: re-offers (even in Auto, no fallback)', async () => {
+	// Owner bug (2026-10-16): a preset switch, resize or PLI restarts the
+	// server's encoder (NVENC: a second or two without frames) and the
+	// viewer took that pause for a freeze and re-offered.
+	test("the server's encoder restart (enc) is not a freeze", async () => {
+		await mount({ fallback: true })
+		pcs[0].frames(1)
+		await vi.advanceTimersByTimeAsync(1000)
+		await flush()
+		// Last frame at 1 s; without the enc at 3 s this re-offers at 6 s.
+		for (let i = 0; i < 6; i++) {
+			pcs[0].msg({ t: 'hb' })
+			if (i === 2) pcs[0].msg({ t: 'enc', encoder: 'nvh264enc', preset: 'high', fps: 60, max_kbps: 25000, w: 3398, h: 1220 })
+			await vi.advanceTimersByTimeAsync(1000)
+			await flush()
+		}
+		expect(states().find((s) => s.state === 'reconnecting')).toBeUndefined()
+		expect(pcs).toHaveLength(1)
+		pcs[0].msg({ t: 'hb' })
+		await vi.advanceTimersByTimeAsync(1000)
+		await flush()
+		expect(states().find((s) => s.state === 'reconnecting')).toEqual({ state: 'reconnecting', reason: REASONS.frozen })
+	})
+
+	test('live, heartbeats fine but the picture freezes for 4 s: re-offers (even in Auto, no fallback)', async () => {
 		await mount({ fallback: true })
 		pcs[0].frames(1)
 		await vi.advanceTimersByTimeAsync(1000)
 		await flush()
 		expect(lastState().state).toBe('live')
-		for (let i = 0; i < 4; i++) {
+		for (let i = 0; i < 5; i++) {
 			pcs[0].msg({ t: 'hb' })
 			await vi.advanceTimersByTimeAsync(1000)
 			await flush()

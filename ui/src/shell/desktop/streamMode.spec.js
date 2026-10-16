@@ -118,11 +118,18 @@ describe('chooseLane', () => {
 })
 
 describe('watchdog', () => {
-	const base = { now: 0, offerAt: 0, firstFrameAt: 0, lastHbAt: 0, lastFrameAt: 0, pcState: 'connecting', fallback: true }
-	test('no first frame within 4 s: Auto falls back, Smooth re-offers', () => {
-		expect(watchdog({ ...base, now: 4000 }).action).toBe('wait')
-		expect(watchdog({ ...base, now: 4001 })).toEqual({ action: 'fallback', reason: REASONS.noVideo })
-		expect(watchdog({ ...base, now: 4001, fallback: false })).toEqual({ action: 'reoffer', reason: REASONS.noVideo })
+	const base = { now: 0, offerAt: 0, connectedAt: 0, firstFrameAt: 0, lastHbAt: 0, lastFrameAt: 0, pcState: 'connecting', fallback: true }
+	test('connected but no first frame within 4 s of it: Auto falls back, Smooth re-offers', () => {
+		const c = { ...base, connectedAt: 3000, pcState: 'connected' }
+		expect(watchdog({ ...c, now: 7000 }).action).toBe('wait')
+		expect(watchdog({ ...c, now: 7001 })).toEqual({ action: 'fallback', reason: REASONS.noVideo })
+		expect(watchdog({ ...c, now: 7001, fallback: false })).toEqual({ action: 'reoffer', reason: REASONS.noVideo })
+	})
+	// Owner bug (Firefox on Windows, 2026-10-16): the 4 s ran from the offer,
+	// so ICE gathering + DTLS + NVENC start + the decoder's start ate it.
+	test('a slow connection setup is not "no video": 8 s to connect', () => {
+		expect(watchdog({ ...base, now: 8000 }).action).toBe('wait')
+		expect(watchdog({ ...base, now: 8001 })).toEqual({ action: 'fallback', reason: REASONS.noVideo })
 	})
 	test('ICE failure before the first frame falls back at once', () => {
 		expect(watchdog({ ...base, now: 500, pcState: 'failed' })).toEqual({ action: 'fallback', reason: REASONS.ice })
@@ -131,11 +138,12 @@ describe('watchdog', () => {
 	test('live: healthy waits, even in Auto', () => {
 		expect(watchdog(live).action).toBe('wait')
 	})
-	test('live: dead peer, 6 s without hb, or 3 s without a frame re-offers (never falls back)', () => {
+	test('live: dead peer, 6 s without hb, or 4 s without a frame re-offers (never falls back)', () => {
 		expect(watchdog({ ...live, pcState: 'closed' })).toEqual({ action: 'reoffer', reason: REASONS.peer })
 		expect(watchdog({ ...live, now: 16001, lastFrameAt: 16001 })).toEqual({ action: 'reoffer', reason: REASONS.heartbeat })
-		expect(watchdog({ ...live, now: 13001, lastHbAt: 13000 })).toEqual({ action: 'reoffer', reason: REASONS.frozen })
-		expect(watchdog({ ...live, now: 13000, lastHbAt: 13000 }).action).toBe('wait')
+		expect(watchdog({ ...live, now: 14001, lastHbAt: 14000 })).toEqual({ action: 'reoffer', reason: REASONS.frozen })
+		// The server's own hung-encoder restart (3 s) gets to heal first.
+		expect(watchdog({ ...live, now: 13500, lastHbAt: 13000 }).action).toBe('wait')
 	})
 })
 

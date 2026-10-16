@@ -3,7 +3,7 @@
 	viewer full-bleed, nothing else. The app injects its JWT as
 	window.__nivaroosToken before load (never in the URL) and listens on
 	window.NivaroosBridge for {"state":"connecting|live|fallback|error","reason"}.
-	On "fallback" (no WebRTC here, or no first frame within 4 s) the app
+	On "fallback" (no WebRTC here, or no connection within 8 s or no first frame 4 s after it) the app
 	switches to its own VNC client.
 	The app draws its own console over the page and drives everything
 	through window.nivaroosEmbed (key, pointer, clip, setStream, view); the

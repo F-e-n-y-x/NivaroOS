@@ -51,6 +51,7 @@ let gen = 0
 let stopped = false
 let encoder = ''
 let offerAt = 0
+let connectedAt = 0
 let firstFrameAt = 0
 let lastHbAt = 0
 let lastFrameAt = 0
@@ -181,8 +182,12 @@ function onMessage(e) {
 		remote = { w: m.w, h: m.h }
 		emit('size', remote)
 	} else if (m.t === 'clip' && typeof m.text === 'string') emit('clipboard', m.text)
-	else if (m.t === 'enc') running = m
-	else if (m.t === 'err') {
+	else if (m.t === 'enc') {
+		// The server (re)started the encoder (preset, resize, PLI, hang):
+		// the picture pauses for a moment - that's not a freeze.
+		running = m
+		lastFrameAt = Date.now()
+	} else if (m.t === 'err') {
 		console.warn('Host Desktop stream error:', m.code)
 		// Every encoder on the server failed: no picture is coming.
 		if (m.code === 'encoder_failed') props.fallback ? giveUp(REASONS.encoder) : retry(REASONS.encoder)
@@ -193,7 +198,7 @@ async function offer() {
 	const my = ++gen
 	closePeer()
 	offerAt = lastHbAt = Date.now()
-	firstFrameAt = 0
+	connectedAt = firstFrameAt = 0
 	framesDecoded = 0
 	lastRtp = running = null
 	// Host candidates only (contract): no STUN/TURN servers.
@@ -231,9 +236,11 @@ async function offer() {
 function tick() {
 	if (stopped || retryTimer || paused) return
 	const now = Date.now()
+	if (!connectedAt && pc && pc.connectionState === 'connected') connectedAt = now
 	const v = watchdog({
 		now,
 		offerAt,
+		connectedAt,
 		firstFrameAt,
 		lastHbAt,
 		// Hidden, the browser throttles frame callbacks and decoding: only

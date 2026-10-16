@@ -36,9 +36,15 @@ export function presetSummary(spec) {
 	return `${w} · ${spec.fps} fps · ${Math.round(spec.max_kbps / 100) / 10} Mbit/s`
 }
 
+// The first frame: ICE + DTLS within CONNECT_MS of the offer, then a
+// picture within FIRST_FRAME_MS of "connected" (the server only starts the
+// encoder then; NVENC + the browser's decoder take a second or two).
+export const CONNECT_MS = 8000
 export const FIRST_FRAME_MS = 4000
 export const HEARTBEAT_STALE_MS = 6000
-export const FRAME_STALE_MS = 3000
+// Longer than the server's own hung-encoder restart (3 s without RTP), so
+// that heals first instead of racing a re-offer.
+export const FRAME_STALE_MS = 4000
 // A hidden tab keeps its stream this long (switching tabs must not
 // reconnect), then stops it to free the server's encoder.
 export const HIDDEN_GRACE_MS = 10 * 60 * 1000
@@ -156,20 +162,22 @@ export function lossPct(prev, cur) {
 	return lost + got > 0 ? Math.max(0, (100 * lost) / (lost + got)) : null
 }
 
-// One watchdog tick. s: { now, offerAt, firstFrameAt (0 = none yet),
-// lastHbAt, lastFrameAt, pcState, fallback (Auto: give up on WebRTC
-// instead of retrying it) }.
+// One watchdog tick. s: { now, offerAt, connectedAt (0 = not yet),
+// firstFrameAt (0 = none yet), lastHbAt, lastFrameAt (the server's "enc" -
+// an encoder restart - counts as one), pcState, fallback (Auto: give up on
+// WebRTC instead of retrying it) }.
 // → { action: 'wait' | 'reoffer' | 'fallback', reason }
 export function watchdog(s) {
 	const dead = s.pcState === 'failed' || s.pcState === 'closed'
 	if (!s.firstFrameAt) {
-		if (!dead && s.now - s.offerAt <= FIRST_FRAME_MS) return { action: 'wait', reason: '' }
+		const late = s.connectedAt ? s.now - s.connectedAt > FIRST_FRAME_MS : s.now - s.offerAt > CONNECT_MS
+		if (!dead && !late) return { action: 'wait', reason: '' }
 		return { action: s.fallback ? 'fallback' : 'reoffer', reason: dead ? REASONS.ice : REASONS.noVideo }
 	}
 	if (dead) return { action: 'reoffer', reason: REASONS.peer }
 	if (s.now - s.lastHbAt > HEARTBEAT_STALE_MS) return { action: 'reoffer', reason: REASONS.heartbeat }
 	// Heartbeats still arrive, and capture is fixed-rate (ximagesrc
-	// use-damage=false), so 3 s without a decoded frame is a hung encoder
+	// use-damage=false), so 4 s without a decoded frame is a hung encoder
 	// or decoder, not a still screen.
 	if (s.now - s.lastFrameAt > FRAME_STALE_MS) return { action: 'reoffer', reason: REASONS.frozen }
 	return { action: 'wait', reason: '' }
