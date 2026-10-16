@@ -1,13 +1,13 @@
 module github.com/F-e-n-y-x/NivaroOS/services/download-sidecar
 
-go 1.26.0
+go 1.27.0
 
 require (
 	github.com/F-e-n-y-x/NivaroOS/services/common v0.0.0
 	github.com/anacrolix/torrent v1.61.0
 	github.com/gorilla/websocket v1.5.3
 	golang.org/x/net v0.60.0
-	golang.org/x/time v0.15.0
+	golang.org/x/time v0.16.0
 )
 
 require (
@@ -80,7 +80,7 @@ require (
 	github.com/rs/dnscache v0.0.0-20211102005908-e0241e321417 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/tidwall/btree v1.8.1 // indirect
-	github.com/tidwall/gjson v1.17.0 // indirect
+	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
