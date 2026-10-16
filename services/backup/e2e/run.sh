@@ -9,6 +9,9 @@
 #   services/backup/e2e/run.sh                 # everything (~6 min)
 #   services/backup/e2e/run.sh -short          # skip the 3-min catch-up wait
 #   services/backup/e2e/run.sh -v -run Crash   # one test, verbose
+#
+# Versioned (restic) backups use NIVAROOS_RESTIC, else the installed
+# /usr/lib/nivaroos/bin/restic; without either those tests skip.
 set -e
 cd "$(dirname "$0")/.."
 export PATH="$PATH:/usr/local/go/bin" GOWORK=off GOTOOLCHAIN=local

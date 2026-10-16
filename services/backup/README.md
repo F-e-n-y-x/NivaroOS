@@ -7,7 +7,7 @@ The optional Backup & Sync module (spec: `docs/specs/2026-09-24-backup-sync-app.
 | Package | What |
 |---|---|
 | `jobs/` | job store, validation, triggers, queue and locks, hooks, runs, logs, notifications, migration, REST API |
-| `engine/` | resolve, prechecks, guards, copy / mirror / archive / restore through rclone (library, v1.75.1, same `rclone.conf` as local-storage), mountwatch |
+| `engine/` | resolve, prechecks, guards, copy / mirror / archive / restore through rclone (library, v1.75.1, same `rclone.conf` as local-storage), versioned backups through restic (`restic.go`), mountwatch |
 | `engine/enginetest/` | `FakeEngine`, an in-memory `engine.API` for jobs tests |
 | `cmd/gen-uicontract/` | writes `ui/src/apps/backup/errorCodes.js` and `events.js` from the Go enums |
 
@@ -25,6 +25,16 @@ The optional Backup & Sync module (spec: `docs/specs/2026-09-24-backup-sync-app.
   (`engine/rcloneconf.go`); rclone still backs off on 403s.
 - **Encryption**: `dest.encryption` folder (rclone crypt) or archive (7z
   AES-256, split volumes); spec "Encrypted backups" in §18.
+- **Versioned backups** (type `backup`): restic v0.19.1, shipped by the
+  installer at `/usr/lib/nivaroos/bin/restic`. The repository is the
+  destination folder; restic reaches it only through the engine's REST
+  server on a private unix socket, over the same rclone filesystem as every
+  other job (any remote, mount guard, Drive: 16 uploads, 64 MiB packs).
+  Encryption mode `restic` = the repo password (recovery key as for
+  folders); none = `--insecure-no-password`. Retention keep_last/daily/
+  weekly/monthly runs `forget` after each success (`prune` only when
+  snapshots went); maintenance queues a `check --read-data-subset=5%`
+  monthly. Stale locks of a crashed run are removed (`unlock`) first.
 - **Overview speed**: `GET /jobs` and `GET /jobs/:id` answer destination
   online state and versions from a stale-while-revalidate cache
   (`jobs/swr.go`; 30 s / 60 s, keyed by revision and last run). Only the
@@ -67,6 +77,8 @@ on throwaway instances - create/edit/delete, run, cancel, crash
 (SIGKILL) and stop mid-run, retry backoff, excludes, many small and
 large files, restore to the original place and elsewhere (sha256
 checked), purge on delete, live progress and speed, schedule catch-up,
+versioned backups into a folder, a remote and WebDAV (dedup, restore,
+forget, check, crash mid-upload),
 and page load times with thousands of runs and a hanging cloud. It
 never touches the live service, `/DATA` or a cloud account.
 

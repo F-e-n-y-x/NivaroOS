@@ -206,8 +206,24 @@ func (r *resticRepo) object(w http.ResponseWriter, req *http.Request, remote str
 		}
 		serve.Object(w, req, o)
 	case http.MethodPost:
+		// A file restic sees must be complete: an upload cut off (a crash)
+		// on a backend that writes in place (local, SMB, WebDAV) would
+		// leave a short pack that fails every check. Written beside, then
+		// moved, where the backend can rename; object stores only show an
+		// object once its upload finished. The .partial name never matches
+		// a restic name, so lists skip it.
+		// ponytail: partials of a crash stay until the folder is purged;
+		// sweep them on list if they ever add up.
+		name := remote
+		if operations.CanServerSideMove(r.f) {
+			name = remote + ".partial"
+		}
 		body := &countingReader{r: req.Body, n: &r.uploaded}
-		if _, err := operations.RcatSize(ctx, r.f, remote, io.NopCloser(body), req.ContentLength, time.Now(), nil); err != nil {
+		_, err := operations.RcatSize(ctx, r.f, name, io.NopCloser(body), req.ContentLength, time.Now(), nil)
+		if err == nil && name != remote {
+			err = operations.MoveFile(ctx, r.f, r.f, remote, name)
+		}
+		if err != nil {
 			r.fail(w, err)
 			return
 		}
@@ -372,11 +388,14 @@ func (r *resticRepo) exec(stdout io.Writer, mu *sync.Mutex, jsonErr func([]byte)
 	}
 	var out resticOut
 	ew := &lineWriter{mu: mu, fn: func(b []byte) {
-		if len(b) > 0 && b[0] == '{' && jsonErr != nil {
-			jsonErr(b)
+		out.add(string(b))
+		if len(b) > 0 && b[0] == '{' {
+			// --json errors: the caller logs file errors itself.
+			if jsonErr != nil {
+				jsonErr(b)
+			}
 			return
 		}
-		out.add(string(b))
 		r.log(LogWarn, "restic: "+string(b))
 	}}
 	cmd := r.command(r.ctx, args...)
@@ -424,11 +443,15 @@ func (r *resticRepo) exitErr(err error, tail string) error {
 	return Errorf(CodeIOError, "restic failed (%v): %s", err, tail)
 }
 
+// unlockStale removes the locks of restic runs that no longer exist (a
+// crash): restic passes over them for its shared lock, but not for the
+// exclusive one forget, prune and check take.
+func (r *resticRepo) unlockStale() error { return r.run(nil, "unlock") }
+
 // runJSON runs restic with --json and decodes its one JSON document.
 func (r *resticRepo) runJSON(v interface{}, args ...string) error {
 	var buf bytes.Buffer
-	err := r.run(func(b []byte) { buf.Write(b); buf.WriteByte('\n') }, append(args, "--json")...)
-	if err != nil {
+	if err := r.exec(&buf, nil, nil, append(args, "--json")...); err != nil {
 		return err
 	}
 	if err := json.NewDecoder(&buf).Decode(v); err != nil {
@@ -586,6 +609,11 @@ func (e *Engine) runBackup(ctx context.Context, j *job, dry bool) (Result, error
 		}
 	}
 
+	if !dry {
+		if err := repo.unlockStale(); err != nil {
+			return res, err
+		}
+	}
 	j.phase(stepTransfer, "backup.phase.transfer")
 	exFile := filepath.Join(repo.dir, "excludes")
 	if err := os.WriteFile(exFile, []byte(strings.Join(excludes, "\n")+"\n"), 0o600); err != nil {
@@ -728,6 +756,9 @@ func (e *Engine) runForget(ctx context.Context, j *job) (Result, error) {
 		return res, err
 	}
 	defer repo.close()
+	if err := repo.unlockStale(); err != nil {
+		return res, err
+	}
 	var groups []struct {
 		Remove []struct {
 			ID   string    `json:"id"`
@@ -776,6 +807,9 @@ func (e *Engine) runResticCheck(ctx context.Context, j *job) (Result, error) {
 		return res, err
 	}
 	res.Counts.Skipped = int64(len(snaps))
+	if err := repo.unlockStale(); err != nil {
+		return res, err
+	}
 	var sum resticMsg
 	err = repo.run(func(b []byte) {
 		var m resticMsg
