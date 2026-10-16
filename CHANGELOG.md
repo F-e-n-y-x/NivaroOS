@@ -8,6 +8,33 @@ updated from `master` by re-running the installer.
 
 ## [Unreleased]
 
+## [server 1.5.3] - 2026-10-16
+
+### Added
+
+- Restoring a NivaroOS settings backup now recreates your apps: each is
+  reinstalled and started from its saved setup, one at a time, with a
+  per-app result (ok, failed and why, or "data not found - restore it from
+  your backups") on the Welcome screen, the CLI and `install.sh --restore`.
+
+### Security
+
+- Installing, editing or updating an app now asks first for everything
+  that gives it control of the server: Docker/containerd/podman sockets,
+  added capabilities, host PID/IPC/user namespaces, devices, disabled
+  AppArmor/seccomp, and mounts of /, /etc, /root, /proc, /sys or NivaroOS'
+  own data. The dialog lists the reasons.
+- Store updates that want more access than the installed app has are held:
+  the current version keeps running and you get "<app> update wants: ...";
+  approve it from the web or the app. Updates with the same access go
+  through as before.
+
+### Fixed
+
+- Versioned backups: the restic cache is kept under 2 GB (or a quarter of
+  the free space), and leftover .partial files from a crash are removed.
+- Download buttons (crash report, logs, recovery key) share one helper.
+
 ## [server 1.5.2] - 2026-10-16
 
 ### Added
