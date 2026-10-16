@@ -9,22 +9,24 @@ import UI from './index'
 import { iconPacks } from './icons'
 
 // Attribute and class order don't matter; Vue's comment placeholders don't.
-// Buefy's checkbox put an empty id="" on its input; ours doesn't.
+// Empty class/id/style attributes count as absent (Buefy's checkbox put
+// id="" on its input).
 function normalize(root) {
 	// Live state isn't in the markup: record it.
 	for (const n of root.querySelectorAll('input, select, textarea')) n.setAttribute('data-live', `${n.checked}|${n.value}|${n.type}`)
 	for (const n of [...root.querySelectorAll('*')]) {
 		const attrs = [...n.attributes].map((a) => [a.name, a.name === 'class' ? a.value.split(/\s+/).filter(Boolean).sort().join(' ') : a.value])
 		for (const [k] of attrs) n.removeAttribute(k)
-		for (const [k, v] of attrs.sort()) if (!((k === 'class' || k === 'id') && !v)) n.setAttribute(k, v)
+		for (const [k, v] of attrs.sort()) if (!(['class', 'id', 'style'].includes(k) && !v)) n.setAttribute(k, v)
 	}
-	return root.innerHTML.replace(/<!--[^]*?-->/g, '').replace(/\s+/g, ' ').replace(/> </g, '><').trim()
+	// Tab ids hang off component uids, which differ between the two runs.
+	return root.innerHTML.replace(/"\d+-(content|label)"/g, '"N-$1"').replace(/<!--[^]*?-->/g, '').replace(/\s+/g, ' ').replace(/> </g, '><').trim()
 }
 
 async function mount(tpl, buefyNames, act) {
 	const el = document.createElement('div')
 	document.body.appendChild(el)
-	const app = createApp({ template: tpl, data: () => ({ v: 'abc', n: 3, t: 'is-danger', m: 'Bad name', on: true, off: false, list: ['a'], sel: null, s2: 'b', busy: true, shown: true, pct: 73.456, pickd: null, items: [{ n: 'A' }, { n: 'B' }] }) })
+	const app = createApp({ template: tpl, data: () => ({ v: 'abc', n: 3, t: 'is-danger', m: 'Bad name', on: true, off: false, list: ['a'], sel: null, s2: 'b', busy: true, shown: true, pct: 73.456, pickd: null, items: [{ n: 'A' }, { n: 'B' }], tab: 0, got: '', file: null }) })
 	app.use(UI)
 	if (buefyNames) {
 		app.config.globalProperties.$buefy.config.setOptions({ customIconPacks: iconPacks })
@@ -36,10 +38,15 @@ async function mount(tpl, buefyNames, act) {
 	app.mount(el)
 	await nextTick()
 	if (act) await act(el)
-	await nextTick()
-	await nextTick()
-	// The whole body: append-to-body menus live outside el.
-	const html = normalize(document.body)
+	// The whole body (append-to-body menus live outside el), once it stops
+	// changing: transitions end on timers, slower on a loaded machine.
+	let html = normalize(document.body)
+	for (let i = 0; i < 50; i++) {
+		await new Promise((r) => setTimeout(r, 30))
+		const next = normalize(document.body)
+		if (next === html && !/-(enter|leave)-(from|active|to)/.test(next)) break
+		html = next
+	}
 	app.unmount()
 	el.remove()
 	return html
@@ -177,4 +184,31 @@ same(['BDropdown', 'BDropdownItem', 'BIcon'], [
 	[`<b-dropdown aria-role="list"><template #trigger><span>t</span></template>${ddItems}</b-dropdown>`, esc],
 	`<b-dropdown position="is-bottom-left" append-to-body aria-role="menu" class="browser-menu"><template #trigger><button>m</button></template>${ddItems}</b-dropdown>`,
 	[`<b-dropdown position="is-bottom-left" append-to-body :close-on-click="false" aria-role="menu" class="w"><template #trigger><button>m</button></template><div class="t">Show</div><b-dropdown-item aria-role="menuitemcheckbox" aria-checked="true" class="wi">A</b-dropdown-item></b-dropdown>`, async function pickStay(el) { await openDd(el); document.querySelector('.wi').click(); await tick() }],
+])
+
+const tab2 = async function tab2(el) { el.querySelectorAll('.tabs a')[1].click() }
+const keyTab = async function keyTab(el) { const a = el.querySelectorAll('.tabs a'); a[0].dispatchEvent(new Event('focus')); a[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) }
+const tabsTpl = '<b-tabs :animated="false" @update:modelValue="got = $event"><b-tab-item label="Terminal" value="terminal">T</b-tab-item><b-tab-item label="Logs" value="logs">L</b-tab-item></b-tabs><i>{{ got }}</i>'
+const tabsNum = '<b-tabs v-model="tab" :animated="false"><b-tab-item label="Docker Compose">C</b-tab-item><b-tab-item label="Docker CLI">D</b-tab-item></b-tabs><i>{{ tab }}</i>'
+same(['BTabs', 'BTabItem'], [
+	tabsTpl,
+	[tabsTpl, tab2],
+	tabsNum,
+	[tabsNum, tab2],
+	[tabsNum, keyTab],
+])
+
+const drop = (name) => async function dropFile(el) {
+	const e = new Event('drop', { bubbles: true, cancelable: true })
+	e.dataTransfer = { files: [new File(['x'], name, { type: '' })] }
+	el.querySelector('.upload-draggable').dispatchEvent(e)
+}
+const upTpl = '<b-upload v-model="file" accept=".yaml,.yml" drag-drop expanded @invalid="got = \'bad\'"><section class="section">Drop</section></b-upload><i>{{ file && file.name }}{{ got }}</i>'
+same(['BUpload', 'BIcon'], [
+	'<b-upload v-model="file" accept=".iso,application/x-iso9660-image" :disabled="false"><a class="create-btn"><b-icon icon="upload-outline" /><span>Upload ISO</span></a></b-upload>',
+	'<b-upload v-model="file" :disabled="true"><a>x</a></b-upload>',
+	upTpl,
+	[upTpl, drop('compose.yml')],
+	[upTpl, drop('evil.exe')],
+	[upTpl, async function hoverZone(el) { el.querySelector('.upload-draggable').dispatchEvent(new Event('dragenter')) }],
 ])

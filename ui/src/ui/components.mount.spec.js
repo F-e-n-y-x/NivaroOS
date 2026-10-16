@@ -63,6 +63,10 @@ test('a11yLabels still names our switch, checkbox and select', async () => {
 
 test('b-dropdown: opens on click, picks into v-model and closes; append-to-body sits on body', async () => {
 	const tick = () => new Promise((r) => setTimeout(r, 40))
+	// The leave transition ends on a timer: wait for it, however loaded the machine is.
+	const until = async (f) => {
+		for (let i = 0; i < 100 && !f(); i++) await tick()
+	}
 	const el = document.body.appendChild(document.createElement('div'))
 	const app = createApp({
 		data: () => ({ pick: null }),
@@ -73,12 +77,13 @@ test('b-dropdown: opens on click, picks into v-model and closes; append-to-body 
 	const menu = () => document.querySelector('body > div > .dropdown > .dropdown-menu')
 	expect(menu().style.display).toBe('none')
 	el.querySelector('.dropdown-trigger').click()
-	await tick()
+	await until(() => menu().style.display === '')
 	expect(menu().style.display).toBe('')
 	expect(el.querySelector('.dropdown').classList.contains('is-active')).toBe(true)
 	menu().querySelectorAll('.dropdown-item')[1].click()
 	await tick()
 	expect(vm.pick).toBe('b')
+	await until(() => menu().style.display === 'none')
 	expect(menu().style.display).toBe('none')
 	expect(menu().querySelectorAll('.dropdown-item.is-active').length).toBe(1)
 	app.unmount()

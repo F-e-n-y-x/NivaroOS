@@ -3,7 +3,7 @@
 // from Buefy until our own component takes it over, so no template changes.
 import {
 	BAutocomplete,
-	BNumberinput, BTabItem, BTabs, BUpload,
+	BNumberinput,
 	ConfigProgrammatic,
 } from '@ntohq/buefy-next'
 import notices from './notices'
@@ -21,11 +21,14 @@ import Progress from './Progress.vue'
 import Notification from './Notification.vue'
 import Dropdown from './Dropdown.vue'
 import DropdownItem from './DropdownItem.vue'
+import Tabs from './Tabs.vue'
+import TabItem from './TabItem.vue'
+import Upload from './Upload.vue'
 
 const components = {
 	// Still Buefy's.
 	BAutocomplete,
-	BNumberinput, BTabItem, BTabs, BUpload,
+	BNumberinput,
 	// Ours.
 	BIcon: Icon,
 	BButton: Button,
@@ -41,6 +44,9 @@ const components = {
 	BNotification: Notification,
 	BDropdown: Dropdown,
 	BDropdownItem: DropdownItem,
+	BTabs: Tabs,
+	BTabItem: TabItem,
+	BUpload: Upload,
 }
 
 export default {
