@@ -1,0 +1,27 @@
+// Buefy's styles for the components ui/src/ui renders (same DOM and classes),
+// vendored from @ntohq/buefy-next 0.2.0 (src/scss) when the package went.
+// MIT License, Copyright (c) 2017-2024 the Buefy contributors
+// (https://github.com/buefy/buefy/graphs/contributors). Sheets for components
+// we never used (carousel, datepicker, table, ...) were left out.
+
+@import "utils/_all";
+
+@import "components/_autocomplete";
+@import "components/_checkbox";
+@import "components/_dialog";
+@import "components/_dropdown";
+@import "components/_form";
+@import "components/_icon";
+@import "components/_image";
+@import "components/_loading";
+@import "components/_message";
+@import "components/_modal";
+@import "components/_notices";
+@import "components/_notification";
+@import "components/_numberinput";
+@import "components/_progress";
+@import "components/_select";
+@import "components/_switch";
+@import "components/_tabs";
+@import "components/_tooltip";
+@import "components/_upload";

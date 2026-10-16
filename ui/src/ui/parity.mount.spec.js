@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 // Each of our b-* components renders the DOM Buefy's did, for the ways this
-// app uses them. (Goes when Buefy does; the DOM is then pinned in
-// components.mount.spec.js.)
+// app uses them, before and after an interaction. The snapshots were taken
+// while both ran side by side and matched Buefy's DOM exactly
+// (docs/specs/2026-10-16-buefy-migration.md): Bulma, Buefy's vendored SCSS
+// (assets/scss/buefy) and our own SCSS rely on that DOM.
 import { describe, expect, test } from 'vitest'
 import { createApp, nextTick } from 'vue'
-import * as Buefy from '@ntohq/buefy-next'
 import UI from './index'
-import { iconPacks } from './icons'
 
 // Attribute and class order don't matter; Vue's comment placeholders don't.
 // Empty class/id/style attributes count as absent (Buefy's checkbox put
@@ -23,18 +23,11 @@ function normalize(root) {
 	return root.innerHTML.replace(/"\d+-(content|label)"/g, '"N-$1"').replace(/<!--[^]*?-->/g, '').replace(/\s+/g, ' ').replace(/> </g, '><').trim()
 }
 
-async function mount(tpl, buefyNames, act) {
+async function mount(tpl, act) {
 	const el = document.createElement('div')
 	document.body.appendChild(el)
 	const app = createApp({ template: tpl, data: () => ({ v: 'abc', n: 3, t: 'is-danger', m: 'Bad name', on: true, off: false, list: ['a'], sel: null, s2: 'b', busy: true, shown: true, pct: 73.456, pickd: null, items: [{ n: 'A' }, { n: 'B' }], tab: 0, got: '', file: null, gib: 20, q: '', folders: [{ name: 'Media' }, { name: 'Tools' }], picked: '' }) })
 	app.use(UI)
-	if (buefyNames) {
-		app.config.globalProperties.$buefy.config.setOptions({ customIconPacks: iconPacks })
-		for (const n of buefyNames) {
-			delete app._context.components[n]
-			app.component(n, Buefy[n])
-		}
-	}
 	app.mount(el)
 	await nextTick()
 	if (act) await act(el)
@@ -53,12 +46,13 @@ async function mount(tpl, buefyNames, act) {
 }
 
 // A case is a template, or [template, act(el)] to compare after an interaction.
+// `names` (the components a group covers) only titles it.
 const same = (names, cases) =>
 	describe(names.join('+'), () => {
 		for (const c of cases) {
 			const [tpl, act] = Array.isArray(c) ? c : [c]
 			test(tpl + (act ? ` (${act.name})` : ''), async () => {
-				expect(await mount(tpl, null, act)).toBe(await mount(tpl, names, act))
+				expect(await mount(tpl, act)).toMatchSnapshot()
 			})
 		}
 	})

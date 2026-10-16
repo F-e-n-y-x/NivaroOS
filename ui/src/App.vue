@@ -25,7 +25,6 @@ import CasaWallpaper from '@/shell/wallpaper/CasaWallpaper.vue'
 import { defineAsyncComponent } from 'vue'
 import {mixin}       from './mixins/mixin';
 import { initTheme, applyTheme, THEME_MODES } from './utils/theme';
-import { iconPacks } from '@/ui/icons';
 
 
 export default {
@@ -71,7 +70,6 @@ _____             _____ _____
 -- Originally made by IceWhale, forked as NivaroOS by Ayush --
 `, `font-family: monospace`);
 
-		this.$buefy.config.setOptions({ customIconPacks: iconPacks })
 	},
 	mounted() {
 		this.setInitLang();

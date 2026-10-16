@@ -1,6 +1,5 @@
 // Icon packs for <b-icon> (ui/Icon.vue): the class prefix and the size
-// class each `size` maps to. The casa
-// internalIcons are for the Buefy components still in use (their `both` icons).
+// class each `size` maps to.
 export const iconPacks = {
 	'casa': {
 		sizes: {
@@ -10,23 +9,7 @@ export const iconPacks = {
 			'is-medium': 'is-size-3',
 			'is-large': 'is-size-1'
 		},
-		iconPrefix: 'casa-',
-		internalIcons: {
-			'check': 'checkmark',
-			'information': 'information',
-			'check-circle': 'checkmark-circle-outline',
-			'alert': 'alert',
-			'alert-circle': 'alert',
-			'arrow-up': 'arrow-up',
-			'chevron-right': 'arrow-right',
-			'chevron-left': 'arrow-back',
-			'chevron-down': 'arrow-down',
-			'eye': 'eye',
-			'eye-off': 'eye-off',
-			'menu-down': 'arrow-dropdown',
-			'menu-up': 'arrow-dropup',
-			'close-circle': 'close-circle-outline'
-		}
+		iconPrefix: 'casa-'
 	},
 	// Without this, size="is-XX" on a pack="mdi" b-icon resolves to
 	// nothing (only 'casa' had a sizes map), so the <i> glyph falls back
