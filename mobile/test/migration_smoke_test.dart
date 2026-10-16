@@ -1,6 +1,6 @@
 // Smoke tests for the Flutter 3.47 / dependency upgrade: each one exercises
 // an API whose shape changed in the upgrade (ThemeData sub-theme data
-// classes, flutter_secure_storage 10, flutter_markdown_plus), through the
+// classes, flutter_secure_storage 10/11, flutter_markdown_plus), through the
 // app's own code rather than the packages in isolation.
 import 'dart:io';
 

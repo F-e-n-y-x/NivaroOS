@@ -21,11 +21,10 @@ class StorageService {
   StorageService._();
   static final StorageService instance = StorageService._();
 
-  // Builds up to 1.2.1 used flutter_secure_storage 9.x with
-  // EncryptedSharedPreferences. 10.x re-encrypts that data into its own
-  // cipher storage on first access (migrateOnAlgorithmChange, on by
-  // default), so the default options keep every saved token. 11.x drops
-  // that migration - see the pin in pubspec.yaml.
+  // Default options on purpose: changing them (sharedPreferencesName,
+  // storageNamespace, prefix, ciphers) moves the store and signs everyone
+  // out. 9.x data was migrated by the 10.x builds; 11.x reads 10.x data
+  // as-is - see pubspec.yaml.
   static const _secureStorage = FlutterSecureStorage(
     aOptions: AndroidOptions(),
   );

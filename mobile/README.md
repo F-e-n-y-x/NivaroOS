@@ -136,6 +136,19 @@ renders every screen and shared widget against a fake server built from
 `test/screenshots/fixtures/`. The UI rules and how to use the shared
 widgets are in `docs/specs/2026-09-25-mobile-design-system.md`.
 
+### Secure storage upgrade (manual, on a phone)
+
+Tokens, server profiles and the app lock live in `flutter_secure_storage`,
+whose native code a plugin major bump replaces; unit tests only see a mock.
+Before releasing an APK that bumps it:
+
+1. Install the previous release APK, sign in, set an app lock (PIN).
+2. Install the new APK over it (`adb install -r`, same signing key).
+3. Open it: still signed in to the same server without a login prompt,
+   the app lock asks for the same PIN, saved servers are listed.
+
+Signed out after step 3 = data lost: don't ship.
+
 ## Known limitations
 
 - Self-signed/untrusted HTTPS certificates aren't handled specially -
