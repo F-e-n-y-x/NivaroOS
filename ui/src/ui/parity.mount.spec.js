@@ -24,7 +24,7 @@ function normalize(root) {
 async function mount(tpl, buefyNames, act) {
 	const el = document.createElement('div')
 	document.body.appendChild(el)
-	const app = createApp({ template: tpl, data: () => ({ v: 'abc', n: 3, t: 'is-danger', m: 'Bad name', on: true, off: false, list: ['a'], sel: null, s2: 'b', busy: true, shown: true, pct: 73.456 }) })
+	const app = createApp({ template: tpl, data: () => ({ v: 'abc', n: 3, t: 'is-danger', m: 'Bad name', on: true, off: false, list: ['a'], sel: null, s2: 'b', busy: true, shown: true, pct: 73.456, pickd: null, items: [{ n: 'A' }, { n: 'B' }] }) })
 	app.use(UI)
 	if (buefyNames) {
 		app.config.globalProperties.$buefy.config.setOptions({ customIconPacks: iconPacks })
@@ -38,7 +38,8 @@ async function mount(tpl, buefyNames, act) {
 	if (act) await act(el)
 	await nextTick()
 	await nextTick()
-	const html = normalize(el)
+	// The whole body: append-to-body menus live outside el.
+	const html = normalize(document.body)
 	app.unmount()
 	el.remove()
 	return html
@@ -158,4 +159,22 @@ same(['BProgress'], [
 same(['BNotification'], [
 	'<b-notification v-model="shown" aria-close-label="Close notification" role="alert" type="is-danger">Wrong password</b-notification>',
 	['<b-notification v-model="shown" aria-close-label="Close" type="is-danger">x</b-notification>', async function closeIt(el) { el.querySelector('.delete').click() }],
+])
+
+const tick = () => new Promise((r) => setTimeout(r, 40))
+const openDd = async function openDd(el) { el.querySelector('.dropdown-trigger').click(); await tick() }
+const pickB = async function pickB(el) { await openDd(el); document.querySelectorAll('.dropdown-item')[1].click(); await tick() }
+const outside = async function outside(el) { await openDd(el); document.body.click(); await tick() }
+const esc = async function esc(el) { await openDd(el); document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape' })); await tick() }
+const ddItems = '<b-dropdown-item aria-role="listitem" @click="x = 1">One</b-dropdown-item><b-dropdown-item aria-role="menuitem" :disabled="true">Two</b-dropdown-item>'
+const ddPick = '<template #trigger="{ active }"><button>{{ active ? "up" : "down" }}</button></template><b-dropdown-item v-for="i in items" :key="i.n" :value="i" :class="{ \'is-active\': pickd === i }">{{ i.n }}</b-dropdown-item>'
+same(['BDropdown', 'BDropdownItem', 'BIcon'], [
+	`<b-dropdown aria-role="list"><template #trigger><b-icon icon="dots-horizontal" /></template>${ddItems}</b-dropdown>`,
+	[`<b-dropdown aria-role="list" position="is-bottom-left"><template #trigger><span>t</span></template>${ddItems}</b-dropdown>`, openDd],
+	[`<b-dropdown v-model="pickd" aria-role="list" class="source-dropdown">${ddPick}</b-dropdown>`, openDd],
+	[`<b-dropdown v-model="pickd" aria-role="list">${ddPick}</b-dropdown>`, pickB],
+	[`<b-dropdown aria-role="list"><template #trigger><span>t</span></template>${ddItems}</b-dropdown>`, outside],
+	[`<b-dropdown aria-role="list"><template #trigger><span>t</span></template>${ddItems}</b-dropdown>`, esc],
+	`<b-dropdown position="is-bottom-left" append-to-body aria-role="menu" class="browser-menu"><template #trigger><button>m</button></template>${ddItems}</b-dropdown>`,
+	[`<b-dropdown position="is-bottom-left" append-to-body :close-on-click="false" aria-role="menu" class="w"><template #trigger><button>m</button></template><div class="t">Show</div><b-dropdown-item aria-role="menuitemcheckbox" aria-checked="true" class="wi">A</b-dropdown-item></b-dropdown>`, async function pickStay(el) { await openDd(el); document.querySelector('.wi').click(); await tick() }],
 ])

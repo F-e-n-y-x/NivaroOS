@@ -60,3 +60,28 @@ test('a11yLabels still names our switch, checkbox and select', async () => {
 	await nextTick()
 	expect([...el.querySelectorAll('input, select')].map((i) => i.getAttribute('aria-label'))).toEqual(['Auto update', 'Pick', 'Mode'])
 })
+
+test('b-dropdown: opens on click, picks into v-model and closes; append-to-body sits on body', async () => {
+	const tick = () => new Promise((r) => setTimeout(r, 40))
+	const el = document.body.appendChild(document.createElement('div'))
+	const app = createApp({
+		data: () => ({ pick: null }),
+		template: '<b-dropdown v-model="pick" append-to-body><template #trigger><button>t</button></template><b-dropdown-item value="a">A</b-dropdown-item><b-dropdown-item value="b">B</b-dropdown-item></b-dropdown>',
+	})
+	app.use(UI)
+	const vm = app.mount(el)
+	const menu = () => document.querySelector('body > div > .dropdown > .dropdown-menu')
+	expect(menu().style.display).toBe('none')
+	el.querySelector('.dropdown-trigger').click()
+	await tick()
+	expect(menu().style.display).toBe('')
+	expect(el.querySelector('.dropdown').classList.contains('is-active')).toBe(true)
+	menu().querySelectorAll('.dropdown-item')[1].click()
+	await tick()
+	expect(vm.pick).toBe('b')
+	expect(menu().style.display).toBe('none')
+	expect(menu().querySelectorAll('.dropdown-item.is-active').length).toBe(1)
+	app.unmount()
+	expect(menu()).toBeNull()
+	el.remove()
+})

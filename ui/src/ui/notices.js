@@ -9,6 +9,7 @@
 // escaped themselves stays escaped.
 import DOMPurify from 'dompurify'
 import { purifyConfig } from '@/utils/purifyConfig'
+import { trapTab } from './focus'
 
 const clean = (html) => DOMPurify.sanitize(String(html ?? ''), purifyConfig.default)
 const el = (tag, className, parent) => {
@@ -132,18 +133,7 @@ function openDialog(o) {
 	}
 	const onKey = (e) => {
 		if (e.key === 'Escape' || e.key === 'Esc') return cancel('escape')
-		if (e.key !== 'Tab') return
-		// Keep Tab inside the dialog.
-		const f = foot.querySelectorAll('button')
-		const first = f[0]
-		const last = f[f.length - 1]
-		if (e.shiftKey && document.activeElement === first) {
-			e.preventDefault()
-			last.focus()
-		} else if (!e.shiftKey && document.activeElement === last) {
-			e.preventDefault()
-			first.focus()
-		}
+		trapTab(e, foot)
 	}
 	document.addEventListener('keydown', onKey)
 	bg.addEventListener('click', () => cancel('outside'))

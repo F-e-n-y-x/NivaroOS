@@ -2,7 +2,7 @@
 // (docs/specs/2026-10-16-buefy-migration.md): each global b-* name comes
 // from Buefy until our own component takes it over, so no template changes.
 import {
-	BAutocomplete, BDropdown, BDropdownItem,
+	BAutocomplete,
 	BNumberinput, BTabItem, BTabs, BUpload,
 	ConfigProgrammatic,
 } from '@ntohq/buefy-next'
@@ -19,10 +19,12 @@ import Image from './Image.vue'
 import Loading from './Loading.vue'
 import Progress from './Progress.vue'
 import Notification from './Notification.vue'
+import Dropdown from './Dropdown.vue'
+import DropdownItem from './DropdownItem.vue'
 
 const components = {
 	// Still Buefy's.
-	BAutocomplete, BDropdown, BDropdownItem,
+	BAutocomplete,
 	BNumberinput, BTabItem, BTabs, BUpload,
 	// Ours.
 	BIcon: Icon,
@@ -37,6 +39,8 @@ const components = {
 	BLoading: Loading,
 	BProgress: Progress,
 	BNotification: Notification,
+	BDropdown: Dropdown,
+	BDropdownItem: DropdownItem,
 }
 
 export default {
