@@ -24,7 +24,7 @@ function normalize(root) {
 async function mount(tpl, buefyNames, act) {
 	const el = document.createElement('div')
 	document.body.appendChild(el)
-	const app = createApp({ template: tpl, data: () => ({ v: 'abc', n: 3, t: 'is-danger', m: 'Bad name', on: true, off: false, list: ['a'], sel: null, s2: 'b' }) })
+	const app = createApp({ template: tpl, data: () => ({ v: 'abc', n: 3, t: 'is-danger', m: 'Bad name', on: true, off: false, list: ['a'], sel: null, s2: 'b', busy: true, shown: true, pct: 73.456 }) })
 	app.use(UI)
 	if (buefyNames) {
 		app.config.globalProperties.$buefy.config.setOptions({ customIconPacks: iconPacks })
@@ -132,4 +132,30 @@ same(['BTooltip'], [
 	['<b-tooltip label="Create"><button>x</button></b-tooltip>', leave],
 	'<b-tooltip :always="true" :animated="true" label="Running" :triggers="[\'hover\']" animation="fade1" class="in-card" type="is-white"><div>x</div></b-tooltip>',
 	['<b-tooltip :always="false" label="L" :triggers="[]" class="in-card" type="is-white"><div>x</div></b-tooltip>', hover],
+])
+
+same(['BImage'], [
+	'<b-image src="/a.svg" alt="pending" class="is-160x160 mb-2" />',
+	'<b-image src="/a.png" src-fallback="/d.svg" alt="" webp-fallback=".jpg" ratio="1by1" class="hero-img" />',
+	'<b-image :lazy="false" src="/a.png" style="width: 19px; height: 19px;" />',
+	'<b-image src="/a.svg" class="is-128x128" rounded />',
+	['<b-image src="/broken.png" src-fallback="/d.svg" />', async function fail(el) { el.querySelector('img').dispatchEvent(new Event('error')) }],
+])
+
+same(['BLoading'], [
+	'<b-loading v-model="busy" :is-full-page="false" />',
+	'<b-loading v-model="busy" />',
+	'<b-loading :model-value="busy" :can-cancel="false" :is-full-page="false" class="op80" style="top: auto"><img src="/w.svg" alt="Loading" /></b-loading>',
+	'<b-loading :model-value="false" />',
+])
+
+same(['BProgress'], [
+	'<b-progress :value="pct" size="is-small" class="mb-2" />',
+	'<b-progress size="is-small" class="mb-2" />',
+	'<b-progress :value="20" />',
+])
+
+same(['BNotification'], [
+	'<b-notification v-model="shown" aria-close-label="Close notification" role="alert" type="is-danger">Wrong password</b-notification>',
+	['<b-notification v-model="shown" aria-close-label="Close" type="is-danger">x</b-notification>', async function closeIt(el) { el.querySelector('.delete').click() }],
 ])
