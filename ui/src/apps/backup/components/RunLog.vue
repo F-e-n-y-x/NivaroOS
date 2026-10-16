@@ -40,6 +40,7 @@
 
 <script>
 import { backupMixin } from '../backupMixin'
+import { saveBlob } from '@/utils/saveBlob'
 
 const PAGE = 500
 const POLL_MS = 2000
@@ -157,14 +158,7 @@ export default {
 					after = page.next_offset
 				}
 				const text = this.plainText(all, true)
-				const url = URL.createObjectURL(new Blob([text + '\n'], { type: 'text/plain;charset=utf-8' }))
-				const a = document.createElement('a')
-				a.href = url
-				a.download = `${this.runId}.log`
-				document.body.appendChild(a)
-				a.click()
-				a.remove()
-				setTimeout(() => URL.revokeObjectURL(url), 1000)
+				saveBlob(new Blob([text + '\n'], { type: 'text/plain;charset=utf-8' }), `${this.runId}.log`)
 			} catch (e) {
 				this.toastError(e)
 			} finally {

@@ -230,6 +230,7 @@
 
 <script>
 import { backupMixin } from '../backupMixin'
+import { saveBlob } from '@/utils/saveBlob'
 import { backupWindow } from '../windows'
 import { explainError } from '../messages'
 import { fieldErrorKey } from '../errorCodes'
@@ -659,14 +660,7 @@ export default {
 		downloadRecoveryKey() {
 			const name = (this.created && this.created.name) || 'backup'
 			const text = this.$t('backup.encrypt.recovery_file', { name, key: this.recoveryKey, folder: this.created ? (this.created.dest.label || '') + ' / ' + this.created.dest.sub_path : '' })
-			const url = URL.createObjectURL(new Blob([text + '\n'], { type: 'text/plain' }))
-			const a = document.createElement('a')
-			a.href = url
-			a.download = `NivaroOS recovery key - ${name.replace(/[\\/:*?"<>|]+/g, '-')}.txt`
-			document.body.appendChild(a)
-			a.click()
-			a.remove()
-			setTimeout(() => URL.revokeObjectURL(url), 1000)
+			saveBlob(new Blob([text + '\n'], { type: 'text/plain' }), `NivaroOS recovery key - ${name.replace(/[\\/:*?"<>|]+/g, '-')}.txt`)
 		},
 		finishRecovery() {
 			const { job, runNow, previewFirst } = this.created

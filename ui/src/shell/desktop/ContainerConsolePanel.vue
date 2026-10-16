@@ -230,6 +230,7 @@ import TerminalCard from '@/apps/terminal/TerminalCard.vue'
 import SessionList from '@/apps/terminal/SessionList.vue'
 import terminalSessions from '@/service/terminalSessions.js'
 import { apiError } from '@/utils/apiError'
+import { saveBlob } from '@/utils/saveBlob'
 import { copyText } from '@/apps/terminal/termClipboard.js'
 import { sessionKey, isIdleShell, loadContainerSession, saveContainerSession, pickContainerSession } from '@/apps/terminal/termSessions.js'
 
@@ -813,15 +814,7 @@ export default {
 		downloadLogs() {
 			const text = this.visibleText()
 			if (!text) return
-			const blob = new Blob([text + '\n'], { type: 'text/plain;charset=utf-8' })
-			const url = URL.createObjectURL(blob)
-			const a = document.createElement('a')
-			a.href = url
-			a.download = `${this.displayTitle || this.containerId}-logs-${new Date().toISOString().slice(0, 10)}.log`
-			document.body.appendChild(a)
-			a.click()
-			document.body.removeChild(a)
-			URL.revokeObjectURL(url)
+			saveBlob(new Blob([text + '\n'], { type: 'text/plain;charset=utf-8' }), `${this.displayTitle || this.containerId}-logs-${new Date().toISOString().slice(0, 10)}.log`)
 		},
 		async restartContainer() {
 			this.restarting = true

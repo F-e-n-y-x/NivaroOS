@@ -122,6 +122,7 @@
 </template>
 
 <script>
+import { saveBlob } from '@/utils/saveBlob'
 function formatBytes(bytes) {
 	if (!bytes) return ''
 	const units = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -235,14 +236,7 @@ export default {
 		},
 		downloadCrash(id) {
 			this.$api.sys.getCrashReport(id).then(res => {
-				const url = URL.createObjectURL(new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' }))
-				const a = document.createElement('a')
-				a.href = url
-				a.download = `nivaroos-crash-${id}.json`
-				document.body.appendChild(a)
-				a.click()
-				a.remove()
-				URL.revokeObjectURL(url)
+				saveBlob(new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' }), `nivaroos-crash-${id}.json`)
 			})
 		},
 		loadLogs() {
