@@ -1,14 +1,27 @@
 // The app's UI kit. Replaces the archived Buefy fork one component at a time
-// (docs/specs/2026-10-16-buefy-migration.md): Buefy is still installed for
-// the components not moved yet, and ours are registered after it under the
-// same global names, so no template changes.
-import Buefy from '@ntohq/buefy-next'
+// (docs/specs/2026-10-16-buefy-migration.md): each global b-* name comes
+// from Buefy until our own component takes it over, so no template changes.
+import {
+	BAutocomplete, BButton, BCheckbox, BDropdown, BDropdownItem, BField, BImage, BInput, BLoading,
+	BNotification, BNumberinput, BProgress, BSelect, BSwitch, BTabItem, BTabs, BTooltip, BUpload,
+	ConfigProgrammatic,
+} from '@ntohq/buefy-next'
 import notices from './notices'
+import Icon from './Icon.vue'
+
+const components = {
+	// Still Buefy's.
+	BAutocomplete, BButton, BCheckbox, BDropdown, BDropdownItem, BField, BImage, BInput, BLoading,
+	BNotification, BNumberinput, BProgress, BSelect, BSwitch, BTabItem, BTabs, BTooltip, BUpload,
+	// Ours.
+	BIcon: Icon,
+}
 
 export default {
 	install(app) {
-		app.use(Buefy)
-		// this.$buefy.toast/snackbar/dialog keep working for every caller.
-		Object.assign(app.config.globalProperties.$buefy, notices)
+		// this.$buefy.toast/snackbar/dialog keep working for every caller;
+		// config sets the icon packs of the Buefy components left.
+		app.config.globalProperties.$buefy = { ...notices, config: ConfigProgrammatic }
+		for (const [name, c] of Object.entries(components)) app.component(name, c)
 	},
 }
