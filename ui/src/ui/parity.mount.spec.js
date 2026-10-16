@@ -26,7 +26,7 @@ function normalize(root) {
 async function mount(tpl, buefyNames, act) {
 	const el = document.createElement('div')
 	document.body.appendChild(el)
-	const app = createApp({ template: tpl, data: () => ({ v: 'abc', n: 3, t: 'is-danger', m: 'Bad name', on: true, off: false, list: ['a'], sel: null, s2: 'b', busy: true, shown: true, pct: 73.456, pickd: null, items: [{ n: 'A' }, { n: 'B' }], tab: 0, got: '', file: null }) })
+	const app = createApp({ template: tpl, data: () => ({ v: 'abc', n: 3, t: 'is-danger', m: 'Bad name', on: true, off: false, list: ['a'], sel: null, s2: 'b', busy: true, shown: true, pct: 73.456, pickd: null, items: [{ n: 'A' }, { n: 'B' }], tab: 0, got: '', file: null, gib: 20, q: '', folders: [{ name: 'Media' }, { name: 'Tools' }], picked: '' }) })
 	app.use(UI)
 	if (buefyNames) {
 		app.config.globalProperties.$buefy.config.setOptions({ customIconPacks: iconPacks })
@@ -211,4 +211,34 @@ same(['BUpload', 'BIcon'], [
 	[upTpl, drop('compose.yml')],
 	[upTpl, drop('evil.exe')],
 	[upTpl, async function hoverZone(el) { el.querySelector('.upload-draggable').dispatchEvent(new Event('dragenter')) }],
+])
+
+const press = (sel) => async function pressBtn(el) { const b = el.querySelector(sel + ' button'); b.dispatchEvent(new MouseEvent('mousedown', { button: 0 })); b.parentNode.dispatchEvent(new MouseEvent('mouseup')) }
+const numTpl = '<b-numberinput aria-minus-label="Decrease" aria-plus-label="Increase" class="vm-disk-size" :model-value="gib" @update:modelValue="gib = $event" :min="20" :max="22" size="is-small" type="is-light" controls-position="compact" /><i>{{ gib }}</i>'
+same(['BNumberinput', 'BInput', 'BIcon'], [
+	numTpl,
+	[numTpl, press('.plus')],
+	[numTpl, async function twice(el) { await press('.plus')(el); await press('.plus')(el); await press('.plus')(el) }],
+	[numTpl, press('.minus')],
+	[numTpl, async function keyPlus(el) { el.querySelector('.plus button').dispatchEvent(new MouseEvent('click', { detail: 0 })) }],
+	[numTpl, async function typeNum(el) { const i = el.querySelector('input'); i.value = '21'; i.dispatchEvent(new Event('input')) }],
+	'<b-numberinput :model-value="null" :disabled="true" />',
+])
+
+const focusIn = async function focusIn(el) { const i = el.querySelector('input'); i.focus(); i.dispatchEvent(new Event('focus')) }
+const typeQ = async function typeQ(el) { await focusIn(el); const i = el.querySelector('input'); i.value = 'Me'; i.dispatchEvent(new Event('input')) }
+const downEnter = async function downEnter(el) { await focusIn(el); const i = el.querySelector('input'); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' })); await nextTick(); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' })); await nextTick(); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })) }
+const clickOpt = async function clickOpt(el) { await focusIn(el); await nextTick(); document.querySelectorAll('.autocomplete .dropdown-item')[1].click() }
+const acFolder = '<b-field label="Folder"><b-autocomplete ref="input" v-model="q" :data="folders" :open-on-focus="true" placeholder="Existing or new folder name" append-to-body expanded field="name" maxlength="30" @select="o => (picked = o ? o.name : picked)"><template #empty>No matching folders</template></b-autocomplete></b-field><i>{{ q }}|{{ picked }}</i>'
+const acLink = '<b-autocomplete id="weblink-address" v-model="q" :data="folders" :open-on-focus="true" placeholder="Local or public URL" field="name" max-height="120px" size="is-small" icon="link-variant" expanded required aria-describedby="hint" />'
+same(['BAutocomplete', 'BField', 'BInput', 'BIcon'], [
+	acFolder,
+	[acFolder, focusIn],
+	[acFolder, typeQ],
+	[acFolder, downEnter],
+	[acFolder, clickOpt],
+	acLink,
+	[acLink, focusIn],
+	[acLink, downEnter],
+	['<b-autocomplete v-model="q" :data="[]" :open-on-focus="true"><template #empty>None</template></b-autocomplete>', focusIn],
 ])

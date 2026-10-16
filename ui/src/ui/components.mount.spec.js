@@ -90,3 +90,24 @@ test('b-dropdown: opens on click, picks into v-model and closes; append-to-body 
 	expect(menu()).toBeNull()
 	el.remove()
 })
+
+test('b-numberinput: buttons step within min/max', async () => {
+	const el = document.createElement('div')
+	const app = createApp({ data: () => ({ n: 21 }), template: '<b-numberinput v-model="n" :min="20" :max="22" />' })
+	app.use(UI)
+	const vm = app.mount(el)
+	const press = (c) => {
+		const b = el.querySelector(`.${c} button`)
+		b.dispatchEvent(new MouseEvent('mousedown', { button: 0 }))
+		b.parentNode.dispatchEvent(new MouseEvent('mouseup'))
+	}
+	press('plus')
+	await nextTick()
+	expect(vm.n).toBe(22)
+	expect(el.querySelector('.plus button').disabled).toBe(true)
+	press('minus')
+	press('minus')
+	await nextTick()
+	expect(vm.n).toBe(20)
+	expect(el.querySelector('.minus button').disabled).toBe(true)
+})

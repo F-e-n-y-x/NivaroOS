@@ -1,11 +1,7 @@
 // The app's UI kit. Replaces the archived Buefy fork one component at a time
 // (docs/specs/2026-10-16-buefy-migration.md): each global b-* name comes
 // from Buefy until our own component takes it over, so no template changes.
-import {
-	BAutocomplete,
-	BNumberinput,
-	ConfigProgrammatic,
-} from '@ntohq/buefy-next'
+import { ConfigProgrammatic } from '@ntohq/buefy-next'
 import notices from './notices'
 import Icon from './Icon.vue'
 import Button from './Button.vue'
@@ -24,12 +20,10 @@ import DropdownItem from './DropdownItem.vue'
 import Tabs from './Tabs.vue'
 import TabItem from './TabItem.vue'
 import Upload from './Upload.vue'
+import Numberinput from './Numberinput.vue'
+import Autocomplete from './Autocomplete.vue'
 
 const components = {
-	// Still Buefy's.
-	BAutocomplete,
-	BNumberinput,
-	// Ours.
 	BIcon: Icon,
 	BButton: Button,
 	BField: Field,
@@ -47,6 +41,8 @@ const components = {
 	BTabs: Tabs,
 	BTabItem: TabItem,
 	BUpload: Upload,
+	BNumberinput: Numberinput,
+	BAutocomplete: Autocomplete,
 }
 
 export default {
