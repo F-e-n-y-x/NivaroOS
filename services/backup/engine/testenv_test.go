@@ -257,7 +257,7 @@ func (s *testSys) config() Config {
 		MountInfoPath: s.mi, SysBlockDir: s.sysBlock, UdevDataDir: s.udev, DevDir: s.dev,
 		MachineIDPath: filepath.Join(s.root, "machine-id"), DataRoot: filepath.Join(s.allowed, "DATA"),
 		AllowedRoots: []string{s.allowed}, StagingDir: filepath.Join(s.root, "staging"),
-		SpoolDir: filepath.Join(s.root, "spool"), RcloneConfigPath: s.rconf,
+		SpoolDir: filepath.Join(s.root, "spool"), RcloneConfigPath: s.rconf, ResticCacheDir: filepath.Join(s.root, "restic-cache"),
 		NoMemoryLimit: true, WatchBackstop: time.Hour, Logf: s.t.Logf,
 	}
 }

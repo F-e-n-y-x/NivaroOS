@@ -48,6 +48,9 @@ const (
 	CodeWrongPassword ErrorCode = "wrong_password"
 	// CodeSevenZipMissing: an encrypted archive needs the 7z program.
 	CodeSevenZipMissing ErrorCode = "sevenzip_missing"
+	// CodeResticMissing: a versioned backup needs the restic program the
+	// installer ships.
+	CodeResticMissing ErrorCode = "restic_missing"
 	// lifecycle
 	CodeCancelledByUser    ErrorCode = "cancelled_by_user"
 	CodeCancelledUnmounted ErrorCode = "cancelled_unmounted"
@@ -64,7 +67,7 @@ var EngineCodes = []ErrorCode{
 	CodeDeleteGuard, CodeChangeGuard, CodeEmptySource, CodeDestMarkerMismatch,
 	CodeDestInsideSource, CodePathNotAllowed, CodeFat32FileTooLarge, CodeCaseCollision, CodeEndpointUnknown,
 	CodeAmbiguousDevice, CodeCloudAuth, CodeNoSpace, CodeInvalidFilter,
-	CodeEncryptionLocked, CodeWrongPassword, CodeSevenZipMissing,
+	CodeEncryptionLocked, CodeWrongPassword, CodeSevenZipMissing, CodeResticMissing,
 	CodeCancelledByUser, CodeCancelledUnmounted, CodeMaxDuration,
 	CodeNotFound, CodeInternal,
 }

@@ -164,6 +164,10 @@ const (
 	// EncryptArchive makes archive jobs write one 7z per run (AES-256,
 	// headers encrypted so names are hidden too), split into volumes.
 	EncryptArchive = "archive"
+	// EncryptRestic is a versioned backup's restic repository password
+	// (restic encrypts every repository; without Encryption it is opened
+	// with --insecure-no-password).
+	EncryptRestic = "restic"
 )
 
 // DefaultVolumeBytes is the default 7z volume size: under the 4 GB file
@@ -428,10 +432,12 @@ const (
 	VersionCurrent VersionKind = "current" // the destination as it is
 	VersionRecycle VersionKind = "recycle" // a .nivaro-versions/<ts> folder
 	VersionArchive VersionKind = "archive" // one nivaro_<job>_<ts>.tar.zst
+	// VersionSnapshot is one restic snapshot of a versioned backup.
+	VersionSnapshot VersionKind = "snapshot"
 )
 
 // Version is one restorable point. IDs: "current", "v_<ts>" (recycle),
-// "a_<archive file name>" (archive).
+// "a_<archive file name>" (archive), "s_<snapshot id>" (restic).
 type Version struct {
 	ID       string      `json:"id"`
 	Kind     VersionKind `json:"kind"`
@@ -512,7 +518,12 @@ type Guards struct {
 // Retention says what prune ops remove.
 type Retention struct {
 	VersionsDays int `json:"versions_days,omitempty"` // mirror; 0 = keep forever
-	KeepLast     int `json:"keep_last,omitempty"`     // archive
+	KeepLast     int `json:"keep_last,omitempty"`     // archive; backup: restic --keep-last
+	// KeepDaily, KeepWeekly and KeepMonthly are a versioned backup's
+	// restic forget policy (0 = that rule is off; all off = keep all).
+	KeepDaily   int `json:"keep_daily,omitempty"`
+	KeepWeekly  int `json:"keep_weekly,omitempty"`
+	KeepMonthly int `json:"keep_monthly,omitempty"`
 }
 
 // ---------------------------------------------------------------------
@@ -613,6 +624,14 @@ const (
 	// (marker, recycle folder, the job's archives) go. Added after v1 of
 	// this contract; additive, so APIVersion stays 1.
 	OpPurgeDest Op = "purge_dest"
+	// OpBackup saves one restic snapshot of all sources into the
+	// repository at Dest (job type backup); PlanOp backup previews it,
+	// and check / purge_dest with PlanOp backup check or remove the
+	// repository. Added after v1; additive.
+	OpBackup Op = "backup"
+	// OpForget drops the snapshots Retention doesn't keep (restic forget)
+	// and prunes the data only they used.
+	OpForget Op = "forget"
 )
 
 // JobRequest starts one engine job. Which fields matter depends on Op:
@@ -621,8 +640,10 @@ const (
 //	archive:              Sources (1..16), Dest, Filters, Options
 //	plan:                 also PlanOp (the op being previewed) and PreviewFile
 //	purge_versions/archives: Dest, Retention
-//	purge_dest:           Dest, DestFolderID
+//	purge_dest:           Dest, DestFolderID (PlanOp backup: a restic repository)
 //	restore:              Dest (the job's destination) and Restore
+//	backup:               Sources (1..16, local), Dest, Filters, Options
+//	forget:               Dest, Retention
 type JobRequest struct {
 	Op    Op     `json:"op"`
 	RunID string `json:"run_id"` // stats group "bk_<run_id>", log correlation
@@ -667,7 +688,7 @@ const (
 
 // RestoreSpec says what to restore where.
 type RestoreSpec struct {
-	VersionID string   `json:"version_id"` // "current" | "v_<ts>" | "a_<file>"
+	VersionID string   `json:"version_id"` // "current" | "v_<ts>" | "a_<file>" | "s_<snapshot>"
 	Paths     []string `json:"paths"`      // relative to the destination root; [] = everything
 	// Target is where the paths go. For "restore to original" the job
 	// side passes the job's (single) source endpoint.

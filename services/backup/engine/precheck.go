@@ -16,7 +16,12 @@ const (
 	jobTypeCopy    = "copy"
 	jobTypeMirror  = "mirror"
 	jobTypeArchive = "archive"
+	jobTypeBackup  = "backup" // restic
 )
+
+// multiSource reports a job type that takes 1..16 sources into one
+// version (archive, backup).
+func multiSource(jt string) bool { return jt == jobTypeArchive || jt == jobTypeBackup }
 
 const (
 	gib = int64(1) << 30
@@ -115,7 +120,7 @@ func (e *Engine) prepare(ctx context.Context, in precheckInput) (*prepared, erro
 	switch {
 	case len(in.sources) == 0:
 		return nil, Errorf(CodeInternal, "no source given")
-	case in.jobType != jobTypeArchive && len(in.sources) != 1:
+	case !multiSource(in.jobType) && len(in.sources) != 1:
 		return nil, Errorf(CodeInternal, "a %s job takes exactly one source, got %d", in.jobType, len(in.sources))
 	case len(in.sources) > maxArchiveSources:
 		return nil, Errorf(CodeInternal, "an archive takes at most %d sources, got %d", maxArchiveSources, len(in.sources))
@@ -173,7 +178,7 @@ func (e *Engine) prepare(ctx context.Context, in precheckInput) (*prepared, erro
 		}
 	}
 	p.checks = append(p.checks, e.checkQuirks(p))
-	p.meta = allOnline && dest.local && in.jobType != jobTypeArchive && allLocal(p.sources) && (in.preserveMeta == nil || *in.preserveMeta)
+	p.meta = allOnline && dest.local && !multiSource(in.jobType) && allLocal(p.sources) && (in.preserveMeta == nil || *in.preserveMeta)
 	switch {
 	case !allOnline:
 		p.checks = append(p.checks, newCheck(CheckMetadata, CheckSkip, "", nil))
@@ -266,13 +271,13 @@ func (p *prepared) sourceSpec(i int, protectDest bool) filterSpec {
 // scanAll walks every source with its filter.
 func (e *Engine) scanAll(ctx context.Context, p *prepared) error {
 	opts := scanOpts{budget: p.in.budget}
-	if p.in.jobType != jobTypeArchive {
+	if !multiSource(p.in.jobType) {
 		opts.caseCheck = p.dest.q.CaseInsensitive
 		opts.sizeCheck = hasQuirk(p.dest.q.Quirks, QuirkMaxFile4G)
 	}
 	start := time.Now()
 	for i, s := range p.sources {
-		sctx, _, err := withFilter(ctx, p.sourceSpec(i, p.in.jobType != jobTypeArchive))
+		sctx, _, err := withFilter(ctx, p.sourceSpec(i, !multiSource(p.in.jobType)))
 		if err != nil {
 			return err
 		}
@@ -331,6 +336,10 @@ func hasQuirk(q []Quirk, x Quirk) bool {
 func (e *Engine) checkQuirks(p *prepared) Check {
 	if !p.scanned {
 		return newCheck(CheckFSQuirks, CheckSkip, "", nil)
+	}
+	if p.in.jobType == jobTypeBackup {
+		// restic writes small pack files with encoded names.
+		return newCheck(CheckFSQuirks, CheckPass, "", nil)
 	}
 	if p.in.jobType == jobTypeArchive {
 		// One archive file: only its size matters on FAT32.
@@ -504,7 +513,7 @@ func (e *Engine) Precheck(ctx context.Context, req PrecheckRequest) (PrecheckRes
 		budget = time.Duration(req.SizeTimeoutSec) * time.Second
 	}
 	jt := req.JobType
-	if jt != jobTypeCopy && jt != jobTypeMirror && jt != jobTypeArchive {
+	if jt != jobTypeCopy && jt != jobTypeMirror && jt != jobTypeArchive && jt != jobTypeBackup {
 		return PrecheckResult{}, Errorf(CodeInternal, "unknown job type %q", jt)
 	}
 	p, err := e.prepare(ctx, precheckInput{

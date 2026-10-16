@@ -149,6 +149,7 @@ func newEngine(o options) (jobs.EngineClient, func()) {
 	eng, err := engine.New(engine.Config{
 		StagingDir:       filepath.Join(o.dataDir, jobs.StagingDir),
 		SpoolDir:         filepath.Join(o.dataDir, "engine"),
+		ResticCacheDir:   filepath.Join(o.dataDir, "restic-cache"),
 		RcloneConfigPath: o.rcloneConfig,
 	})
 	if err != nil {

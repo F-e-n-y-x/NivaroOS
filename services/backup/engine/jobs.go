@@ -76,6 +76,21 @@ func (j *job) addOwn(bytes, files int64, current string) {
 	j.mu.Unlock()
 }
 
+// setOwn sets the bytes and files an outside program (restic) reports
+// it has done so far.
+func (j *job) setOwn(bytes, files int64, current string) {
+	j.mu.Lock()
+	if !j.progress.own {
+		j.progress.own = true
+		j.progress.ownStart = time.Now()
+	}
+	j.progress.bytes, j.progress.files = bytes, files
+	if current != "" {
+		j.progress.current = current
+	}
+	j.mu.Unlock()
+}
+
 // watch registers a mount this job depends on.
 func (j *job) watch(id int, what string) {
 	j.mu.Lock()
@@ -138,7 +153,7 @@ func newJobManager(e *Engine) *jobManager {
 
 // validOps are the ops StartJob accepts.
 var validOps = map[Op]bool{OpCopy: true, OpSync: true, OpArchive: true, OpPlan: true, OpCheck: true,
-	OpPurgeVersions: true, OpPurgeArchives: true, OpRestore: true, OpPurgeDest: true}
+	OpPurgeVersions: true, OpPurgeArchives: true, OpRestore: true, OpPurgeDest: true, OpBackup: true, OpForget: true}
 
 // validateRequest rejects requests no run could satisfy (a caller bug).
 func validateRequest(req JobRequest) error {
@@ -150,6 +165,9 @@ func validateRequest(req JobRequest) error {
 	}
 	switch req.Op {
 	case OpCheck:
+		if req.PlanOp == OpBackup {
+			break
+		}
 		if req.PlanOp == OpArchive {
 			if req.JobID == "" {
 				return Errorf(CodeInternal, "check of archives needs job_id")
@@ -162,6 +180,10 @@ func validateRequest(req JobRequest) error {
 	case OpCopy, OpSync:
 		if len(req.Sources) != 1 {
 			return Errorf(CodeInternal, "%s takes exactly one source, got %d", req.Op, len(req.Sources))
+		}
+	case OpBackup:
+		if len(req.Sources) < 1 || len(req.Sources) > maxArchiveSources {
+			return Errorf(CodeInternal, "backup takes 1 to %d sources, got %d", maxArchiveSources, len(req.Sources))
 		}
 	case OpArchive:
 		if len(req.Sources) < 1 || len(req.Sources) > maxArchiveSources {
@@ -176,12 +198,12 @@ func validateRequest(req JobRequest) error {
 			if len(req.Sources) != 1 {
 				return Errorf(CodeInternal, "plan of %s takes exactly one source, got %d", req.PlanOp, len(req.Sources))
 			}
-		case OpArchive:
+		case OpArchive, OpBackup:
 			if len(req.Sources) < 1 || len(req.Sources) > maxArchiveSources {
 				return Errorf(CodeInternal, "plan of archive takes 1 to %d sources, got %d", maxArchiveSources, len(req.Sources))
 			}
 		default:
-			return Errorf(CodeInternal, "plan_op must be copy, sync or archive, got %q", req.PlanOp)
+			return Errorf(CodeInternal, "plan_op must be copy, sync, archive or backup, got %q", req.PlanOp)
 		}
 	case OpPurgeArchives:
 		if req.JobID == "" {

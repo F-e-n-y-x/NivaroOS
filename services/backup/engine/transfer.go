@@ -80,12 +80,22 @@ func (e *Engine) runOp(ctx context.Context, j *job) (Result, error) {
 	case OpCopy, OpSync:
 		return e.runTransfer(ctx, j, j.req.Op, false)
 	case OpPlan:
-		if j.req.PlanOp == OpArchive {
+		switch j.req.PlanOp {
+		case OpArchive:
 			return e.runArchive(ctx, j, true)
+		case OpBackup:
+			return e.runBackup(ctx, j, true)
 		}
 		return e.runTransfer(ctx, j, j.req.PlanOp, true)
 	case OpCheck:
+		if j.req.PlanOp == OpBackup {
+			return e.runResticCheck(ctx, j)
+		}
 		return e.runCheck(ctx, j)
+	case OpBackup:
+		return e.runBackup(ctx, j, false)
+	case OpForget:
+		return e.runForget(ctx, j)
 	case OpArchive:
 		return e.runArchive(ctx, j, false)
 	case OpPurgeVersions:

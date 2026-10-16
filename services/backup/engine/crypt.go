@@ -63,7 +63,7 @@ func checkKeys(enc *Encryption) error {
 	if enc == nil {
 		return nil
 	}
-	if enc.Mode != EncryptFolder && enc.Mode != EncryptArchive {
+	if enc.Mode != EncryptFolder && enc.Mode != EncryptArchive && enc.Mode != EncryptRestic {
 		return Errorf(CodeInternal, "unknown encryption mode %q", enc.Mode)
 	}
 	if enc.Keys == nil || enc.Keys.Password == "" || (enc.Mode == EncryptFolder && enc.Keys.Salt == "") {

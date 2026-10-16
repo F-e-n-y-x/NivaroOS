@@ -44,6 +44,7 @@ export const ERROR_CODES = Object.freeze({
 	offset_mismatch: Object.freeze({ class: 'api', actions: Object.freeze([]) }),
 	path_not_allowed: Object.freeze({ class: 'config', actions: Object.freeze(['edit_job']) }),
 	rate_limited: Object.freeze({ class: 'api', actions: Object.freeze([]) }),
+	restic_missing: Object.freeze({ class: 'config', actions: Object.freeze(['view_log']) }),
 	revision_conflict: Object.freeze({ class: 'api', actions: Object.freeze([]) }),
 	session_closed: Object.freeze({ class: 'api', actions: Object.freeze([]) }),
 	sevenzip_missing: Object.freeze({ class: 'config', actions: Object.freeze(['view_log']) }),

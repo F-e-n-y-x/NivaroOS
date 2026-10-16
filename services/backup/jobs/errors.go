@@ -69,6 +69,7 @@ const (
 	ErrEncryptionLocked                   = engine.CodeEncryptionLocked
 	ErrWrongPassword                      = engine.CodeWrongPassword
 	ErrSevenZipMissing                    = engine.CodeSevenZipMissing
+	ErrResticMissing                      = engine.CodeResticMissing
 	ErrAppdataCloudNeedsArchive ErrorCode = "appdata_cloud_needs_archive"
 	ErrWindowClosed             ErrorCode = "window_closed" // outside the time window (skip/fail)
 	// hook
@@ -158,6 +159,7 @@ var codeTable = map[ErrorCode]CodeInfo{
 	ErrEncryptionLocked:         {ClassConfig, []Action{ActViewLog}},
 	ErrWrongPassword:            {ClassConfig, []Action{ActViewLog}},
 	ErrSevenZipMissing:          {ClassConfig, []Action{ActViewLog}},
+	ErrResticMissing:            {ClassConfig, []Action{ActViewLog}},
 	ErrAppdataCloudNeedsArchive: {ClassConfig, []Action{ActSwitchArchive}},
 	ErrWindowClosed:             {ClassConfig, []Action{ActEditJob}},
 

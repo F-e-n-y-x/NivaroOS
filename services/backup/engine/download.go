@@ -40,13 +40,25 @@ func (e *Engine) OpenDownload(ctx context.Context, req DownloadRequest) (*Downlo
 	if !t.online {
 		return nil, Errorf(CodeDestOffline, "%s is not available", t.display)
 	}
-	dir, archive, err := versionRoot(req.VersionID)
-	if err != nil {
-		return nil, err
+	var dir, archive string
+	snap, isSnap := snapshotID(req.VersionID)
+	if !isSnap {
+		if dir, archive, err = versionRoot(req.VersionID); err != nil {
+			return nil, err
+		}
 	}
 	// The stream outlives this call: it runs under the engine's context,
 	// ended by Body.Close or Close.
 	sctx, cancel := context.WithCancel(e.ctx)
+	if isSnap {
+		d, err := e.downloadSnapshot(sctx, t, snap, paths)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		d.Body = &cancelCloser{ReadCloser: d.Body, cancel: cancel}
+		return d, nil
+	}
 	if archive != "" {
 		d, err := e.downloadArchive(sctx, t, archive, paths)
 		if err != nil {
@@ -180,37 +192,42 @@ func (e *Engine) downloadArchive(ctx context.Context, t *target, archive string,
 	go func() {
 		defer closer()
 		zw := zip.NewWriter(pw)
-		found := false
-		for {
-			h, err := tr.Next()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				pw.CloseWithError(err)
-				return
-			}
-			rel, err := cleanSubPath(strings.TrimSuffix(h.Name, "/"))
-			if err != nil || rel == "" || h.Typeflag != tar.TypeReg || !selected(paths, rel) {
-				continue
-			}
-			found = true
-			dst, err := zw.CreateHeader(&zip.FileHeader{Name: rel, Method: zip.Deflate, Modified: h.ModTime})
-			if err == nil {
-				_, err = io.Copy(dst, tr)
-			}
-			if err != nil {
-				pw.CloseWithError(err)
-				return
-			}
-		}
-		if !found {
+		found, err := zipFromTar(zw, tr, paths)
+		switch {
+		case err != nil:
+			pw.CloseWithError(err)
+		case !found:
 			pw.CloseWithError(Errorf(CodeNotFound, "none of the files are in the archive"))
-			return
+		default:
+			pw.CloseWithError(zw.Close())
 		}
-		pw.CloseWithError(zw.Close())
 	}()
 	return &Download{Name: zipName(paths), ContentType: "application/zip", Size: -1, Body: pr}, nil
+}
+
+// zipFromTar adds the regular files of tr that paths select to zw.
+func zipFromTar(zw *zip.Writer, tr *tar.Reader, paths []string) (found bool, err error) {
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			return found, nil
+		}
+		if err != nil {
+			return found, err
+		}
+		rel, err := cleanSubPath(strings.TrimSuffix(h.Name, "/"))
+		if err != nil || rel == "" || h.Typeflag != tar.TypeReg || !selected(paths, rel) {
+			continue
+		}
+		found = true
+		dst, err := zw.CreateHeader(&zip.FileHeader{Name: rel, Method: zip.Deflate, Modified: h.ModTime})
+		if err == nil {
+			_, err = io.Copy(dst, tr)
+		}
+		if err != nil {
+			return found, err
+		}
+	}
 }
 
 func zipName(paths []string) string {

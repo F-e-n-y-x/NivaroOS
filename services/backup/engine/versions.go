@@ -92,6 +92,8 @@ func (e *Engine) ListVersions(ctx context.Context, req VersionsRequest) ([]Versi
 			out = append(out, v)
 		}
 		return out, nil
+	case jobTypeBackup:
+		return e.snapshotVersions(ctx, t)
 	case jobTypeArchive:
 		archives, err := e.listArchives(ctx, t, req.JobID)
 		if err != nil {
@@ -304,6 +306,20 @@ func (e *Engine) runPurgeDest(ctx context.Context, j *job) (Result, error) {
 		res.Counts.Deleted = n
 		j.logLine(LogInfo, "pruned", "backup.log.pruned", map[string]interface{}{"name": t.display})
 		return res, nil
+	}
+	if j.req.PlanOp == OpBackup {
+		// Drive root: the restic repository's own folders and config.
+		for _, d := range resticDirs {
+			if err := operations.Purge(rctx, f, d); err != nil && !errors.Is(err, fs.ErrorDirNotFound) {
+				return res, engineErr(err, "removing "+d)
+			}
+		}
+		if o, err := f.NewObject(rctx, "config"); err == nil {
+			if err := o.Remove(rctx); err != nil {
+				return res, engineErr(err, "removing config")
+			}
+		}
+		j.logLine(LogInfo, "pruned", "backup.log.pruned", map[string]interface{}{"name": "restic repository"})
 	}
 	// Drive root: the recycle folder, the job's archives and indexes
 	// (finished or partial), and last the marker.

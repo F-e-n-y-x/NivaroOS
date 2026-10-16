@@ -42,6 +42,7 @@
   "backup.err.offset_mismatch.title": "Upload out of step",
   "backup.err.path_not_allowed.title": "Folder not allowed",
   "backup.err.rate_limited.title": "Too many requests",
+  "backup.err.restic_missing.title": "restic is not installed",
   "backup.err.revision_conflict.title": "Changed somewhere else",
   "backup.err.session_closed.title": "Backup session ended",
   "backup.err.sevenzip_missing.title": "7-Zip is not installed",

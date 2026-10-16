@@ -155,6 +155,9 @@ func normRecoveryKey(k string) string {
 }
 
 func keyFileHelp(mode string) string {
+	if mode == engine.EncryptRestic {
+		return "Encrypted by NivaroOS Backup & Sync: this folder is a restic repository (restic.net). Open it with restic and your backup password: restic -r <this folder> snapshots (for a cloud folder: restic -r rclone:<remote>:<folder> with an rclone config for that remote)."
+	}
 	if mode == engine.EncryptArchive {
 		return "Encrypted by NivaroOS Backup & Sync: 7z archives (AES-256, file names encrypted), split into numbered volumes. Open the .7z.001 file with 7-Zip and your backup password; inside is a .tar of your files."
 	}
@@ -330,8 +333,17 @@ func normalizeEncryption(j *Job, fe fieldErrors) {
 	}
 	enc.Keys = nil
 	switch enc.Mode {
+	case engine.EncryptRestic:
+		enc.VolumeBytes = 0
+		if j.Type != TypeBackup {
+			fe.add("dest.encryption.mode", FieldInvalid)
+		}
 	case engine.EncryptFolder:
 		enc.VolumeBytes = 0
+		if j.Type == TypeBackup {
+			// restic encrypts its repository itself.
+			fe.add("dest.encryption.mode", FieldInvalid)
+		}
 	case engine.EncryptArchive:
 		if j.Type != TypeArchive {
 			fe.add("dest.encryption.mode", FieldInvalid)

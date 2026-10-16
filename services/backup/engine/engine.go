@@ -42,6 +42,9 @@ type Config struct {
 	// SpoolDir holds the engine's per-job log spools; it is emptied at
 	// start (default /var/lib/nivaroos/backup/engine).
 	SpoolDir string
+	// ResticCacheDir is restic's local cache of repository metadata
+	// (default /var/lib/nivaroos/backup/restic-cache).
+	ResticCacheDir string
 
 	// RcloneConfigPath overrides rclone's default config file - the one
 	// local-storage writes (/root/.config/rclone/rclone.conf for root).
@@ -77,6 +80,7 @@ func (c *Config) setDefaults() {
 	def(&c.DataRoot, "/DATA")
 	def(&c.StagingDir, "/var/lib/nivaroos/backup/staging")
 	def(&c.SpoolDir, "/var/lib/nivaroos/backup/engine")
+	def(&c.ResticCacheDir, "/var/lib/nivaroos/backup/restic-cache")
 	if c.AllowedRoots == nil {
 		c.AllowedRoots = DefaultAllowedRoots
 	}

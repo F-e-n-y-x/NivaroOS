@@ -398,6 +398,8 @@ func typeOp(t JobType) engine.Op {
 		return engine.OpSync
 	case TypeArchive:
 		return engine.OpArchive
+	case TypeBackup:
+		return engine.OpBackup
 	}
 	return engine.OpCopy
 }
@@ -818,6 +820,8 @@ func (x *runExec) prune(ctx context.Context) {
 		op = engine.OpPurgeVersions
 	case x.job.Type == TypeArchive && x.job.Retention.KeepLast > 0:
 		op = engine.OpPurgeArchives
+	case x.job.Type == TypeBackup && x.job.Retention != (Retention{}):
+		op = engine.OpForget
 	default:
 		return
 	}
@@ -998,6 +1002,9 @@ func (x *runExec) doPurge(ctx context.Context) execOutcome {
 	x.setPhase(PhaseTransfer)
 	req := x.baseRequest(engine.OpPurgeDest, nil)
 	req.FirstRun = false
+	if x.job.Type == TypeBackup {
+		req.PlanOp = engine.OpBackup // the restic repository's folders go too
+	}
 	res, code := x.runEngine(ctx, req, true)
 	x.applyCounts(res)
 	if _, err := x.s.store.GetJob(x.job.ID); isNoRecord(err) {
@@ -1020,8 +1027,11 @@ func (x *runExec) doPurge(ctx context.Context) execOutcome {
 func (x *runExec) doVerify(ctx context.Context) execOutcome {
 	x.setPhase(PhaseVerify)
 	req := x.baseRequest(engine.OpCheck, x.job.Sources)
-	if x.job.Type == TypeArchive {
+	switch x.job.Type {
+	case TypeArchive:
 		req.Sources, req.PlanOp = nil, engine.OpArchive
+	case TypeBackup:
+		req.Sources, req.PlanOp = nil, engine.OpBackup
 	}
 	req.FirstRun = false
 	res, code := x.runEngine(ctx, req, true)

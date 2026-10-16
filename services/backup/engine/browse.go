@@ -30,12 +30,17 @@ func (e *Engine) Browse(ctx context.Context, req BrowseRequest) (BrowseResult, e
 	if !t.online {
 		return BrowseResult{}, Errorf(CodeDestOffline, "%s is not available", t.display)
 	}
-	dir, archive, err := versionRoot(req.VersionID)
-	if err != nil {
-		return BrowseResult{}, err
+	var dir, archive string
+	snap, isSnap := snapshotID(req.VersionID)
+	if !isSnap {
+		if dir, archive, err = versionRoot(req.VersionID); err != nil {
+			return BrowseResult{}, err
+		}
 	}
 	var entries []Entry
 	switch {
+	case isSnap:
+		entries, err = e.browseSnapshot(ctx, t, snap, rel)
 	case archive != "":
 		entries, err = e.browseArchive(ctx, t, archive, rel)
 	case t.local && !t.encrypted():

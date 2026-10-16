@@ -10,8 +10,10 @@ import (
 )
 
 // Housekeeping, on a tick (spec §5, §9, §10.4): waiting runs past their
-// 72 h decision window are cancelled, stale jobs are reported, and run
-// logs are kept within the retention limits.
+// 72 h decision window are cancelled, stale jobs are reported, run logs
+// are kept within the retention limits, and versioned backups get their
+// monthly check. Their retention (restic forget + prune) runs after each
+// successful backup, in the run's prune phase (lifecycle.go).
 
 const (
 	defaultMaintenance = time.Hour
@@ -23,6 +25,9 @@ const (
 	// previewKeep: plan output of final runs is kept this long.
 	previewKeep = 7 * 24 * time.Hour
 	staleRepeat = 24 * time.Hour
+	// verifyEvery: a versioned backup's repository is checked (restic
+	// check, 5 % of its data read back) at least this often.
+	verifyEvery = 30 * 24 * time.Hour
 )
 
 func (s *Service) maintenance(ctx context.Context) {
@@ -45,6 +50,7 @@ func (s *Service) maintenance(ctx context.Context) {
 		s.downloads.gc(s.now())
 		if s.now().Sub(lastRetention) >= 24*time.Hour || every < time.Hour {
 			s.applyRetention()
+			s.verifyBackups()
 			lastRetention = s.now()
 		}
 		sleepCtx(ctx, every)
@@ -123,6 +129,38 @@ func (s *Service) checkStale() {
 			Level:   NotifyLevelWarning, JobID: j.ID, WindowKind: "app",
 			WindowProps: map[string]interface{}{"section": "jobs", "jobId": j.ID},
 		})
+	}
+}
+
+// verifyBackups queues a check of every enabled versioned backup that
+// has a snapshot and no check queued within verifyEvery.
+func (s *Service) verifyBackups() {
+	jobs, err := s.store.ListJobs()
+	if err != nil {
+		return
+	}
+	now := s.now()
+	for _, j := range jobs {
+		if !j.Enabled || j.Type != TypeBackup {
+			continue
+		}
+		if st, err := s.store.JobState(j.ID); err != nil || st.LastSuccessAt == nil {
+			continue
+		}
+		runs, err := s.store.ListRuns(RunFilter{JobID: j.ID, Kinds: []RunKind{KindVerify}, Limit: 1})
+		if err != nil {
+			continue
+		}
+		since := j.CreatedAt
+		if len(runs) > 0 {
+			since = runs[0].QueuedAt
+		}
+		if now.Sub(since) < verifyEvery {
+			continue
+		}
+		if _, _, err := s.queue.Enqueue(j, EnqueueOptions{Kind: KindVerify, Trigger: RunBySchedule}); err != nil {
+			log.Printf("backup: maintenance: check of %s: %v", j.ID, err)
+		}
 	}
 }
 

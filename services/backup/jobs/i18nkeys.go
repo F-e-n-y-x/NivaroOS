@@ -155,7 +155,7 @@ var (
 	RunPhases     = []RunPhase{PhasePrecheck, PhasePreHooks, PhaseTransfer, PhaseVerify, PhasePrune, PhasePostHooks}
 	RunKinds      = []RunKind{KindBackup, KindPreview, KindRestore, KindVerify, KindPrune, KindDevice}
 	RunTriggers   = []RunTrigger{RunBySchedule, RunByVolumeMounted, RunByCatchUp, RunByManual, RunByRetry, RunByDevice}
-	JobTypes      = []JobType{TypeCopy, TypeMirror, TypeArchive}
+	JobTypes      = []JobType{TypeCopy, TypeMirror, TypeArchive, TypeBackup}
 	JobHealths    = []string{HealthProblem, HealthOffline, HealthWarning, HealthOK, HealthDisabled}
 	Quirks        = []engine.Quirk{engine.QuirkCaseInsensitive, engine.QuirkNTFSChars, engine.QuirkMtime2s, engine.QuirkMaxFile4G, engine.QuirkNoModTime, engine.QuirkNoHash, engine.QuirkNoMetadata, engine.QuirkPerBranchFree, engine.QuirkDailyQuota}
 	Warnings      = []engine.Warning{engine.WarnLimitedChangeDetection, engine.WarnSystemDisk, engine.WarnExportedShare, engine.WarnWorldWritable}

@@ -251,10 +251,10 @@
           "rclone": "v1.75.1"
         },
         "restic": {
-          "available": false,
+          "available": true,
           "version": "",
           "path": "/usr/lib/nivaroos/bin/restic",
-          "min": "0.14.0",
+          "min": "0.17.0",
           "installable": false
         },
         "timezone": "Europe/Berlin",

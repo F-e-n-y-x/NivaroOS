@@ -102,9 +102,13 @@ func (e *Engine) runRestore(ctx context.Context, j *job) (Result, error) {
 	spec := *r.Restore
 	var res Result
 	j.phase(stepResolve, "backup.phase.precheck")
-	dir, archive, err := versionRoot(spec.VersionID)
-	if err != nil {
-		return res, err
+	var dir, archive string
+	snap, isSnap := snapshotID(spec.VersionID)
+	if !isSnap {
+		var err error
+		if dir, archive, err = versionRoot(spec.VersionID); err != nil {
+			return res, err
+		}
 	}
 	paths := make([]string, 0, len(spec.Paths))
 	for _, p := range spec.Paths {
@@ -168,6 +172,11 @@ func (e *Engine) runRestore(ctx context.Context, j *job) (Result, error) {
 	}
 	j.phase(stepRestore, "backup.phase.transfer")
 	c := &restoreCounter{}
+	if isSnap {
+		err := e.restoreSnapshot(rctx, j, dest, snap, paths, tgt, tf, guard, spec, c)
+		fillRestoreResult(&res, c)
+		return res, err
+	}
 	if archive != "" {
 		src, err := dest.fsAt(rctx, "", fsOpts{})
 		if err != nil {
@@ -373,7 +382,20 @@ func (e *Engine) restoreArchive(ctx context.Context, j *job, src fs.Fs, archive,
 		return err
 	}
 	defer closer()
-	x := &extractor{e: e, j: j, tgt: tgt, tf: tf, guard: guard, spec: spec, c: c, links: map[string]string{}, safeDirs: map[string]bool{}}
+	x := e.newExtractor(j, tgt, tf, guard, spec, c)
+	if err := x.extractAll(ctx, tr, paths); err != nil {
+		return err
+	}
+	return x.finishDirs()
+}
+
+func (e *Engine) newExtractor(j *job, tgt *target, tf fs.Fs, guard *mountGuard, spec RestoreSpec, c *restoreCounter) *extractor {
+	return &extractor{e: e, j: j, tgt: tgt, tf: tf, guard: guard, spec: spec, c: c, links: map[string]string{}, safeDirs: map[string]bool{}}
+}
+
+// extractAll extracts the members of tr that paths select.
+func (x *extractor) extractAll(ctx context.Context, tr *tar.Reader, paths []string) error {
+	j, c := x.j, x.c
 	for {
 		if err := ctx.Err(); err != nil {
 			return context.Cause(ctx)
@@ -399,7 +421,7 @@ func (e *Engine) restoreArchive(ctx context.Context, j *job, src fs.Fs, archive,
 			return err
 		}
 	}
-	return x.finishDirs()
+	return nil
 }
 
 // extractor writes archive members to a restore target.

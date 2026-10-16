@@ -87,8 +87,12 @@ type EngineCap struct {
 	Rclone    string `json:"rclone"`
 }
 
-// ResticCap is reserved for v1.1; v1 always reports available=false,
-// installable=false.
+// ResticMin is the oldest restic versioned backups work with (REST over a
+// unix socket, --insecure-no-password); the installer pins a newer one.
+const ResticMin = "0.17.0"
+
+// ResticCap says whether versioned backups can run: the installer ships
+// restic (installable stays false: it comes with NivaroOS, not on demand).
 type ResticCap struct {
 	Available   bool   `json:"available"`
 	Version     string `json:"version"`

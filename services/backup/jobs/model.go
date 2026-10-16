@@ -38,17 +38,25 @@ const (
 	EPCloud  = engine.EPCloud
 )
 
-// JobType is what a job does. v1.1 adds "backup" (restic), later "twoway".
+// JobType is what a job does. Later: "twoway".
 type JobType string
 
 const (
 	TypeCopy    JobType = "copy"    // copy new/changed files, never delete at the destination
 	TypeMirror  JobType = "mirror"  // exact copy, deleted/replaced files kept in the recycle folder
 	TypeArchive JobType = "archive" // one .tar.zst per run, keep last N
+	// TypeBackup is a versioned, deduplicated backup (restic): every run
+	// is a snapshot, unchanged data is stored once.
+	TypeBackup JobType = "backup"
 )
 
-// Valid reports whether t is a v1 job type.
-func (t JobType) Valid() bool { return t == TypeCopy || t == TypeMirror || t == TypeArchive }
+// Valid reports whether t is a known job type.
+func (t JobType) Valid() bool {
+	return t == TypeCopy || t == TypeMirror || t == TypeArchive || t == TypeBackup
+}
+
+// multiSource reports a type that takes 1..MaxArchiveSources sources.
+func (t JobType) multiSource() bool { return t == TypeArchive || t == TypeBackup }
 
 // Preset prefixes of Endpoint.Preset.
 const (
@@ -442,6 +450,9 @@ const (
 	DefaultChangePct        = 30
 	DefaultVersionsDays     = 30
 	DefaultKeepLast         = 8
+	DefaultKeepDaily        = 7 // backup (restic forget)
+	DefaultKeepWeekly       = 4
+	DefaultKeepMonthly      = 12
 	DefaultWaitMaxMin       = 360
 	DefaultMaxDurationSec   = 86400
 	DefaultHookTimeoutSec   = 300

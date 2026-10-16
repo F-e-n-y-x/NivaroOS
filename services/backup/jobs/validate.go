@@ -99,9 +99,9 @@ func NormalizeJob(in Job, env ValidateEnv) (Job, map[string]string) {
 	switch {
 	case len(j.Sources) == 0:
 		fe.add("sources", FieldRequired)
-	case j.Type == TypeArchive && len(j.Sources) > MaxArchiveSources:
+	case j.Type.multiSource() && len(j.Sources) > MaxArchiveSources:
 		fe.add("sources", FieldTooMany)
-	case j.Type != TypeArchive && j.Type.Valid() && len(j.Sources) != 1:
+	case !j.Type.multiSource() && j.Type.Valid() && len(j.Sources) != 1:
 		fe.add("sources", FieldTooMany)
 	}
 	for i := range j.Sources {
@@ -123,6 +123,9 @@ func NormalizeJob(in Job, env ValidateEnv) (Job, map[string]string) {
 		fe.add("type", ErrAppdataCloudNeedsArchive)
 	}
 	checkConfigSource(j, fe)
+	if j.Type == TypeBackup {
+		normalizeBackupType(&j, fe)
+	}
 
 	// Triggers.
 	if j.Triggers == nil {
@@ -230,11 +233,21 @@ func NormalizeJob(in Job, env ValidateEnv) (Job, map[string]string) {
 			fe.add("retention.versions_days", FieldOutOfRange)
 		}
 	case TypeArchive:
-		r.VersionsDays = 0
+		r.VersionsDays, r.KeepDaily, r.KeepWeekly, r.KeepMonthly = 0, 0, 0, 0
 		if r.KeepLast == 0 {
 			r.KeepLast = DefaultKeepLast
 		} else if r.KeepLast < 1 || r.KeepLast > maxKeepLast {
 			fe.add("retention.keep_last", FieldOutOfRange)
+		}
+	case TypeBackup:
+		r.VersionsDays = 0
+		if *r == (Retention{}) {
+			r.KeepDaily, r.KeepWeekly, r.KeepMonthly = DefaultKeepDaily, DefaultKeepWeekly, DefaultKeepMonthly
+		}
+		for f, v := range map[string]int{"keep_last": r.KeepLast, "keep_daily": r.KeepDaily, "keep_weekly": r.KeepWeekly, "keep_monthly": r.KeepMonthly} {
+			if v < 0 || v > maxKeepSnapshots {
+				fe.add("retention."+f, FieldOutOfRange)
+			}
 		}
 	default:
 		*r = Retention{}
@@ -459,7 +472,7 @@ func checkNotInside(src, dst Endpoint, f Filters, field string, fe fieldErrors) 
 // links that cloud storage can't, so toward a cloud they may only be
 // archived (spec §6.3 check 6).
 func needsArchiveForDest(j Job) bool {
-	if j.Type == TypeArchive || j.Dest.Kind != EPCloud {
+	if j.Type.multiSource() || j.Dest.Kind != EPCloud {
 		return false
 	}
 	for _, s := range j.Sources {
@@ -468,6 +481,31 @@ func needsArchiveForDest(j Job) bool {
 		}
 	}
 	return false
+}
+
+// maxKeepSnapshots bounds each restic keep rule.
+const maxKeepSnapshots = 1000
+
+// normalizeBackupType applies what restic can do: it reads local folders
+// (not network shares or clouds), takes exclude rules only, and has no
+// {a,b} alternatives in its patterns.
+func normalizeBackupType(j *Job, fe fieldErrors) {
+	for i, s := range j.Sources {
+		if s.Kind != EPVolume && s.Kind != EPUSB && s.Kind != EPMerge {
+			fe.add(fmt.Sprintf("sources[%d].kind", i), FieldInvalid)
+		}
+	}
+	if len(j.Filters.Include) > 0 {
+		fe.add("filters.include", FieldInvalid)
+	}
+	for i, g := range j.Filters.Exclude {
+		if strings.ContainsAny(g, "{}") {
+			fe.add(fmt.Sprintf("filters.exclude[%d]", i), FieldInvalid)
+		}
+	}
+	if engine.Restic() == "" {
+		fe.add("type", ErrResticMissing)
+	}
 }
 
 // triggerVolume is the volume a volume_mounted trigger watches: its own

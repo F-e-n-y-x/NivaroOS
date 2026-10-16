@@ -104,6 +104,8 @@ func runSteps(j Job, r RunRow) []RunStep {
 		add(PhaseTransfer, "backup.run.step.restore", nil, -1)
 	case j.Type == TypeArchive:
 		add(PhaseTransfer, "backup.run.step.archive", nil, -1)
+	case j.Type == TypeBackup:
+		add(PhaseTransfer, "backup.run.step.snapshot", nil, -1)
 	default:
 		add(PhaseTransfer, "backup.run.step.transfer", nil, -1)
 	}
@@ -116,6 +118,8 @@ func runSteps(j Job, r RunRow) []RunStep {
 			add(PhasePrune, "backup.run.step.prune", map[string]interface{}{"days": j.Retention.VersionsDays}, -1)
 		case j.Type == TypeArchive && j.Retention.KeepLast > 0:
 			add(PhasePrune, "backup.run.step.prune_keep", map[string]interface{}{"keep": j.Retention.KeepLast}, -1)
+		case j.Type == TypeBackup && j.Retention != (Retention{}):
+			add(PhasePrune, "backup.run.step.forget", nil, -1)
 		}
 	}
 	if withHooks {

@@ -243,7 +243,7 @@ func (s *Service) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 	caps := Capabilities{
 		Version: s.cfg.Version, Timezone: tz, UTCOffset: off, ClockArmed: isArmed(s.clock),
 		MaxConcurrent: settings.MaxConcurrent,
-		Restic:        ResticCap{Path: "/usr/lib/nivaroos/bin/restic", Min: "0.14.0"},
+		Restic:        ResticCap{Path: engine.ResticPath, Min: ResticMin, Available: engine.Restic() != ""},
 	}
 	if p := engine.SevenZip(); p != "" {
 		caps.SevenZip = SevenZipCap{Available: true, Path: p}
@@ -1071,8 +1071,9 @@ func (s *Service) handleVersions(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, http.StatusOK, vers)
 }
 
-// versionIDRe: "current", "v_<ts>" or "a_<archive file name>".
-var versionIDRe = regexp.MustCompile(`^(current|v_[0-9]{8}T[0-9]{6}Z|a_[^/\\\x00]{1,255})$`)
+// versionIDRe: "current", "v_<ts>", "a_<archive file name>" or
+// "s_<restic snapshot id>".
+var versionIDRe = regexp.MustCompile(`^(current|v_[0-9]{8}T[0-9]{6}Z|a_[^/\\\x00]{1,255}|s_[0-9a-f]{8,64})$`)
 
 func (s *Service) handleVersionBrowse(w http.ResponseWriter, r *http.Request) {
 	j, err := s.store.GetJob(r.PathValue("id"))
