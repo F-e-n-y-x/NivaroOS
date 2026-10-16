@@ -210,6 +210,13 @@ fi
 if ! without backup; then
 	gobuild backup services/backup nivaroos-backup
 	put backup 0644 "$(unitsrc backup nivaroos-backup.service)" /usr/lib/systemd/system/nivaroos-backup.service
+	# restic for versioned backups (job type "backup"), pinned and built
+	# from source, verified by the Go checksum database. The engine looks
+	# for it at /usr/lib/nivaroos/bin/restic (engine.ResticPath).
+	RESTIC_VERSION=v0.19.1
+	echo "build: restic $RESTIC_VERSION"
+	(cd "$OUT" && CGO_ENABLED=0 GOBIN="$OUT/.bin" go install "github.com/restic/restic/cmd/restic@$RESTIC_VERSION")
+	put backup 0755 "$OUT/.bin/restic" /usr/lib/nivaroos/bin/restic
 	component backup /usr/bin/nivaroos-backup nivaroos-backup.service
 fi
 

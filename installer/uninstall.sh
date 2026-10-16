@@ -394,7 +394,7 @@ remove_files() {
 	fi
 	rm -f /usr/bin/nivaroos /usr/bin/nivaroos.* /usr/bin/nivaroos-* /usr/bin/casaos-cli \
 		/usr/local/bin/nivaroos /usr/local/bin/nivaroos-* /usr/local/bin/nivaroos-gpu-driver-install.sh
-	rm -rf /usr/local/lib/nivaroos /usr/share/nivaroos /etc/nivaroos /var/log/nivaroos /run/nivaroos /var/run/nivaroos /opt/nivaroos /var/lib/casaos
+	rm -rf /usr/local/lib/nivaroos /usr/lib/nivaroos /usr/share/nivaroos /etc/nivaroos /var/log/nivaroos /run/nivaroos /var/run/nivaroos /opt/nivaroos /var/lib/casaos
 	if [ "$DEL_APPS" = yes ] || [ ! -d "$APPS_DIR" ]; then
 		rm -rf /var/lib/nivaroos
 	else

@@ -1495,7 +1495,7 @@ remove_backup_module() {
 	fi
 	systemctl disable nivaroos-backup.service >/dev/null 2>&1 || true
 	rm -f /usr/bin/nivaroos-backup /usr/lib/systemd/system/nivaroos-backup.service \
-		/etc/systemd/system/nivaroos-backup.service.d/20-nivaroos-memory.conf
+		/etc/systemd/system/nivaroos-backup.service.d/20-nivaroos-memory.conf /usr/lib/nivaroos/bin/restic
 	systemctl daemon-reload >/dev/null 2>&1 || true
 	success "Backup & Sync removed."
 }
