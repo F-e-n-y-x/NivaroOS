@@ -63,7 +63,6 @@
     "vue-dompurify-html": "^5.3.0",
     "vue-i18n": "^11.4.13",
     "vue-router": "^4.6.4",
-    "vue-smooth-reflow": "^0.1.12",
     "vuedraggable": "^4.1.0",
     "vuex": "^4.1.0",
     "yaml": "^2.8.1"

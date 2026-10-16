@@ -120,7 +120,7 @@
 </template>
 
 <script>
-import smoothReflow from "vue-smooth-reflow";
+import smoothReflow from '@/mixins/smoothReflow'
 import orderBy from "lodash/orderBy";
 import slice from "lodash/slice";
 import { mixin } from "@/mixins/mixin";

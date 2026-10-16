@@ -50,7 +50,7 @@
 
 <script>
 import lottie from 'lottie-web/build/player/lottie_light'
-import smoothReflow from 'vue-smooth-reflow'
+import smoothReflow from '@/mixins/smoothReflow'
 import formChecks, { firstError, minLength, required, sameAs } from '@/mixins/formChecks'
 import doneAnimation from '@/assets/ani/done.json'
 
