@@ -12,6 +12,8 @@ export default antfu(
     unocss: false,
     markdown: true,
     stylistic: { indent: 'tab', quotes: 'single', semi: false },
+    // Newer than this config's rule set; off to keep the rules as they were.
+    e18e: false,
   },
   { files: ['**/*.json'], rules: { 'jsonc/indent': ['error', 2] } },
   {
@@ -30,7 +32,10 @@ export default antfu(
       'prefer-template': 'off',
       'object-shorthand': 'off',
       'sort-imports': 'off',
-      'import/order': 'off',
+      'perfectionist/sort-imports': 'off',
+      'perfectionist/sort-named-imports': 'off',
+      // main.js awaits the locale before mounting, on purpose.
+      'antfu/no-top-level-await': 'off',
       'unicorn/number-literal-case': 'off',
       'unicorn/prefer-number-properties': 'off',
       'test/consistent-test-it': 'off',

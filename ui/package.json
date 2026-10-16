@@ -67,10 +67,10 @@
     "yaml": "^2.8.1"
   },
   "devDependencies": {
-    "@antfu/eslint-config": "^2.27.3",
+    "@antfu/eslint-config": "^8.3.0",
     "@trivago/prettier-plugin-sort-imports": "^4.3.0",
     "@vitejs/plugin-vue": "^6.0.9",
-    "eslint": "8.57.1",
+    "eslint": "9.39.5",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.2.1",
     "jsdom": "^27",
@@ -90,7 +90,8 @@
       "fast-uri": "^3.1.7",
       "source-map-js": "^1.2.2",
       "brace-expansion@>=2 <2.1.7": "^2.1.7",
-      "brace-expansion@>=5 <5.0.12": "^5.0.12"
+      "brace-expansion@>=5 <5.0.12": "^5.0.12",
+      "katex@<0.18.2": "^0.18.2"
     }
   }
 }

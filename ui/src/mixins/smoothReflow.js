@@ -31,7 +31,9 @@ export default {
 	methods: {
 		$smoothReflow({ el, property = 'height' }) {
 			const s = { sel: el, props: [].concat(property), el: null, before: null, active: false }
-			s.onEnd = (e) => { if (e.target === s.el && s.props.includes(e.propertyName)) stop(s) }
+			s.onEnd = (e) => {
+				if (e.target === s.el && s.props.includes(e.propertyName)) stop(s)
+			}
 			;(this._smoothReflow ||= []).push(s)
 		},
 	},

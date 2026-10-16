@@ -131,7 +131,7 @@ export default {
 				let parsed = message
 				try {
 					parsed = JSON.parse(message).message
-				} catch (err) {
+				} catch {
 					// not JSON - keep the raw text
 				}
 				const t = tracked(e)

@@ -165,7 +165,9 @@ export default {
 			if (!file) return
 			this.isUpLoading = true
 			// Refreshes the session first if the token expired.
-			this.$api.sys.getVersion().then(() => this.uploader.add([file], { targetPath: galleryPath }), () => { this.isUpLoading = false })
+			this.$api.sys.getVersion().then(() => this.uploader.add([file], { targetPath: galleryPath }), () => {
+				this.isUpLoading = false
+			})
 		},
 		applyWallpaper(path, from) {
 			let cleanPath = path

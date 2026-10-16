@@ -5,24 +5,45 @@ import { createUploader } from './chunkUploader'
 // Fake XHR: every request waits in `reqs` until the test answers it.
 let reqs
 class FakeXHR {
-	constructor() { this.upload = {}; this.headers = {}; reqs.push(this) }
-	open(method, url) { this.method = method; this.url = url }
+	constructor() {
+		this.upload = {}
+		this.headers = {}
+		reqs.push(this)
+	}
+
+	open(method, url) {
+		this.method = method
+		this.url = url
+	}
+
 	setRequestHeader(k, v) { this.headers[k] = v }
 	send(body) { this.body = body }
 	abort() { this.aborted = true }
-	reply(status, text = '') { this.status = status; this.responseText = text; this.onload() }
-	drop() { this.status = 0; this.responseText = ''; this.onerror() }
+	reply(status, text = '') {
+		this.status = status
+		this.responseText = text
+		this.onload()
+	}
+
+	drop() {
+		this.status = 0
+		this.responseText = ''
+		this.onerror()
+	}
+
 	get fields() { return this.method === 'GET' ? Object.fromEntries(new URL(this.url, 'http://x').searchParams) : Object.fromEntries([...this.body].filter(([k]) => k !== 'file')) }
 }
 const pending = () => reqs.filter((r) => r.status === undefined && !r.aborted)
-const flush = () => new Promise((r) => setTimeout(r, 0))
 
 beforeEach(() => {
 	reqs = []
 	vi.stubGlobal('XMLHttpRequest', FakeXHR)
 	vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true })))
 })
-afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
+afterEach(() => {
+	vi.unstubAllGlobals()
+	vi.useRealTimers()
+})
 
 const make = (o = {}) => {
 	const cb = { success: [], error: [], complete: 0 }
@@ -136,8 +157,8 @@ describe('chunkUploader', () => {
 
 	test('progress follows the bytes sent and never goes backwards', () => {
 		vi.useFakeTimers()
-		const { up } = make({ testChunks: false, simultaneous: 1, onProgress: (e) => seen.push(e.progress) })
 		const seen = []
+		const { up } = make({ testChunks: false, simultaneous: 1, onProgress: (e) => seen.push(e.progress) })
 		const [e] = up.add([new File(['abcdefgh'], 'p')], { targetPath: '/d' })
 		vi.advanceTimersByTime(600)
 		pending()[0].upload.onprogress({ lengthComputable: true, loaded: 50, total: 100 })

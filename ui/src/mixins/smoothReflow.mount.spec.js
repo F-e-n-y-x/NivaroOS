@@ -20,12 +20,16 @@ function mount() {
 }
 
 describe('smoothReflow mixin', () => {
-	afterEach(() => { rows.value = 1; vi.unstubAllGlobals() })
+	afterEach(() => {
+		rows.value = 1
+		vi.unstubAllGlobals()
+	})
 
 	test('a content change animates from the old height to the new one, then cleans up', async () => {
 		const { app, box } = mount()
 		rows.value = 3
-		await nextTick(); await nextTick()
+		await nextTick()
+		await nextTick()
 		expect(box.style.height).toBe('30px')
 		expect(box.style.transition).toContain('height .5s')
 		expect(box.style.overflow).toBe('hidden')
@@ -39,7 +43,8 @@ describe('smoothReflow mixin', () => {
 		vi.stubGlobal('matchMedia', (q) => ({ matches: q.includes('reduce') }))
 		const { app, box } = mount()
 		rows.value = 3
-		await nextTick(); await nextTick()
+		await nextTick()
+		await nextTick()
 		expect(box.style.height).toBe('')
 		expect(box.style.transition).toBe('')
 		app.unmount()

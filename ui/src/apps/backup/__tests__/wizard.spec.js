@@ -123,7 +123,7 @@ describe('validation matches the server rules', () => {
 		expect(validateDraft(validDraft({ sources: [] })).sources).toBe('required')
 		expect(validateDraft(validDraft({ sources: [tower, immich] })).sources).toBe('too_many')
 		expect(validateDraft(validDraft({ type: 'archive', sources: [tower, immich] })).sources).toBeUndefined()
-		expect(validateDraft(validDraft({ type: 'archive', sources: Array(17).fill(tower) })).sources).toBe('too_many')
+		expect(validateDraft(validDraft({ type: 'archive', sources: Array.from({ length: 17 }).fill(tower) })).sources).toBe('too_many')
 	})
 
 	test('sub-paths may not climb or be absolute', () => {
