@@ -13,7 +13,7 @@ import (
 // network_model/privileged it was sent - host networking or privileged
 // mode (root on this server) needs the admin's explicit OK here too.
 func TestUpdateSettingHostAccessNeedsConfirmation(t *testing.T) {
-	for _, body := range []string{`{"network_model":"host"}`, `{"privileged":true}`} {
+	for _, body := range []string{`{"network_model":"host"}`, `{"privileged":true}`, `{"cap_add":["SYS_ADMIN"]}`, `{"volumes":[{"host":"/var/run/docker.sock","container":"/var/run/docker.sock"}]}`, `{"devices":[{"host":"/dev/sda","container":"/dev/sda"}]}`} {
 		r := httptest.NewRequest(http.MethodPut, "/v1/container/x", strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()

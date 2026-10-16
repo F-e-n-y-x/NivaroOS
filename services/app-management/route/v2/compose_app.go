@@ -175,7 +175,7 @@ func (a *AppManagement) ApplyComposeAppSettings(ctx *echo.Context, id codegen.Co
 		})
 	}
 
-	if refused, err := refuseHostAccess(ctx, newComposeApp, composeApp); refused {
+	if refused, err := refuseHostAccess(ctx, buf, newComposeApp, composeApp); refused {
 		return err
 	}
 
@@ -294,7 +294,7 @@ func (a *AppManagement) InstallComposeApp(ctx *echo.Context, params codegen.Inst
 		})
 	}
 
-	if refused, err := refuseHostAccess(ctx, composeApp, nil); refused {
+	if refused, err := refuseHostAccess(ctx, buf, composeApp, nil); refused {
 		return err
 	}
 
@@ -443,7 +443,10 @@ func (a *AppManagement) UpdateComposeApp(ctx *echo.Context, id codegen.ComposeAp
 
 	backgroundCtx := common.WithProperties(context.Background(), PropertiesFromQueryParams(ctx))
 
-	if err := composeApp.Update(backgroundCtx); err != nil {
+	if err := composeApp.Update(backgroundCtx, ctx.QueryParam(allowHostAccessParam) == "true"); err != nil {
+		if held, ok := errors.AsType[*service.UpdateNeedsApproval](err); ok {
+			return needHostAccessOK(ctx, held.Error(), held.Reasons)
+		}
 		logger.Error("failed to update compose app", zap.Error(err), zap.String("appID", id))
 		message := err.Error()
 		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})

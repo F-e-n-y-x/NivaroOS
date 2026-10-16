@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -587,8 +588,16 @@ func (m *ContainerUpdateManager) UpdateAndRecreateContainer(ctx context.Context,
 		if err == nil {
 			if composeApp != nil {
 				if storeInfo, _ := composeApp.StoreInfo(true); storeInfo != nil && storeInfo.StoreAppID != nil && *storeInfo.StoreAppID != "" {
-					if updateErr := composeApp.Update(ctx); updateErr == nil {
+					if updateErr := composeApp.Update(ctx, false); updateErr == nil {
 						updatedViaCompose = true
+					} else if errors.Is(updateErr, ErrUpdateNeedsApproval) {
+						// Keep the current version: recreating would pull
+						// its tag again and still not be the approved one.
+						go PublishEventWrapper(ctx, common.EventTypeAppApplyChangesError, map[string]string{
+							common.PropertyTypeAppName.Name: name,
+							common.PropertyTypeMessage.Name: updateErr.Error(),
+						})
+						return nil, false, updateErr
 					} else {
 						logger.Info("compose app update failed, falling back to recreate container", zap.Error(updateErr), zap.String("name", projectName))
 					}

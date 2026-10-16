@@ -23,6 +23,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/systemctl"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/termsession"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/wsterm"
+	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/containerd/errdefs"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v5"
@@ -387,11 +388,11 @@ func UpdateSetting(ctx *echo.Context) error {
 	if err := ctx.Bind(&m); err != nil {
 		return ctx.JSON(http.StatusBadRequest, modelCommon.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})
 	}
-	// Host networking (the host's loopback, which NivaroOS's APIs trust) or
-	// privileged mode is root on this server: only with the admin's OK, as
-	// for compose installs (audit H1).
-	if (m.NetworkModel == "host" || m.Privileged) && ctx.QueryParam("allow_host_access") != "true" {
-		return ctx.JSON(http.StatusPreconditionRequired, modelCommon.Result{Success: common_err.INVALID_PARAMS, Message: "This container gets full (root) access to the server (host network or privileged). Confirm with allow_host_access=true."})
+	// Access that is root on this server (host network, privileged, the
+	// Docker socket, /etc...) only with the admin's OK, as for compose
+	// installs (audit H1).
+	if why := service.ServiceHostAccess(settingAccess(m)); len(why) > 0 && ctx.QueryParam("allow_host_access") != "true" {
+		return ctx.JSON(http.StatusPreconditionRequired, modelCommon.Result{Success: common_err.INVALID_PARAMS, Message: "This container gets full (root) access to the server (" + strings.Join(why, ", ") + "). Confirm with allow_host_access=true.", Data: map[string]any{"host_access": why}})
 	}
 
 	if err := service.MyService.Docker().StopContainer(id); err != nil {
@@ -911,4 +912,17 @@ func CheckAllContainersUpdate(ctx *echo.Context) error {
 		Message: "Checked all containers for updates",
 		Data:    containers,
 	})
+}
+
+// settingAccess: the parts of a legacy settings change that decide host
+// access, as a compose service for the shared check.
+func settingAccess(m model.CustomizationPostData) types.ServiceConfig {
+	s := types.ServiceConfig{NetworkMode: m.NetworkModel, Privileged: m.Privileged, CapAdd: m.CapAdd}
+	for _, v := range m.Volumes {
+		s.Volumes = append(s.Volumes, types.ServiceVolumeConfig{Type: types.VolumeTypeBind, Source: v.Path, Target: v.ContainerPath})
+	}
+	for _, d := range m.Devices {
+		s.Devices = append(s.Devices, types.DeviceMapping{Source: d.Path, Target: d.ContainerPath})
+	}
+	return s
 }

@@ -205,7 +205,11 @@ func (a *ComposeApp) SetTitle(title, lang string) {
 	}
 }
 
-func (a *ComposeApp) Update(ctx context.Context) error {
+// Update moves a to the store's images. A store version that wants
+// access to the server the installed one doesn't have (newStoreAccess) is
+// not applied: Update returns *UpdateNeedsApproval and notifies the owner,
+// unless allowNewAccess (the admin's OK), which also grants that access.
+func (a *ComposeApp) Update(ctx context.Context, allowNewAccess bool) error {
 	if len(a.ComposeFiles) <= 0 {
 		return ErrComposeFileNotFound
 	}
@@ -249,6 +253,14 @@ func (a *ComposeApp) Update(ctx context.Context) error {
 	// build the new compose on a copy: `a` must keep describing what is
 	// running now, because a failed update rolls back to it.
 	updated := a.withServices(updatedServiceImages(a.Services, storeComposeApp.Services))
+	if wants := newStoreAccess(a, storeComposeApp); len(wants) > 0 {
+		if !allowNewAccess {
+			return holdUpdate(a.Name, wants)
+		}
+		for name, s := range updated.Services {
+			updated.Services[name] = grantStoreAccess(s, storeComposeApp.Services[name])
+		}
+	}
 
 	// the code is need by stable diffusion.
 	removeRuntime(updated)
@@ -1415,23 +1427,4 @@ func (a *ComposeApp) SetUncontrolled(uncontrolled bool) error {
 	}
 
 	return nil
-}
-
-// HostAccess says why a would get root-equivalent access to this server
-// ("<service>: <reason>", sorted), or nil: network_mode host puts it on the
-// host's loopback, which NivaroOS's APIs trust (audit H1), and privileged
-// is root outright. Installing such an app needs the admin's explicit OK.
-func (a *ComposeApp) HostAccess() []string {
-	var why []string
-	for _, name := range lo.Keys(a.Services) {
-		s := a.Services[name]
-		if s.NetworkMode == "host" {
-			why = append(why, name+": host network")
-		}
-		if s.Privileged {
-			why = append(why, name+": privileged")
-		}
-	}
-	sort.Strings(why)
-	return why
 }
