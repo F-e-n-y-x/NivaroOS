@@ -10,6 +10,8 @@
 //	nivaroos-backup [flags] release-scheduled-tasks  hand imported Scheduled
 //	                                                 Tasks back to core (the
 //	                                                 uninstaller runs this)
+//	nivaroos-backup config-restore -file <backup>    restore NivaroOS settings
+//	                                                 (install.sh --restore)
 package main
 
 import (
@@ -35,6 +37,8 @@ const version = "1.0.0"
 
 type options struct {
 	addr, dataDir, runtimePath, coreDB, rcloneConfig string
+	configRoot, configJobDest                        string
+	configJob                                        bool
 }
 
 func main() {
@@ -45,10 +49,17 @@ func main() {
 	fs.StringVar(&o.runtimePath, "runtime-path", "/var/run/nivaroos", "NivaroOS runtime directory (for locating user-service's JWKS endpoint and the other services)")
 	fs.StringVar(&o.coreDB, "core-db", "", "core's database, read-only, for the credentials of saved network shares (default: DBPath from /etc/nivaroos/casaos.conf + /db/casaOS.db)")
 	fs.StringVar(&o.rcloneConfig, "rclone-config", "", "rclone config file (default: rclone's own default, the file local-storage maintains)")
+	fs.BoolVar(&o.configJob, "config-job", true, "create the default daily \""+jobs.DefaultConfigJobName+"\" backup once")
+	fs.StringVar(&o.configJobDest, "config-job-dest", jobs.DefaultConfigJobDest, "where the default settings backup goes")
+	fs.StringVar(&o.configRoot, "config-root", "/", "the root NivaroOS settings are backed up from and restored to")
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	fs.Usage = func() {
-		fmt.Fprintf(fs.Output(), "usage: nivaroos-backup [flags]\n       nivaroos-backup [flags] %s\n\nflags:\n", jobs.ReleaseScheduledTasksCmd)
+		fmt.Fprintf(fs.Output(), "usage: nivaroos-backup [flags]\n       nivaroos-backup [flags] %s\n       nivaroos-backup %s -file <backup.7z.001> [-yes] (see %s -h)\n\nflags:\n",
+			jobs.ReleaseScheduledTasksCmd, jobs.ConfigRestoreCmd, jobs.ConfigRestoreCmd)
 		fs.PrintDefaults()
+	}
+	if len(os.Args) > 1 && os.Args[1] == jobs.ConfigRestoreCmd {
+		os.Exit(jobs.RunConfigRestore(os.Args[2:], os.Stdin, os.Stdout))
 	}
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		if err == flag.ErrHelp {
@@ -94,7 +105,8 @@ func serve(o options) error {
 
 	svc, err := jobs.New(jobs.Config{
 		DataDir: o.dataDir, RuntimePath: o.runtimePath, Version: version, Engine: eng,
-		SMB: &jobs.CoreDBSMB{Path: o.coreDB},
+		SMB:       &jobs.CoreDBSMB{Path: o.coreDB},
+		ConfigJob: o.configJob, ConfigJobDest: o.configJobDest, ConfigRoot: o.configRoot,
 	})
 	if svc == nil {
 		return err

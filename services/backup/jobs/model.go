@@ -56,6 +56,10 @@ const (
 	PresetAppData = "appdata:" // + app name
 	PresetVM      = "vm:"      // + VM name
 	PresetShare   = "share:"   // + share id
+	// PresetConfig is a whole preset, not a prefix: this server's NivaroOS
+	// settings (configbundle.go), staged fresh before every run. Only on an
+	// encrypted archive job, as its only source.
+	PresetConfig = "nivaroos-config"
 )
 
 // TriggerKind is what starts a job.

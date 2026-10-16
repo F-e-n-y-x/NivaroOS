@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/backup/engine"
 	"github.com/F-e-n-y-x/NivaroOS/services/backup/engine/enginetest"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 )
 
 // Test doubles for everything the job side talks to, and a harness that
@@ -27,6 +29,9 @@ import (
 // notes) out of a plain `go test`; -v shows them.
 func TestMain(m *testing.M) {
 	flag.Parse()
+	// Loopback requests stand for local automation as on a box without
+	// the strict marker, whatever this host's /etc/nivaroos has.
+	middleware.LocalStrictPath = filepath.Join(os.TempDir(), "nivaroos-no-strict-marker")
 	if !testing.Verbose() {
 		log.SetOutput(io.Discard)
 	}

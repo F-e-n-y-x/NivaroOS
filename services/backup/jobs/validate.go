@@ -122,6 +122,7 @@ func NormalizeJob(in Job, env ValidateEnv) (Job, map[string]string) {
 	if needsArchiveForDest(j) {
 		fe.add("type", ErrAppdataCloudNeedsArchive)
 	}
+	checkConfigSource(j, fe)
 
 	// Triggers.
 	if j.Triggers == nil {
@@ -333,6 +334,9 @@ func normalizeEndpoint(ep *Endpoint, field string, fe fieldErrors) {
 }
 
 func validPreset(p string) bool {
+	if p == PresetConfig {
+		return true
+	}
 	for _, prefix := range []string{PresetData, PresetAppData, PresetVM, PresetShare} {
 		if name, ok := strings.CutPrefix(p, prefix); ok {
 			return name != "" && len(name) <= 255 && !strings.ContainsAny(name, "/\x00")

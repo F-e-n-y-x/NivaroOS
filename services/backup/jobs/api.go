@@ -57,6 +57,11 @@ func (s *Service) Handler() http.Handler {
 		// /devices/{id}/* take the device token (devices.go); the owner's
 		// routes there (and the reads both may use) take the JWT when the
 		// bearer isn't a device token.
+		// The Welcome screen restores settings before any account exists.
+		if strings.HasPrefix(r.URL.Path, "/config-restore/") && r.Method == http.MethodPost && s.freshInstall(r.Context()) {
+			api.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), callerKey{}, Caller{User: "setup"})))
+			return
+		}
 		if id, scoped, bad := deviceScope(r.URL.Path); bad {
 			writeError(w, http.StatusNotFound, ErrorBody{ErrorCode: ErrNotFound, Detail: r.Method + " " + r.URL.Path})
 			return
@@ -88,6 +93,9 @@ func (s *Service) routes(m *http.ServeMux) {
 	m.HandleFunc("POST /jobs/{id}/run", s.handleJobRun)
 	m.HandleFunc("POST /jobs/{id}/reconnect-dest", s.handleReconnectDest)
 	m.HandleFunc("POST /jobs/{id}/encryption/test", s.handleEncryptionTest)
+	m.HandleFunc("GET /jobs/{id}/settings-key", s.handleConfigKey)
+	m.HandleFunc("POST /config-restore/open", s.handleConfigRestoreOpen)
+	m.HandleFunc("POST /config-restore/apply", s.handleConfigRestoreApply)
 	m.HandleFunc("GET /jobs/{id}/versions", s.handleVersions)
 	m.HandleFunc("GET /jobs/{id}/versions/{vid}/browse", s.handleVersionBrowse)
 	m.HandleFunc("POST /jobs/{id}/restore", s.handleRestore)

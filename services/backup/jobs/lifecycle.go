@@ -325,6 +325,12 @@ func (x *runExec) requeueAt(at time.Time, head bool) execOutcome {
 // Backup and preview runs
 
 func (x *runExec) doBackup(ctx context.Context, firstStart bool) execOutcome {
+	if hasConfigSource(x.job) {
+		if code := x.stageConfig(ctx); code != "" {
+			return x.finishFailure(code)
+		}
+		defer x.unstageConfig()
+	}
 	if code := x.checkConditions(ctx); code != "" {
 		return x.unmet(code)
 	}

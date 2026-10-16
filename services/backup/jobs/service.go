@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/secret"
 )
 
 // Config wires a Service. Only DataDir and Engine are required; every
@@ -39,7 +41,16 @@ type Config struct {
 	// DeviceBackupRoot is where enrolled phones' backup folders go
 	// (default DefaultDeviceBackupRoot, /DATA/Backup).
 	DeviceBackupRoot string
-	Now              func() time.Time
+	// ConfigJob creates the default daily "NivaroOS settings" job once
+	// (configbundle.go), to ConfigJobDest (default DefaultConfigJobDest).
+	// ConfigRoot is the root the settings are read from and restored to
+	// (default "/"; tests: a temp folder).
+	ConfigJob     bool
+	ConfigJobDest string
+	ConfigRoot    string
+	// FreshInstall reports "no account yet" (default: user-service).
+	FreshInstall func(context.Context) bool
+	Now          func() time.Time
 	// MinStateFree is the free space DataDir's disk needs for a run to
 	// start (default 256 MiB; negative: no check).
 	MinStateFree int64
@@ -147,6 +158,11 @@ func New(cfg Config) (*Service, error) {
 		return s, err
 	}
 	s.store = st
+	if r := cfg.ConfigRoot; r != "" && filepath.Clean(r) != "/" {
+		// The host key belongs to the root being backed up (tests).
+		kp := filepath.Join(r, "etc/nivaroos/secret.key")
+		st.Secrets = func() (*secret.Box, error) { return secret.LoadOrCreate(kp) }
+	}
 	return s, nil
 }
 
@@ -201,6 +217,9 @@ func (s *Service) Start(ctx context.Context) error {
 	}
 	if err := s.queue.load(); err != nil {
 		return err
+	}
+	if s.cfg.ConfigJob {
+		s.ensureConfigJob(ctx)
 	}
 	if err := s.trig.start(ctx); err != nil {
 		return err
