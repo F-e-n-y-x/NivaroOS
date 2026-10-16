@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, test, vi } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
-import Buefy from '@ntohq/buefy-next'
+import UI from '@/ui'
 
 const feed = vi.hoisted(() => {
 	let list = []
@@ -28,7 +28,7 @@ describe('notification list', () => {
 		])
 		const el = document.createElement('div')
 		const app = createApp({ render: () => h(List) })
-		app.use(Buefy)
+		app.use(UI)
 		Object.assign(app.config.globalProperties, { $t: (s, a) => (a ? s.replace(/\{(\w+)\}/g, (_, k) => a[k]) : s), $store: { state: {}, getters: {}, commit() {} } })
 		app.mount(el)
 		await vi.advanceTimersByTimeAsync(2000)

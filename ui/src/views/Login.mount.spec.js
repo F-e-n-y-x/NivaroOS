@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, test, vi } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
-import Buefy from '@ntohq/buefy-next'
+import UI from '@/ui'
 import Login from './Login.vue'
 
 const tick = async () => { for (let i = 0; i < 4; i++) await nextTick() }
@@ -14,7 +14,7 @@ describe('Login', () => {
 		const el = document.createElement('div')
 		document.body.appendChild(el)
 		const app = createApp({ render: () => h(Login) })
-		app.use(Buefy)
+		app.use(UI)
 		Object.assign(app.config.globalProperties, {
 			$t: (s) => s,
 			$assetUrl: (s) => s,

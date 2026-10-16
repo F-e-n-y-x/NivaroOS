@@ -4,7 +4,7 @@
 import { describe, expect, test, vi } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 import { createStore } from 'vuex'
-import Buefy from '@ntohq/buefy-next'
+import UI from '@/ui'
 import mutations from '@/store/mutations'
 import { backupWindow } from '@/apps/backup/windows'
 import { appIdOf, dockClickTarget } from '@/utils/desktop/windowRegistry'
@@ -32,7 +32,7 @@ async function mountDock(pinned) {
 	const store = createStore({ state: { windows: [], nextWindowZIndex: 1, isMobile: false, isTablet: false }, mutations })
 	const el = document.createElement('div')
 	const app = createApp({ render: () => h(Dock) })
-	app.use(Buefy)
+	app.use(UI)
 	app.use(store)
 	Object.assign(app.config.globalProperties, {
 		$t: t,

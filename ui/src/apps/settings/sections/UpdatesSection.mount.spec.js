@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createApp, h } from 'vue'
-import Buefy from '@ntohq/buefy-next'
+import UI from '@/ui'
 import axios from 'axios'
 import UpdatesSection from './UpdatesSection.vue'
 
@@ -16,7 +16,7 @@ async function mount(versionData, release) {
 	else axios.get.mockRejectedValue(new Error('rate limited'))
 	const el = document.createElement('div')
 	app = createApp({ render: () => h(UpdatesSection) })
-	app.use(Buefy)
+	app.use(UI)
 	app.config.globalProperties.$t = s => s
 	app.config.globalProperties.$store = { commit() {} }
 	const ok = data => Promise.resolve({ data: { success: 200, data } })

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createApp, h } from 'vue'
-import Buefy from '@ntohq/buefy-next'
+import UI from '@/ui'
 import ServerUpdatePanel from './ServerUpdatePanel.vue'
 
 vi.mock('@/service/backup.js', () => ({ default: { listRuns: vi.fn(() => Promise.resolve({ runs: [] })) } }))
@@ -14,7 +14,7 @@ async function mount(state, extra = {}) {
 	requests = []
 	const el = document.createElement('div')
 	app = createApp({ render: () => h(ServerUpdatePanel) })
-	app.use(Buefy)
+	app.use(UI)
 	app.config.globalProperties.$t = (s, a) => (a ? s.replace(/\{(\w+)\}/g, (_, k) => a[k]) : s)
 	const ok = (data) => Promise.resolve({ data: { success: 200, data } })
 	app.config.globalProperties.$api = {

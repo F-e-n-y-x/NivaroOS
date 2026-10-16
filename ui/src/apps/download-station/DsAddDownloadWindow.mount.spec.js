@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, test, vi } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
-import Buefy from '@ntohq/buefy-next'
+import UI from '@/ui'
 
 vi.mock('@/api/downloadSidecar', async (orig) => ({
 	...(await orig()),
@@ -12,7 +12,7 @@ const { default: AddWindow } = await import('./DsAddDownloadWindow.vue')
 async function mount(props) {
 	const el = document.createElement('div')
 	const app = createApp({ render: () => h(AddWindow, props) })
-	app.use(Buefy)
+	app.use(UI)
 	app.config.globalProperties.$t = (s) => s
 	app.config.globalProperties.$store = { state: { windows: [] }, commit() {} }
 	app.mount(el)

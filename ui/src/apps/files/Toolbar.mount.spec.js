@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest'
 import { createApp, h, nextTick, reactive } from 'vue'
-import Buefy from '@ntohq/buefy-next'
+import UI from '@/ui'
 import Toolbar from './Toolbar.vue'
 
 globalThis.ResizeObserver ??= class {
@@ -19,7 +19,7 @@ describe('files toolbar', () => {
 		document.body.appendChild(el)
 		const props = reactive({ selectionSummary: null, selectedItems: [] })
 		const app = createApp({ render: () => h(Toolbar, props) })
-		app.use(Buefy)
+		app.use(UI)
 		app.provide('filesController', controller)
 		app.config.globalProperties.$t = (s) => s
 		app.config.globalProperties.$store = { state: { operateObject: null, viewMode: 'grid', showHidden: false } }

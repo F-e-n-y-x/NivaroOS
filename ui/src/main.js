@@ -9,13 +9,12 @@ import api from '@/service/api.js'
 import openAPI from '@/service/index.js'
 import { instance } from '@/service/service.js'
 import { createMessageBusSocket, EVENT_TYPES_PATH, sourcesOf } from '@/service/messageBusSocket'
-import Buefy from '@ntohq/buefy-next'
+import UI from '@/ui'
 import A11yLabels from '@/plugins/a11yLabels'
 import BusSockets from '@/plugins/busSockets'
 import animateCss from '@/plugins/animateCss'
 import VueDOMPurifyHTML from 'vue-dompurify-html'
 import { purifyConfig } from '@/utils/purifyConfig'
-import { sanitizeBuefyMessages } from '@/utils/buefySanitize'
 import { createEventBus } from '@/utils/eventBus'
 import ConfirmWindow from '@/shared/basicComponents/ConfirmWindow.vue'
 
@@ -67,8 +66,7 @@ const app = createApp(App)
 app.use(router)
 app.use(store)
 app.use(i18n)
-app.use(Buefy)
-sanitizeBuefyMessages(app.config.globalProperties.$buefy)
+app.use(UI)
 app.use(A11yLabels)
 app.component('ConfirmWindow', ConfirmWindow)
 app.directive('animate-css', animateCss)
