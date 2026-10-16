@@ -9,6 +9,9 @@ import (
 // Never this host's /etc/nivaroos/local-automation-strict: the loopback trust
 // tests would pass or fail with the box's own setting.
 func TestMain(m *testing.M) {
+	if LocalStrictPath != "" {
+		panic("a test binary reads this host's " + LocalStrictPath)
+	}
 	dir, err := os.MkdirTemp("", "middleware-test-")
 	if err != nil {
 		panic(err)

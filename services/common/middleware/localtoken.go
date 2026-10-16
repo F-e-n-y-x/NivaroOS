@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"testing"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/localtoken"
 )
@@ -25,6 +26,15 @@ const LocalTokenHeader = localtoken.Header
 // LocalStrictPath: while this file exists, loopback without the token is
 // never local automation (the end state; see above).
 var LocalStrictPath = "/etc/nivaroos/local-automation-strict"
+
+// A test binary never sees the box's own setting: every test of a handler
+// behind this middleware would pass or fail with it. Tests that need strict
+// mode point LocalStrictPath at a file of their own.
+func init() {
+	if testing.Testing() {
+		LocalStrictPath = ""
+	}
+}
 
 // HasLocalToken reports whether r is from a loopback peer, not from a
 // browser, and carries the right token.
