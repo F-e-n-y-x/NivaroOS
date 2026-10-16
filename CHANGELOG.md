@@ -15,8 +15,6 @@ updated from `master` by re-running the installer.
 - The nightly update check no longer shows as failed when it runs while
   an update you started is still installing; it notes it and waits.
 - Update commands print just the error, not their usage text.
-- The update check on a server built from source no longer counts
-  changes that only touch the Android app or the docs.
 
 ## [server 1.5.0] - 2026-10-16
 
