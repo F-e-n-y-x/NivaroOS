@@ -966,7 +966,7 @@ import business_ShowNewAppTag from '@/mixins/app/Business_ShowNewAppTag'
 import { ice_i18n } from '@/mixins/base/common-i18n'
 import debounce from 'lodash/debounce'
 import YAML from 'yaml'
-import FileSaver from 'file-saver'
+import { saveBlob } from '@/utils/saveBlob'
 import copy from 'clipboard-copy'
 import { escapeHtml } from '@/utils/escapeHtml'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
@@ -1789,7 +1789,7 @@ export default {
 				const yamlOut = this.installerTab === 'form' ? this.formDataToYaml(this.formState) : this.customComposeYaml
 				const blob = new Blob([yamlOut], { type: 'text/yaml;charset=utf-8' })
 				const filename = `${(this.formState.title || this.formState.appName || 'compose').replace(/[^a-zA-Z0-9_-]/g, '_')}.yaml`
-				FileSaver.saveAs(blob, filename)
+				saveBlob(blob, filename)
 			} catch (e) {
 				console.error('Export failed', e)
 			}

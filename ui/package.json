@@ -43,7 +43,6 @@
     "dayjs": "^1.11.9",
     "dompurify": "^3.4.16",
     "events": "3.3.0",
-    "file-saver": "^2.0.5",
     "htmlhint": "^1.1.4",
     "iconfonts-casaos": "^1.0.4",
     "js-yaml": "^4.1.0",

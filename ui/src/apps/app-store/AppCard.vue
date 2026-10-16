@@ -178,7 +178,7 @@ import business_DockPins from "@/mixins/app/Business_DockPins";
 import isNull from "lodash/isNull";
 import YAML from "yaml";
 import commonI18n, { ice_i18n } from "@/mixins/base/common-i18n";
-import FileSaver from 'file-saver';
+import { saveBlob } from '@/utils/saveBlob'
 import { confirmWindowMixin } from '@/mixins/confirmWindow';
 import { withHostAccessConfirm } from './hostAccess';
 import { apiErrorHtml, apiErrorText } from '@/mixins/app/apiError';
@@ -190,7 +190,7 @@ function saveYamlFile(yaml, baseName) {
 	const blob = new Blob([yaml], { type: 'application/yaml' })
 	const base = String(baseName || 'app').replace(/[^A-Za-z0-9._-]+/g, '_')
 	const fileName = `${base}.yaml`
-	FileSaver.saveAs(blob, fileName)
+	saveBlob(blob, fileName)
 	return fileName
 }
 
