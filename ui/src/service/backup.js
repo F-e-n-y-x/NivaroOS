@@ -155,6 +155,8 @@ export function createBackupClient(transport = axiosTransport) {
 		// FormData into JSON)
 		openSettingsRestore: (form, opts = {}) => post('/config-restore/open', form, { ...opts, headers: { 'Content-Type': 'multipart/form-data' } }),
 		applySettingsRestore: (token, opts) => post('/config-restore/apply', { token }, opts),
+		// The restored apps' progress { state, apps } (404: that restore had none).
+		settingsRestoreStatus: (token, opts) => post('/config-restore/status', { token }, opts),
 		// adoptOtherJob confirms taking over a folder whose marker names
 		// another job (409 dest_marker_mismatch without it).
 		reconnectDest: (id, opts, { adoptOtherJob = false } = {}) => post(`/jobs/${enc(id)}/reconnect-dest`, { adopt_other_job: adoptOtherJob }, opts),

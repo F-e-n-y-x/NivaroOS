@@ -55,8 +55,12 @@
 					<b-button class="mt-2" expanded rounded type="is-text" @click="restore.plan = null">{{ $t('settings_restore.back') }}</b-button>
 				</template>
 				<template v-else>
-					<p role="status">{{ $t('settings_restore.restarting') }}</p>
+					<p role="status">{{ $t(restore.apps ? (restore.apps.state === 'done' ? 'settings_restore.apps_done' : 'settings_restore.apps_busy') : 'settings_restore.restarting') }}</p>
 					<p v-if="newPort" class="mt-2"><a :href="newUrl">{{ newUrl }}</a></p>
+					<RestoredApps v-if="restore.apps" :status="restore.apps" class="mt-4" />
+					<b-button v-if="restore.apps" class="mt-4" expanded rounded :type="restore.apps.state === 'done' ? 'is-primary' : 'is-text'" @click="toLogin">
+						{{ $t('settings_restore.to_login') }}
+					</b-button>
 				</template>
 			</div>
 
@@ -98,10 +102,12 @@ import smoothReflow from '@/mixins/smoothReflow'
 import formChecks, { firstError, minLength, required, sameAs } from '@/mixins/formChecks'
 import doneAnimation from '@/assets/ani/done.json'
 import backup from '@/service/backup'
+import RestoredApps from '@/apps/backup/components/RestoredApps.vue'
 
 export default {
 
 	name: "welcome-page",
+	components: { RestoredApps },
 	mixins: [smoothReflow, formChecks],
 	data() {
 		return {
@@ -113,7 +119,7 @@ export default {
 			isLogin: false,
 			message: "",
 			notificationShow: false,
-			restore: { file: null, keyFile: null, key: '', busy: false, error: '', plan: null, token: '', started: false },
+			restore: { file: null, keyFile: null, key: '', busy: false, error: '', plan: null, token: '', started: false, apps: null },
 			initAni: {
 				classes: 'zoomIn',
 				delay: 1000,
@@ -279,19 +285,33 @@ export default {
 			}
 		},
 		// The services restart; the restored accounts are there once
-		// user-service answers "initialized" again.
+		// user-service answers "initialized" again. Then app-management
+		// recreates the restored apps: their progress, then the login.
 		async waitRestored() {
 			try {
 				const res = await this.$api.users.getUserStatus()
 				if (res.data.success === 200 && res.data.data.initialized) {
 					this.$store.commit('SET_NEED_INITIALIZATION', false)
-					this.$router.push('/login')
-					return
+					return this.waitApps()
 				}
 			} catch {
 				// restarting
 			}
 			this.restoreTimer = setTimeout(this.waitRestored, 3000)
+		},
+		async waitApps() {
+			try {
+				this.restore.apps = await backup.settingsRestoreStatus(this.restore.token)
+				if (this.restore.apps.state === 'done') return
+			} catch (e) {
+				if (e.code === 'not_found') return this.toLogin() // no apps in it
+				// Backup & Sync restarting
+			}
+			this.restoreTimer = setTimeout(this.waitApps, 3000)
+		},
+		toLogin() {
+			clearTimeout(this.restoreTimer)
+			this.$router.push('/login')
 		},
 		restoreError(e) {
 			if (e.code === 'wrong_password') return this.$t('settings_restore.wrong_key')
