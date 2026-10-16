@@ -1,15 +1,15 @@
 module github.com/F-e-n-y-x/NivaroOS/services/vm-sidecar
 
-go 1.26.0
+go 1.27.0
 
 require (
 	github.com/F-e-n-y-x/NivaroOS/services/common v0.0.0
-	github.com/godbus/dbus/v5 v5.1.0
+	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gorilla/websocket v1.5.3
 	github.com/pion/ice/v4 v4.4.7
 	github.com/pion/rtcp v1.2.19
 	github.com/pion/webrtc/v4 v4.2.23
-	libvirt.org/go/libvirt v1.12006.0
+	libvirt.org/go/libvirt v1.12007.0
 )
 
 require (
@@ -31,7 +31,7 @@ require (
 	github.com/pion/stun/v4 v4.0.1 // indirect
 	github.com/pion/transport/v5 v5.1.1 // indirect
 	github.com/pion/turn/v5 v5.1.2 // indirect
-	github.com/tidwall/gjson v1.17.0 // indirect
+	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
