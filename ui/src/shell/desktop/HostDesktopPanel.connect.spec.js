@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
-import Buefy from '@ntohq/buefy-next'
+import UI from '@/ui'
 
 // A stream socket that opens but never handshakes: noVNC fires neither
 // connect nor disconnect.
@@ -53,7 +53,7 @@ describe('Host Desktop connect watchdog', () => {
 		const el = document.createElement('div')
 		document.body.appendChild(el)
 		app = createApp({ render: () => h(Panel) })
-		app.use(Buefy)
+		app.use(UI)
 		app.config.globalProperties.$t = (s) => s
 		app.config.globalProperties.$store = { state: { windows: [] }, getters: {}, commit() {} }
 		app.mount(el)
@@ -108,7 +108,7 @@ describe('Host Desktop WebRTC lane', () => {
 		const el = document.createElement('div')
 		document.body.appendChild(el)
 		app = createApp({ render: () => h(Panel) })
-		app.use(Buefy)
+		app.use(UI)
 		app.config.globalProperties.$t = (s) => s
 		app.config.globalProperties.$store = { state: { windows: [] }, getters: {}, commit() {} }
 		app.mount(el)
