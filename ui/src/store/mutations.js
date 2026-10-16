@@ -107,6 +107,11 @@ const mutations = {
 		}
 	},
 
+	SET_PUBLIC_WALLPAPER(state, wallpaper) {
+		state.publicWallpaper = wallpaper || null
+		try { localStorage.setItem('wallpaper_public', JSON.stringify(state.publicWallpaper)) } catch (e) {}
+	},
+
 	SET_DEFAULT_WALLPAPER(state) {
 		state.wallpaperObject = {
 			path: __assetUrl('background/default_wallpaper.jpg'),

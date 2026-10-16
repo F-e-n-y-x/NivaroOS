@@ -33,6 +33,31 @@ func TestThePublicWallpaperIsOnlyEverAPicture(t *testing.T) {
 	}
 }
 
+// The web UI shows a saved server picture through the public endpoint when
+// it is the one /v1/users/status reports (login screen: no session for a
+// media ticket). Both must read the same file, per theme.
+func TestStatusNamesThePictureThePublicWallpaperServes(t *testing.T) {
+	f := setup(t)
+	f.router.GET("/v1/users/wallpaper", GetPublicWallpaper)
+	f.router.GET("/v1/users/status", GetUserStatus)
+	dir := filepath.Join(f.userDataPath, strconv.Itoa(f.alice.Id))
+	os.MkdirAll(dir, 0o755)
+	png := filepath.Join(t.TempDir(), "night.png")
+	os.WriteFile(png, []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"), 0o644)
+	os.WriteFile(filepath.Join(dir, "wallpaper.json"), []byte(`{"path":"`+png+`","dualMode":true,"light":{"path":"/img/wallpaper01.x.jpg"},"dark":{"path":"`+png+`"}}`), 0o644)
+
+	w := f.do(t, http.MethodGet, "/v1/users/status", 0, nil)
+	if !strings.Contains(w.Body.String(), `"dark":{"path":"`+png+`"}`) {
+		t.Fatalf("status doesn't report the saved wallpaper: %s", w.Body)
+	}
+	if w := f.do(t, http.MethodGet, "/v1/users/wallpaper?theme=dark", 0, nil); w.Code != http.StatusOK || !strings.HasPrefix(w.Body.String(), "\x89PNG") {
+		t.Fatalf("dark: the picture wasn't served: %d %s", w.Code, w.Body)
+	}
+	if w := f.do(t, http.MethodGet, "/v1/users/wallpaper?theme=light", 0, nil); !strings.Contains(w.Body.String(), "/img/wallpaper01.x.jpg") {
+		t.Fatalf("light: want the built-in path, got %d %s", w.Code, w.Body)
+	}
+}
+
 // DeleteUserImage checked that the path *contained* the caller's folder:
 // .../users/1/../../anything was deleted.
 func TestDeletingAnImageStaysInTheCallersFolder(t *testing.T) {

@@ -61,6 +61,10 @@ const state = {
 	// welcome screens (which load before any authenticated fetch can
 	// happen) show the same background as the desktop, instead of
 	// always falling back to the hardcoded default.
+	// The wallpaper the server serves without a session (GET
+	// /v1/users/wallpaper), from /v1/users/status - kept so a reload
+	// starts on the same URL.
+	publicWallpaper: (() => { try { return JSON.parse(localStorage.getItem('wallpaper_public')) } catch (e) { return null } })(),
 	wallpaperObject: {
 		path: localStorage.getItem('wallpaper') || __assetUrl('background/default_wallpaper.jpg'),
 		from: "Built-in" //Built-in, Upload, Files

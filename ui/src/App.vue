@@ -139,6 +139,7 @@ _____             _____ _____
 		this.$api.users.getUserStatus().then(res => {
 			if (res.data.success === 200 && res.data.data) {
 				const data = res.data.data
+				this.$store.commit('SET_PUBLIC_WALLPAPER', data.wallpaper)
 				if (data.wallpaper && data.wallpaper.path) {
 					this.$store.commit('SET_WALLPAPER', data.wallpaper)
 				}

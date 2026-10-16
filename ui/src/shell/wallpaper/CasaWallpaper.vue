@@ -131,7 +131,15 @@ export default {
 			}
 			// Local, gallery, or mounted storage files
 			if (serverUrl.includes('/DATA/') || serverUrl.includes('/var/lib/') || serverUrl.includes('/mnt/')) {
-				// A media ticket, not the token (reactive: updates once it arrives).
+				// The picture the server shows everyone (login, welcome): the
+				// public endpoint - no session needed, and the same URL before
+				// and after sign-in, so the desktop doesn't load it again.
+				const pub = this.$store.state.publicWallpaper
+				const t = this.effectiveTheme
+				if (pub && serverUrl === ((pub.dualMode && pub[t] && pub[t].path) || pub.path)) {
+					return `${this.$protocol}//${this.$baseURL}/v1/users/wallpaper?theme=${t}`
+				}
+				// Anyone else's: a media ticket (reactive: updates once it arrives).
 				return fileMediaUrl(`${this.$protocol}//${this.$baseURL}/v1/image`, { path: serverUrl });
 			}
 			// Public wallpaper endpoint with theme context
