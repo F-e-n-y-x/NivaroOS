@@ -9,11 +9,14 @@ import UI from './index'
 import { iconPacks } from './icons'
 
 // Attribute and class order don't matter; Vue's comment placeholders don't.
+// Buefy's checkbox put an empty id="" on its input; ours doesn't.
 function normalize(root) {
+	// Live state isn't in the markup: record it.
+	for (const n of root.querySelectorAll('input, select, textarea')) n.setAttribute('data-live', `${n.checked}|${n.value}|${n.type}`)
 	for (const n of [...root.querySelectorAll('*')]) {
 		const attrs = [...n.attributes].map((a) => [a.name, a.name === 'class' ? a.value.split(/\s+/).filter(Boolean).sort().join(' ') : a.value])
 		for (const [k] of attrs) n.removeAttribute(k)
-		for (const [k, v] of attrs.sort()) if (!(k === 'class' && !v)) n.setAttribute(k, v)
+		for (const [k, v] of attrs.sort()) if (!((k === 'class' || k === 'id') && !v)) n.setAttribute(k, v)
 	}
 	return root.innerHTML.replace(/<!--[^]*?-->/g, '').replace(/\s+/g, ' ').replace(/> </g, '><').trim()
 }
@@ -21,7 +24,7 @@ function normalize(root) {
 async function mount(tpl, buefyNames, act) {
 	const el = document.createElement('div')
 	document.body.appendChild(el)
-	const app = createApp({ template: tpl, data: () => ({ v: 'abc', n: 3, t: 'is-danger', m: 'Bad name' }) })
+	const app = createApp({ template: tpl, data: () => ({ v: 'abc', n: 3, t: 'is-danger', m: 'Bad name', on: true, off: false, list: ['a'], sel: null, s2: 'b' }) })
 	app.use(UI)
 	if (buefyNames) {
 		app.config.globalProperties.$buefy.config.setOptions({ customIconPacks: iconPacks })
@@ -90,4 +93,33 @@ same(['BField', 'BInput', 'BIcon', 'BButton'], [
 	['<b-field label="x"><b-input v-model="v" type="email" /></b-field>', async function badEmail(el) { await typeIn(el); await blur(el) }],
 	['<b-input v-model="v" maxlength="8" />', typeIn],
 	['<b-input v-model="v" type="password" password-reveal />', reveal],
+])
+
+const click = async function click(el) { el.querySelector('input').click() }
+const clickLabel = async function clickLabel(el) { el.querySelector('label').click() }
+const pick = async function pick(el) { const s = el.querySelector('select'); s.value = 'b'; s.dispatchEvent(new Event('change')) }
+
+same(['BSwitch'], [
+	'<b-switch v-model="on" type="is-primary" size="is-small" class="c" aria-label="A" />',
+	'<b-switch :model-value="off" disabled title="t" />',
+	'<b-switch v-model="on">Label</b-switch>',
+	['<b-switch :model-value="off" />', click],
+	['<b-switch v-model="off" />', clickLabel],
+	['<b-switch v-model="list" native-value="b" />', click],
+])
+
+same(['BCheckbox'], [
+	'<b-checkbox v-model="on" size="is-small">Keep</b-checkbox>',
+	'<b-checkbox :model-value="off" disabled :indeterminate="true" class="c" />',
+	'<b-checkbox v-model="list" native-value="a" type="is-danger">A</b-checkbox>',
+	['<b-checkbox v-model="off">x</b-checkbox>', click],
+])
+
+const opts = '<option value="a">A</option><option value="b">B</option>'
+same(['BSelect', 'BField', 'BIcon'], [
+	`<b-select v-model="s2" size="is-small" expanded class="c" aria-label="L" data-test="t">${opts}</b-select>`,
+	`<b-select v-model="sel" placeholder="Pick">${opts}</b-select>`,
+	`<b-select v-model="sel" icon="magnify">${opts}</b-select>`,
+	`<b-field label="Exp"><b-select v-model="s2" expanded>${opts}</b-select></b-field>`,
+	[`<b-select v-model="sel">${opts}</b-select>`, pick],
 ])

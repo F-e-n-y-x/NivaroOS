@@ -4,6 +4,7 @@
 import { expect, test } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import UI from './index'
+import A11yLabels from '@/plugins/a11yLabels'
 
 const render = (tpl) => {
 	const el = document.createElement('div')
@@ -42,4 +43,20 @@ test('b-input in a b-field: HTML5 validity shows on blur, unless the field has i
 	expect(a.querySelector('.help.is-danger').textContent).toBeTruthy()
 	expect(a.querySelector('input').className).toBe('input is-danger')
 	expect(b.querySelector('input').className).toBe('input is-success')
+})
+
+test('a11yLabels still names our switch, checkbox and select', async () => {
+	// jsdom has no innerText.
+	Object.defineProperty(HTMLElement.prototype, 'innerText', { configurable: true, get() { return this.textContent } })
+	const el = document.createElement('div')
+	const app = createApp({
+		template: '<div class="setting-row"><span class="setting-title">Auto update</span><b-switch :model-value="true" /></div>'
+			+ '<b-checkbox aria-label="Pick" /><div class="setting-row"><span class="setting-title">Mode</span><b-select :model-value="null"><option>a</option></b-select></div>',
+	})
+	app.use(UI)
+	app.use(A11yLabels)
+	app.mount(el)
+	await nextTick()
+	await nextTick()
+	expect([...el.querySelectorAll('input, select')].map((i) => i.getAttribute('aria-label'))).toEqual(['Auto update', 'Pick', 'Mode'])
 })
