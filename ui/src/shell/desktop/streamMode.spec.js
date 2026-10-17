@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { REASONS, STREAM_DEFAULTS, adaptInit, adaptStep, chooseLane, directRoute, encoderLabel, loadPrefs, lossPct, normalizePrefs, presetSummary, rfbMask, savePrefs, toRemote, watchdog, wheelSteps } from './streamMode'
+import { REASONS, STREAM_DEFAULTS, adaptInit, adaptStep, chooseLane, cursorAt, directRoute, displayScale, encoderLabel, loadPrefs, lossPct, normalizePrefs, presetSummary, rfbMask, savePrefs, toRemote, watchdog, wheelSteps } from './streamMode'
 
 const memStorage = () => {
 	const m = new Map()
@@ -154,6 +154,21 @@ describe('input mapping', () => {
 		expect(toRemote(100, 280, rect, 1920, 1080)).toEqual({ x: 0, y: 0 })
 		expect(toRemote(580, 550, rect, 1920, 1080)).toEqual({ x: 960, y: 540 })
 		expect(toRemote(5000, 0, rect, 1920, 1080)).toEqual({ x: 1919, y: 0 })
+	})
+	test('toRemote: every edge CSS pixel lands on the edge remote pixel', () => {
+		const rect = { left: 0, top: 0, width: 1280, height: 700 }
+		const top = (700 - 1220 * (1280 / 3398)) / 2
+		expect(toRemote(0, top, rect, 3398, 1220)).toEqual({ x: 0, y: 0 })
+		expect(toRemote(1279.99, top + 1220 * (1280 / 3398) - 0.01, rect, 3398, 1220)).toEqual({ x: 3397, y: 1219 })
+		// Inside the last remote pixel (not half-way to a neighbour that doesn't exist).
+		expect(toRemote(1.9, 1.9, { left: 0, top: 0, width: 1280, height: 700 }, 640, 350)).toEqual({ x: 0, y: 0 })
+	})
+	test('cursorAt scales the shape and hotspot, at least half size, at most 128 px', () => {
+		expect(cursorAt({ w: 32, h: 32, x: 10, y: 20 }, 1)).toEqual({ w: 32, h: 32, x: 10, y: 20, k: 1 })
+		expect(cursorAt({ w: 32, h: 32, x: 10, y: 20 }, 0.5)).toEqual({ w: 16, h: 16, x: 5, y: 10, k: 0.5 })
+		expect(cursorAt({ w: 32, h: 32, x: 31, y: 0 }, 0.2)).toMatchObject({ w: 16, h: 16, x: 15, y: 0 })
+		expect(cursorAt({ w: 96, h: 64, x: 95 }, 2)).toMatchObject({ w: 128, h: 85, x: 127, y: 0 })
+		expect(displayScale({ width: 960, height: 1000 }, 1920, 1080)).toBe(0.5)
 	})
 	test('rfbMask swaps middle and right', () => {
 		expect(rfbMask(1)).toBe(1)

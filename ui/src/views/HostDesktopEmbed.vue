@@ -7,8 +7,8 @@
 	switches to its own VNC client.
 	The app draws its own console over the page and drives everything
 	through window.nivaroosEmbed (key, pointer, clip, setStream, view); the
-	page renders the video and posts {t:"size"}, {t:"stats"}, {t:"adapt"}
-	and {t:"clip"} back. Contract: /root/nivaroos-wip/webrtc-contract.md (Embedding).
+	page renders the video and posts {t:"size"}, {t:"stats"}, {t:"adapt"},
+	{t:"clip"} and {t:"cursor"} (the host's cursor shape, for the app to draw) back. Contract: /root/nivaroos-wip/webrtc-contract.md (Embedding).
 -->
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
@@ -113,6 +113,7 @@ onBeforeUnmount(() => {
 			@size="onSize"
 			@stats="onStats"
 			@adapt="(a) => post({ t: 'adapt', ...a })"
+			@cursor="(c) => post({ t: 'cursor', w: c.w || 0, h: c.h || 0, x: c.x || 0, y: c.y || 0, png: c.png || '' })"
 		></host-desktop-web-r-t-c>
 		<div v-if="state !== 'live'" class="hd-embed-status" role="status" aria-live="polite">
 			<span v-if="state === 'connecting'">{{ $t('Connecting...') }}</span>

@@ -183,14 +183,30 @@ export function watchdog(s) {
 	return { action: 'wait', reason: '' }
 }
 
+// CSS pixels per remote pixel of a w x h desktop drawn in rect
+// (object-fit: contain, or 1:1 when not fitting: rect is then the video's own size).
+export const displayScale = (rect, w, h) => Math.min(rect.width / w, rect.height / h) || 1
+
 // Client point → remote framebuffer pixel, for a <video> drawn with
 // object-fit: contain inside rect (letterboxed).
 export function toRemote(clientX, clientY, rect, w, h) {
-	const s = Math.min(rect.width / w, rect.height / h) || 1
+	const s = displayScale(rect, w, h)
 	const ox = rect.left + (rect.width - w * s) / 2
 	const oy = rect.top + (rect.height - h * s) / 2
-	const clamp = (v, max) => Math.max(0, Math.min(max - 1, Math.round(v)))
+	// floor: remote pixel n covers [n*s, (n+1)*s) on screen.
+	const clamp = (v, max) => Math.max(0, Math.min(max - 1, Math.floor(v)))
 	return { x: clamp((clientX - ox) / s, w), y: clamp((clientY - oy) / s, h) }
+}
+
+const CURSOR_MAX = 128 // browsers ignore bigger CSS cursor images
+// The remote cursor {w, h, x, y} at display scale s: the size to draw it
+// and its hotspot there. Never under half size (still findable on a phone)
+// nor over CURSOR_MAX.
+export function cursorAt(c, s) {
+	const k = Math.min(Math.max(s, 0.5), CURSOR_MAX / Math.max(c.w, c.h))
+	const w = Math.max(1, Math.round(c.w * k))
+	const h = Math.max(1, Math.round(c.h * k))
+	return { w, h, x: Math.min(w - 1, Math.round((c.x || 0) * k)), y: Math.min(h - 1, Math.round((c.y || 0) * k)), k }
 }
 
 // PointerEvent.buttons (1 left, 2 right, 4 middle) → RFB mask (1 left,

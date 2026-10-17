@@ -18,7 +18,7 @@ import { markRaw, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Keyboard from '@novnc-core/input/keyboard.js'
 import { apiBase } from '@/api/vmSidecar'
 import { reconnectDelay } from '@/utils/consoleSocket'
-import { HIDDEN_GRACE_MS, REASONS, STREAM_PRESETS, adaptInit, adaptStep, chooseLane, lossPct, rfbMask, toRemote, watchdog, wheelSteps } from './streamMode'
+import { HIDDEN_GRACE_MS, REASONS, STREAM_PRESETS, adaptInit, adaptStep, chooseLane, cursorAt, displayScale, lossPct, rfbMask, toRemote, watchdog, wheelSteps } from './streamMode'
 
 const props = defineProps({
 	scaleToFit: { type: Boolean, default: true },
@@ -36,13 +36,16 @@ const props = defineProps({
 })
 // state: { state: 'connecting'|'live'|'reconnecting'|'paused'|'fallback'|'error', reason }
 // caps: /host/stream's modes.webrtc; adapt: { preset, dir: 'down'|'up' }
-const emit = defineEmits(['ready', 'state', 'stats', 'size', 'clipboard', 'caps', 'adapt'])
+// cursor: the server's {t:'cursor', w, h, x, y, png} as is (the embed hands it to the app)
+const emit = defineEmits(['ready', 'state', 'stats', 'size', 'clipboard', 'caps', 'adapt', 'cursor'])
 
 const SESSION_EXPIRED = 'Your session expired - sign in again'
 const KS = { ctrl: 0xffe3, alt: 0xffe9, del: 0xffff }
 
 const root = ref(null)
 const video = ref(null)
+// The host's cursor shape as a CSS cursor ('' = the browser's arrow).
+const cursorCss = ref('')
 
 let pc = null
 let dc = null
@@ -71,6 +74,9 @@ let keyboard = null
 let adaptState = adaptInit(props.preset)
 let lastRtp = null
 let running = null // the server's last {"t":"enc"}
+let cursor = null // the server's last {"t":"cursor"}
+let cursorImg = null // it decoded, for drawing it scaled
+let resizeObs = null
 
 // The app's WebView injects its JWT here before load (never in the URL).
 function token() {
@@ -181,7 +187,9 @@ function onMessage(e) {
 	else if (m.t === 'size' && m.w > 0 && m.h > 0) {
 		remote = { w: m.w, h: m.h }
 		emit('size', remote)
-	} else if (m.t === 'clip' && typeof m.text === 'string') emit('clipboard', m.text)
+		applyCursor()
+	} else if (m.t === 'cursor') onCursor(m)
+	else if (m.t === 'clip' && typeof m.text === 'string') emit('clipboard', m.text)
 	else if (m.t === 'enc') {
 		// The server (re)started the encoder (preset, resize, PLI, hang):
 		// the picture pauses for a moment - that's not a freeze.
@@ -347,6 +355,49 @@ function resume() {
 	offer()
 }
 
+// ── Cursor ──
+// The video has no cursor in it: the host's shape (x11vnc's, via the
+// sidecar) becomes the CSS cursor, so resize arrows, I-beams and hands show.
+// Wayland sends none: the browser's arrow stays.
+function onCursor(m) {
+	cursor = m
+	cursorImg = null
+	emit('cursor', m)
+	applyCursor()
+	if (!m.w || !m.h || !m.png) return
+	const img = new Image()
+	img.onload = () => {
+		if (cursor !== m) return
+		cursorImg = img
+		applyCursor()
+	}
+	img.src = 'data:image/png;base64,' + m.png
+}
+
+// At the display scale (fit shrinks the desktop, so the shape too, with
+// its hotspot): a scaled copy once the image has loaded.
+function applyCursor() {
+	const c = cursor
+	if (!c) return
+	if (!c.w || !c.h || !c.png) return (cursorCss.value = 'none')
+	const { w, h } = remoteSize()
+	const r = video.value && w && h ? video.value.getBoundingClientRect() : null
+	const at = cursorAt(c, r && r.width ? displayScale(r, w, h) : 1)
+	let url = 'data:image/png;base64,' + c.png
+	if (at.w !== c.w || at.h !== c.h) {
+		if (!cursorImg) return // the shape before stays until it's ready
+		const cv = document.createElement('canvas')
+		cv.width = at.w
+		cv.height = at.h
+		const ctx = cv.getContext('2d')
+		if (!ctx) return
+		ctx.imageSmoothingQuality = 'high'
+		ctx.drawImage(cursorImg, 0, 0, at.w, at.h)
+		url = cv.toDataURL('image/png')
+	}
+	cursorCss.value = `url("${url}") ${at.x} ${at.y}, default`
+}
+
 // ── Input ──
 function remoteSize() {
 	const v = video.value
@@ -450,6 +501,7 @@ watch(
 function onVideoResize() {
 	const v = video.value
 	if (!remote.w && v && v.videoWidth) emit('size', { w: v.videoWidth, h: v.videoHeight })
+	applyCursor()
 }
 
 onMounted(() => {
@@ -460,6 +512,10 @@ onMounted(() => {
 	tickTimer = setInterval(tick, 1000)
 	statsTimer = setInterval(pollStats, 1000)
 	emit('ready', rfbLike)
+	if (window.ResizeObserver) {
+		resizeObs = new ResizeObserver(applyCursor)
+		resizeObs.observe(video.value)
+	}
 	start()
 })
 
@@ -469,12 +525,15 @@ onBeforeUnmount(() => {
 	clearInterval(tickTimer)
 	clearInterval(statsTimer)
 	document.removeEventListener('visibilitychange', onVisibility)
+	if (resizeObs) resizeObs.disconnect()
 	if (keyboard) keyboard.ungrab()
 })
 </script>
 
 <template>
-	<div ref="root" class="hd-webrtc" :class="{ 'is-fit': scaleToFit }" tabindex="0" @contextmenu.prevent>
+	<div ref="root" class="hd-webrtc" :class="{ 'is-fit': scaleToFit }" :style="cursorCss ? { cursor: cursorCss } : null" tabindex="0" @contextmenu.prevent>
+		<!-- draggable / dragstart: Firefox would start a native drag of the video
+		on press-and-move (pointercancel: the host's drag or resize ends). -->
 		<video
 			ref="video"
 			class="hd-webrtc-video"
@@ -482,6 +541,8 @@ onBeforeUnmount(() => {
 			muted
 			playsinline
 			disablepictureinpicture
+			draggable="false"
+			@dragstart.prevent
 			@pointerdown.prevent="onPointer"
 			@pointermove="onPointer"
 			@pointerup="onPointer"
@@ -503,8 +564,8 @@ onBeforeUnmount(() => {
 
 .hd-webrtc-video {
 	display: block;
-	/* The cursor isn't in the video (it would lag a frame): the local one is it. */
-	cursor: default;
+	/* The cursor isn't in the video (it would lag a frame): the local one,
+	in the host's shape (cursorCss on the root, inherited), is it. */
 	touch-action: none;
 	user-select: none;
 }

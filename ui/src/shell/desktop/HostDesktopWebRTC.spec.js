@@ -100,7 +100,7 @@ describe('HostDesktopWebRTC', () => {
 		const on = (name) => (e) => events.push([name, e])
 		app = createApp({
 			render: () =>
-				h(HostDesktopWebRTC, { ...props, onState: on('state'), onReady: on('ready'), onStats: on('stats'), onClipboard: on('clipboard'), onSize: on('size'), onAdapt: on('adapt'), onCaps: on('caps') }),
+				h(HostDesktopWebRTC, { ...props, onState: on('state'), onReady: on('ready'), onStats: on('stats'), onClipboard: on('clipboard'), onSize: on('size'), onAdapt: on('adapt'), onCaps: on('caps'), onCursor: on('cursor') }),
 		})
 		app.mount(el)
 		await flush()
@@ -404,6 +404,72 @@ describe('HostDesktopWebRTC', () => {
 		expect(pcs[0].closed).toBe(true)
 	})
 
+	test('a window drag / edge resize: every move with the button held goes out, edges map to the last pixel, no native drag', async () => {
+		await mount()
+		const dc = pcs[0].dc
+		pcs[0].msg({ t: 'size', w: 3398, h: 1220 })
+		const video = el.querySelector('video')
+		// 3398x1220 fit into 1280x700: scale ~0.3767, letterboxed top and bottom.
+		video.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1280, height: 700 })
+		const fire = (type, init) => video.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, ...init }))
+		const top = (700 - 1220 * (1280 / 3398)) / 2
+		fire('pointerdown', { clientX: 1279.9, clientY: top + 100, buttons: 1 })
+		for (let i = 1; i <= 20; i++) fire('pointermove', { clientX: 1279.9 - i, clientY: top + 100, buttons: 1 })
+		fire('pointerup', { clientX: 1259.9, clientY: top + 100, buttons: 0 })
+		expect(dc.sent).toHaveLength(22)
+		expect(dc.sent[0]).toEqual({ t: 'p', x: 3397, y: 265, m: 1 })
+		expect(dc.sent.slice(1, 21).every((m) => m.m === 1)).toBe(true)
+		expect(dc.sent.at(-1).m).toBe(0)
+		expect(new Set(dc.sent.map((m) => m.x)).size).toBe(21) // each CSS px a new remote x
+		expect(video.getAttribute('draggable')).toBe('false')
+		const drag = new Event('dragstart', { bubbles: true, cancelable: true })
+		video.dispatchEvent(drag)
+		expect(drag.defaultPrevented).toBe(true)
+	})
+
+	test("the host's cursor shape becomes the CSS cursor, scaled with the picture (hotspot too)", async () => {
+		const drawn = []
+		vi.stubGlobal(
+			'Image',
+			class {
+				set src(v) {
+					this._src = v
+					setTimeout(() => this.onload && this.onload())
+				}
+			},
+		)
+		const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function () {
+			return { drawImage: (img, x, y, w, h) => drawn.push([img._src, x, y, w, h, this.width, this.height]) }
+		})
+		const toDataURL = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockImplementation(() => 'data:image/png;base64,SCALED')
+		try {
+			await mount()
+			const root = el.querySelector('.hd-webrtc')
+			const video = el.querySelector('video')
+			// Before any shape: the browser's own.
+			expect(root.style.cursor).toBe('')
+			// 1:1 (no layout yet): the PNG as is, hotspot as sent.
+			pcs[0].msg({ t: 'cursor', w: 32, h: 32, x: 10, y: 20, png: 'AAAA' })
+			await nextTick()
+			expect(root.style.cursor).toBe('url("data:image/png;base64,AAAA") 10 20, default')
+			expect(events.find(([n]) => n === 'cursor')[1]).toMatchObject({ w: 32, h: 32, x: 10, y: 20, png: 'AAAA' })
+			// Fit at half size: a 16x16 copy, hotspot halved.
+			pcs[0].msg({ t: 'size', w: 1920, h: 1080 })
+			video.getBoundingClientRect = () => ({ left: 0, top: 0, width: 960, height: 600 })
+			pcs[0].msg({ t: 'cursor', w: 32, h: 32, x: 10, y: 20, png: 'BBBB' })
+			await flush()
+			expect(drawn.at(-1)).toEqual(['data:image/png;base64,BBBB', 0, 0, 16, 16, 16, 16])
+			expect(root.style.cursor).toBe('url("data:image/png;base64,SCALED") 5 10, default')
+			// The host hid its cursor (w 0): none.
+			pcs[0].msg({ t: 'cursor' })
+			await nextTick()
+			expect(root.style.cursor).toBe('none')
+		} finally {
+			getContext.mockRestore()
+			toDataURL.mockRestore()
+		}
+	})
+
 	test('an expired token says so instead of falling back', async () => {
 		fetchMock.mockImplementationOnce(async () => json(401, { message: 'token is invalid' }))
 		await mount()
@@ -462,6 +528,9 @@ describe('#/host-desktop/embed', () => {
 		expect(pc.dc.sent.at(-1)).toEqual({ t: 'k', ks: 0x61, d: true })
 		pc.msg({ t: 'clip', text: 'from host' })
 		expect(posted.at(-1)).toEqual({ t: 'clip', text: 'from host' })
+		// The app draws its own cursor: it gets the host's shape.
+		pc.msg({ t: 'cursor', w: 24, h: 24, x: 1, png: 'QUJD' })
+		expect(posted.at(-1)).toEqual({ t: 'cursor', w: 24, h: 24, x: 1, y: 0, png: 'QUJD' })
 		app.unmount()
 		el.remove()
 		expect(window.nivaroosEmbed).toBeUndefined()
