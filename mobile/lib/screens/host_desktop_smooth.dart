@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -129,6 +130,30 @@ class EmbedRfbClient extends RfbClient {
   @override
   bool get localCursor => true;
 
+  @override
+  RemoteCursor? remoteCursor;
+  int _cursorShapes = 0;
+
+  /// The page's {"t":"cursor"} (the host's shape: a base64 PNG, hotspot
+  /// x / y; w 0 = hidden). A newer one while this decodes wins.
+  Future<void> _cursorShape(Map<Object?, Object?> msg) async {
+    final n = ++_cursorShapes;
+    final png = msg['png'];
+    ui.Image? image;
+    if ((msg['w'] as num? ?? 0) > 0 && png is String && png.isNotEmpty) {
+      try {
+        final frame = await (await ui.instantiateImageCodec(base64Decode(png))).getNextFrame();
+        image = frame.image;
+      } catch (_) {
+        return; // not a picture: the last shape stays
+      }
+    }
+    if (n != _cursorShapes) return;
+    final x = (msg['x'] as num? ?? 0).toDouble(), y = (msg['y'] as num? ?? 0).toDouble();
+    remoteCursor = RemoteCursor(image, Offset(x, y));
+    frameCount.value++;
+  }
+
   void _call(String js) => unawaited(web.runJavaScript('window.nivaroosEmbed&&nivaroosEmbed.$js;').catchError((_) {}));
 
   @override
@@ -194,6 +219,8 @@ class EmbedRfbClient extends RfbClient {
         encoder = '${msg['encoder'] ?? ''}';
         preset = msg['preset'] is String ? msg['preset'] as String : null;
         frameCount.value++;
+      case 'cursor':
+        unawaited(_cursorShape(msg));
     }
   }
 }

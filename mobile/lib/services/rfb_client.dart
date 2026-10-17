@@ -95,6 +95,10 @@ class RfbClient {
   /// console draws one where the pointer is.
   bool get localCursor => false;
 
+  /// For a [localCursor] client: the remote cursor's shape, when the server
+  /// sends it; null = unknown (the console draws its own arrow).
+  RemoteCursor? get remoteCursor => null;
+
   /// The most pictures a second to ask for; 0 is as many as the server
   /// sends. Lower saves data on a slow or metered connection.
   int maxFps = 0;
@@ -948,6 +952,14 @@ class _Inflater {
     }
     return out.takeBytes();
   }
+}
+
+/// The remote cursor's shape: [image] (null = the remote hid its cursor)
+/// with its [hotspot], in remote pixels.
+class RemoteCursor {
+  const RemoteCursor(this.image, this.hotspot);
+  final ui.Image? image;
+  final ui.Offset hotspot;
 }
 
 /// Reads through a decoded buffer, failing cleanly at its end.

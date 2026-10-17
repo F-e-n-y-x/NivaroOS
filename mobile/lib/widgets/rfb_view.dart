@@ -764,7 +764,22 @@ class RfbViewState extends State<RfbView> {
                         filterQuality: viewport.scale < 1 ? FilterQuality.medium : FilterQuality.low,
                       ),
                     ),
-                  if (_c.localCursor && _c.isConnected)
+                  // The host's own shape (Smooth, X11), at the picture's
+                  // scale but never under half size (as the web viewer).
+                  if (_c.localCursor && _c.isConnected && _c.remoteCursor?.image != null)
+                    Builder(builder: (_) {
+                      final rc = _c.remoteCursor!;
+                      final k = viewport.scale.clamp(0.5, 2.0);
+                      return Positioned(
+                        left: caret.dx - rc.hotspot.dx * k,
+                        top: caret.dy - rc.hotspot.dy * k,
+                        width: rc.image!.width * k,
+                        height: rc.image!.height * k,
+                        child: IgnorePointer(
+                            child: RawImage(image: rc.image, fit: BoxFit.fill, filterQuality: FilterQuality.medium)),
+                      );
+                    }),
+                  if (_c.localCursor && _c.isConnected && _c.remoteCursor == null)
                     Positioned(
                       left: caret.dx - 1,
                       top: caret.dy - 1,

@@ -387,6 +387,28 @@ void main() {
     });
   });
 
+  testWidgets("the host's cursor shape replaces the app's arrow, at the picture's scale; hidden draws none", (tester) async {
+    await withServer(() async {
+      final c = await live(tester);
+      final arrow = find.byWidgetPredicate((w) => w is CustomPaint && '${w.painter.runtimeType}' == '_CursorPainter');
+      expect(arrow, findsOneWidget);
+      // A 4x4 shape, hotspot (2, 2). Fitted 1920 wide into 800: scale 0.42,
+      // drawn at the half size floor; the pointer starts mid-screen (400, 300).
+      const png = 'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAEklEQVR4nGP4z8DwHxkzkC4AADxAH+HggXe0AAAAAElFTkSuQmCC';
+      c.post('{"t":"cursor","w":4,"h":4,"x":2,"y":2,"png":"$png"}');
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await tester.pump();
+      expect(arrow, findsNothing);
+      expect(tester.getRect(find.byType(RawImage)), const Rect.fromLTWH(399, 299, 2, 2));
+      c.post('{"t":"cursor","png":""}');
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump();
+      expect(find.byType(RawImage), findsNothing);
+      expect(arrow, findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
   testWidgets('Display: presets go to the page and are remembered; GPU or CPU and stats in the header', (tester) async {
     await withServer(() async {
       final c = await live(tester);
