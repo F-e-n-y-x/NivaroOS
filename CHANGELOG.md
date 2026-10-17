@@ -8,6 +8,20 @@ updated from `master` by re-running the installer.
 
 ## [Unreleased]
 
+## [server 1.5.4] - 2026-10-17
+
+Everything in 1.5.3, which never installed: its gateway couldn't read
+gateway.ini after a library update and the updater rolled it back
+automatically.
+
+### Fixed
+
+- The gateway reads and saves gateway.ini again (viper 1.19; 1.20 dropped
+  the ini format). A test now loads and writes a real gateway.ini.
+- Host Desktop (WebRTC): the host's cursor shape (resize arrows, I-beam,
+  hand) is shown, so window edges can be found and dragged; a native drag
+  of the video in Firefox no longer cuts window drags short.
+
 ## [server 1.5.3] - 2026-10-16
 
 ### Added
