@@ -90,6 +90,9 @@ func testDesktop(t *testing.T) (enc, disp string, onDisp func(string, ...string)
 		return c
 	}
 	sock := t.TempDir() + "/vnc.sock"
+	// x11vnc only reads the real cursor shape (XFIXES) once it sees a window
+	// manager; the test display has none.
+	t.Setenv("X11VNC_AVOID_WINDOWS", "never")
 	startBG(t, "x11vnc", "-display", disp, "-rfbport", "0", "-rfbportv6", "-1", "-unixsock", sock, "-noipv6", "-nopw",
 		"-forever", "-shared", "-nonap", "-quiet")
 	waitFor(t, "x11vnc socket", func() bool { return socketListening(sock) })
@@ -106,6 +109,26 @@ func testDesktop(t *testing.T) (enc, disp string, onDisp func(string, ...string)
 	gstProbe.Unlock()
 	t.Cleanup(func() { gstProbe.Lock(); gstProbe.have = nil; gstProbe.Unlock() })
 	return enc, disp, onDisp
+}
+
+// cursorWindow maps a full-screen window with the X "watch" cursor on the
+// test display (python3-xlib), so the shape under the pointer changes the
+// way it does over a window edge.
+func cursorWindow(t *testing.T, onDisp func(string, ...string) *exec.Cmd) {
+	t.Helper()
+	if exec.Command("python3", "-c", "import Xlib").Run() != nil {
+		t.Skip("python3-xlib not found")
+	}
+	c := onDisp("python3", "-c", `from Xlib import display
+import time
+d = display.Display(); s = d.screen(); f = d.open_font('cursor')
+cur = f.create_glyph_cursor(f, 150, 151, (0, 0, 0), (65535, 65535, 65535))
+s.root.create_window(0, 0, s.width_in_pixels, s.height_in_pixels, 0, s.root_depth, cursor=cur, override_redirect=1).map()
+d.sync(); time.sleep(600)`)
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Process.Kill(); _ = c.Wait() })
 }
 
 func TestIntegrationWebRTCOfferStreamsAndInjects(t *testing.T) {
@@ -210,7 +233,8 @@ func TestIntegrationWebRTCOfferStreamsAndInjects(t *testing.T) {
 	}
 	waitForLong("video packets", 15*time.Second, func() bool { return pkts1.Load() > 30 })
 	gotSize, gotHB, gotEnc := false, false, false
-	waitForLong("size + heartbeat + enc", 6*time.Second, func() bool {
+	firstCursor := ""
+	waitForLong("size + heartbeat + enc + cursor", 6*time.Second, func() bool {
 		for {
 			select {
 			case m := <-msgs1:
@@ -220,6 +244,10 @@ func TestIntegrationWebRTCOfferStreamsAndInjects(t *testing.T) {
 				if m.T == "hb" {
 					gotHB = true
 				}
+				// x11vnc's Cursor rects become {"t":"cursor"} PNGs (the video has no cursor).
+				if m.T == "cursor" && m.W > 0 && m.W <= maxCursor && m.PNG != "" {
+					firstCursor = m.PNG
+				}
 				// Low: 1280 wide at most, so the 1280x720 test screen stays as is.
 				if m.T == "enc" && m.Encoder == enc && m.Preset == "low" && m.W == 1280 && m.Kbps > 0 {
 					gotEnc = true
@@ -227,7 +255,24 @@ func TestIntegrationWebRTCOfferStreamsAndInjects(t *testing.T) {
 				continue
 			default:
 			}
-			return gotSize && gotHB && gotEnc
+			return gotSize && gotHB && gotEnc && firstCursor != ""
+		}
+	})
+
+	// A window with the "watch" cursor (hotspot 15,9) under the pointer:
+	// its shape comes through.
+	cursorWindow(t, onDisp)
+	waitForLong("the window's cursor shape", 6*time.Second, func() bool {
+		for {
+			select {
+			case m := <-msgs1:
+				if m.T == "cursor" && m.X == 15 && m.Y == 9 && m.PNG != "" && m.PNG != firstCursor {
+					return true
+				}
+				continue
+			default:
+			}
+			return false
 		}
 	})
 
@@ -321,7 +366,9 @@ func TestIntegrationWebRTCOfferStreamsAndInjects(t *testing.T) {
 //	  createApp({ render: () => h('div', { style: 'position:fixed;inset:0' }, [h(Viewer, {
 //	    fallback: false, preset: q.get('preset') || 'low',
 //	    onState: (s) => { window.__states.push(s.state + ':' + s.reason); log({ ev: 'state', s: s.state, r: s.reason }) },
-//	    onSize: (s) => (window.__size = s), onStats: (s) => (window.__stats = s) })]) }).mount('#app')
+//	    onSize: (s) => (window.__size = s), onStats: (s) => (window.__stats = s),
+//	    onCursor: (c) => { window.__cursor = c; setTimeout(() => log({ ev: 'cursor', x: c.x, y: c.y, w: c.w,
+//	      css: document.querySelector('.hd-webrtc').style.cursor.slice(0, 40) }), 300) } })]) }).mount('#app')
 func TestIntegrationWebViewerInChrome(t *testing.T) {
 	ui := os.Getenv("WEBRTC_IT_UI")
 	if ui == "" {
@@ -442,6 +489,53 @@ func TestIntegrationWebViewerInChrome(t *testing.T) {
 	if !strings.HasPrefix(where, "x:640 y:360") {
 		t.Fatalf("pointer at %q; page sent %s; rect %s", where, eval("window.__sent"), eval("document.querySelector('video').getBoundingClientRect()"))
 	}
+
+	// A window drag / edge resize: press, move with the button held, release.
+	// Every move goes out with the button (no drag of the <video> eating it),
+	// the host's pointer follows, and the right edge is the last pixel.
+	var vw float64
+	_ = json.Unmarshal([]byte(eval("document.querySelector('video').getBoundingClientRect().width")), &vw)
+	eval(`(() => { window.__sent = []; return 1 })()`)
+	call("Input.dispatchMouseEvent", map[string]any{"type": "mousePressed", "x": vw - 0.5, "y": vh / 2, "button": "left", "buttons": 1, "clickCount": 1})
+	for i := 1; i <= 10; i++ {
+		call("Input.dispatchMouseEvent", map[string]any{"type": "mouseMoved", "x": vw - 0.5 - float64(i*20), "y": vh / 2, "button": "left", "buttons": 1})
+	}
+	// Where the last move lands (object-fit: contain may letterbox it sideways).
+	sc := min(vw/1280, vh/720)
+	want := fmt.Sprintf("x:%d ", int((vw-200.5-(vw-1280*sc)/2)/sc))
+	var out []byte
+	for end := time.Now().Add(3 * time.Second); time.Now().Before(end) && !strings.HasPrefix(string(out), want); time.Sleep(50 * time.Millisecond) {
+		out, _ = onDisp("xdotool", "getmouselocation").Output()
+	}
+	call("Input.dispatchMouseEvent", map[string]any{"type": "mouseReleased", "x": vw - 200.5, "y": vh / 2, "button": "left", "buttons": 0, "clickCount": 1})
+	var sent []string
+	_ = json.Unmarshal([]byte(eval("window.__sent")), &sent)
+	held := 0
+	for _, m := range sent {
+		if strings.Contains(m, `"m":1`) {
+			held++
+		}
+	}
+	if len(sent) < 12 || !strings.Contains(sent[0], `"x":1279,`) || !strings.Contains(sent[0], `"m":1`) || held != 11 || !strings.Contains(sent[len(sent)-1], `"m":0`) {
+		t.Errorf("drag sent %v", sent)
+	}
+	if !strings.HasPrefix(string(out), want) {
+		t.Errorf("pointer during the drag at %q, want %s", out, want)
+	}
+
+	// The host's cursor shape is the page's cursor: a window with the
+	// "watch" cursor (hotspot 15,9) under the pointer.
+	cursorWindow(t, onDisp)
+	var css string
+	for end := time.Now().Add(6 * time.Second); time.Now().Before(end); time.Sleep(100 * time.Millisecond) {
+		_ = json.Unmarshal([]byte(eval("document.querySelector('.hd-webrtc').style.cursor")), &css)
+		if strings.Contains(css, "data:image/png;base64,") && strings.Contains(eval("window.__cursor"), `"x":15,"y":9`) {
+			break
+		}
+	}
+	if !strings.HasPrefix(css, `url("data:image/png;base64,`) || !strings.HasSuffix(css, ", default") {
+		t.Errorf("CSS cursor %q, last message %s", css, eval("window.__cursor"))
+	}
 	time.Sleep(1500 * time.Millisecond)
 	t.Logf("states %s, stats %s", eval("window.__states"), eval("window.__stats"))
 	// The server's {"t":"enc"}: the preset and encoder actually running.
@@ -462,7 +556,7 @@ func TestIntegrationWebViewerInFirefox(t *testing.T) {
 	if ui == "" || ff == "" || gmp == "" {
 		t.Skip("WEBRTC_IT_UI, WEBRTC_IT_FIREFOX or WEBRTC_IT_OPENH264 not set")
 	}
-	testDesktop(t)
+	_, _, onDisp := testDesktop(t)
 	api := http.NewServeMux()
 	RegisterHostStreamRoutes(api)
 	target, _ := url.Parse(ui)
@@ -516,15 +610,22 @@ user_pref("media.peerconnection.ice.obfuscate_host_addresses", false);
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); _ = cmd.Wait() })
-	time.Sleep(20 * time.Second)
+	time.Sleep(10 * time.Second)
+	cursorWindow(t, onDisp) // the host's cursor changes mid-stream
+	time.Sleep(10 * time.Second)
 
 	mu.Lock()
 	defer mu.Unlock()
 	var states []string
 	var decEnd float64
 	codec := ""
+	cursorCSS := ""
 	for _, m := range logs {
 		switch m["ev"] {
+		case "cursor":
+			if m["x"] == 15.0 && m["y"] == 9.0 {
+				cursorCSS, _ = m["css"].(string)
+			}
 		case "state":
 			states = append(states, fmt.Sprint(m["s"], ":", m["r"]))
 		case "stats":
@@ -542,6 +643,9 @@ user_pref("media.peerconnection.ice.obfuscate_host_addresses", false);
 	}
 	if !strings.Contains(codec, "profile-level-id=42e01f") {
 		t.Errorf("codec %q: Firefox offers constrained baseline only", codec)
+	}
+	if !strings.HasPrefix(cursorCSS, `url("data:image/png;base64,`) {
+		t.Errorf("the window's cursor shape never became the page's cursor (%q)", cursorCSS)
 	}
 	if decEnd < 300 { // 8 s at 20 fps (Low) + 12 s at 30 (Balanced) = ~520
 		t.Errorf("only %v frames decoded", decEnd)

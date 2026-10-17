@@ -3,8 +3,10 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"image/png"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -289,11 +291,11 @@ func TestRFBInputReleasedOnClose(t *testing.T) {
 	s.onInput([]byte(`{"t":"k","ks":65507,"d":true}`))
 	s.onInput([]byte(`{"t":"p","x":10,"y":20,"m":1}`))
 	c.close()
-	// SetPixelFormat(20) + SetEncodings(4+8), the two inputs, then the
+	// SetPixelFormat(20) + SetEncodings(4+12: Raw, DesktopSize, Cursor), the two inputs, then the
 	// releases the tracker adds on close.
 	want := []byte{4, 1, 0, 0, 0, 0, 0xff, 0xe3, 5, 1, 0, 10, 0, 20, 4, 0, 0, 0, 0, 0, 0xff, 0xe3, 5, 0, 0, 10, 0, 20}
 	waitFor(t, "release on close", func() bool { return bytes.HasSuffix(f.received(), want) })
-	if got := f.received(); len(got) != 32+len(want) {
+	if got := f.received(); len(got) != 36+len(want) || !bytes.Contains(got, []byte{0, 3, 0, 0, 0, 0, 0xff, 0xff, 0xff, 0x21, 0xff, 0xff, 0xff, 0x11}) {
 		t.Errorf("unexpected bytes: % x", got)
 	}
 }
@@ -336,14 +338,47 @@ func TestReadRFBServer(t *testing.T) {
 	b = append(b, 2)                                                 // Bell
 	b = append(b, 1, 0, 0, 0, 0, 1, 1, 2, 3, 4, 5, 6)                // SetColourMapEntries, 1 entry
 	b = append(b, 3, 0, 0, 0, 0, 0, 0, 2, 0xe9, 'a')                 // ServerCutText "éa"
-	var w, h int
+	// Cursor 2x2, hotspot (1, 0): red, green / blue, white; the mask hides
+	// the bottom right pixel.
+	b = append(b, 0, 0, 0, 1, 0, 1, 0, 0, 0, 2, 0, 2, 0xff, 0xff, 0xff, 0x11)
+	b = append(b, 0, 0, 255, 0, 0, 255, 0, 0, 255, 0, 0, 0, 255, 255, 255, 0)
+	b = append(b, 0xc0, 0x80)
+	// A 200x1 cursor is too big for a browser: skipped, the stream goes on.
+	b = append(b, 0, 0, 0, 1, 0, 0, 0, 0, 0, 200, 0, 1, 0xff, 0xff, 0xff, 0x11)
+	b = append(b, make([]byte, 200*4+25)...)
+	b = append(b, 2) // Bell
+	var w, h, updates int
 	var clip string
-	err := readRFBServer(bufio.NewReader(bytes.NewReader(b)), func(nw, nh int) { w, h = nw, nh }, func(s string) { clip = s })
+	var cursors []dcMsg
+	err := readRFBServer(bufio.NewReader(bytes.NewReader(b)), rfbEvents{size: func(nw, nh int) { w, h = nw, nh }, clip: func(s string) { clip = s },
+		cursor: func(m dcMsg) { cursors = append(cursors, m) }, update: func() { updates++ }})
 	if err == nil || err.Error() != "EOF" {
 		t.Errorf("err = %v, want EOF", err)
 	}
-	if w != 1280 || h != 720 || clip != "éa" {
-		t.Errorf("size %dx%d clip %q", w, h, clip)
+	if w != 1280 || h != 720 || clip != "éa" || updates != 3 {
+		t.Errorf("size %dx%d clip %q updates %d", w, h, clip, updates)
+	}
+	if len(cursors) != 1 {
+		t.Fatalf("cursors %v", cursors)
+	}
+	c := cursors[0]
+	if c.T != "cursor" || c.W != 2 || c.H != 2 || c.X != 1 || c.Y != 0 {
+		t.Errorf("cursor %+v", c)
+	}
+	raw, _ := base64.StdEncoding.DecodeString(c.PNG)
+	img, err := png.Decode(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [4][4]uint32{{0xffff, 0, 0, 0xffff}, {0, 0xffff, 0, 0xffff}, {0, 0, 0xffff, 0xffff}, {0, 0, 0, 0}}
+	for i, at := range [4][2]int{{0, 0}, {1, 0}, {0, 1}, {1, 1}} {
+		r, g, bl, a := img.At(at[0], at[1]).RGBA()
+		if got := [4]uint32{r, g, bl, a}; got != want[i] {
+			t.Errorf("pixel %v = %v, want %v", at, got, want[i])
+		}
+	}
+	if b, _ := json.Marshal(cursorMsg(0, 0, 0, 0, nil, nil)); string(b) != `{"t":"cursor"}` {
+		t.Errorf("no cursor: %s", b)
 	}
 }
 
@@ -571,5 +606,35 @@ func TestOfferRejectsBadBodyAndUnavailable(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &st)
 	if st.Port != 28650 || st.Modes["webrtc"]["available"] != false || st.Modes["webrtc"]["reason"] != reasonNoDisplay || st.Modes["nova"] == nil || st.Modes["vnc"]["available"] != false {
 		t.Errorf("stream modes: %s", rec.Body.String())
+	}
+}
+
+// x11vnc only sends a new cursor shape while an update request is pending:
+// once the server does shapes, every update is answered with a new 1x1
+// request; a server without them (the Wayland helper) gets none.
+func TestRFBCursorKeepsARequestPending(t *testing.T) {
+	f := startFakeVNC(t, 64, 48)
+	c, err := dialHostRFB(f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.close()
+	s := &webrtcSession{rfb: c, stop: make(chan struct{})}
+	defer close(s.stop)
+	go s.readRFB()
+	poll := []byte{3, 1, 0, 0, 0, 0, 0, 1, 0, 1}
+	waitFor(t, "handshake", func() bool { return len(f.received()) == 36 })
+	f.mu.Lock()
+	conn := f.conn
+	f.mu.Unlock()
+	conn.Write([]byte{0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 2, 3, 4}) // Raw 1x1
+	time.Sleep(100 * time.Millisecond)
+	if bytes.Contains(f.received(), poll) {
+		t.Fatal("re-requested without cursor shapes")
+	}
+	conn.Write([]byte{0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0xff, 0xff, 0xff, 0x11, 1, 2, 3, 4, 0x80}) // Cursor 1x1
+	waitFor(t, "a new update request", func() bool { return bytes.HasSuffix(f.received(), poll) })
+	if m := s.cursor.Load(); m == nil || m.W != 1 || m.PNG == "" {
+		t.Errorf("cursor %+v", m)
 	}
 }

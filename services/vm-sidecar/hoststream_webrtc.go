@@ -18,11 +18,15 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"log"
 	"net"
@@ -508,10 +512,13 @@ func (c *rfbConn) handshake() error {
 	if _, err := c.r.Discard(int(binary.BigEndian.Uint32(hdr[20:]))); err != nil {
 		return err
 	}
-	// 32 bpp true colour (so a Raw rect is w*h*4), and DesktopSize.
+	// 32 bpp true colour (so a Raw rect is w*h*4), DesktopSize, and the
+	// cursor shape (x11vnc; the video has no cursor in it, so the viewer
+	// shows this one: resize arrows, I-beam, hand).
 	pf := []byte{0, 0, 0, 0, 32, 24, 0, 1, 0, 255, 0, 255, 0, 255, 16, 8, 0, 0, 0, 0}
-	enc := []byte{2, 0, 0, 2, 0, 0, 0, 0}
+	enc := []byte{2, 0, 0, 3, 0, 0, 0, 0}
 	enc = binary.BigEndian.AppendUint32(enc, uint32(0xFFFFFF21)) // -223 DesktopSize
+	enc = binary.BigEndian.AppendUint32(enc, uint32(0xFFFFFF11)) // -239 Cursor
 	return c.send(append(pf, enc...), false)
 }
 
@@ -544,9 +551,46 @@ func (c *rfbConn) close() {
 	_ = c.t.Close() // releases held keys/buttons first
 }
 
+// rfbEvents: what readRFBServer reports (all four set). cursor gets the
+// "cursor" message for a shape; update runs after every FramebufferUpdate.
+type rfbEvents struct {
+	size   func(w, h int)
+	clip   func(string)
+	cursor func(dcMsg)
+	update func()
+}
+
+// maxCursor: browsers ignore CSS cursor images bigger than 128x128.
+const maxCursor = 128
+
+// cursorMsg: an RFB Cursor rect (32 bpp B,G,R,x pixels + a 1-bit mask,
+// rows padded to a byte) as {"t":"cursor"} with an RGBA PNG; hotspot x, y.
+// w or h 0 = no cursor (the client hides it).
+func cursorMsg(w, h, x, y int, px, mask []byte) dcMsg {
+	m := dcMsg{T: "cursor", W: w, H: h, X: x, Y: y}
+	if w == 0 || h == 0 {
+		return m
+	}
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	row := (w + 7) / 8
+	for j := 0; j < h; j++ {
+		for i := 0; i < w; i++ {
+			o, p := img.PixOffset(i, j), px[(j*w+i)*4:]
+			img.Pix[o], img.Pix[o+1], img.Pix[o+2] = p[2], p[1], p[0]
+			if mask[j*row+i/8]&(0x80>>(i%8)) != 0 {
+				img.Pix[o+3] = 255
+			}
+		}
+	}
+	var b bytes.Buffer
+	_ = png.Encode(&b, img)
+	m.PNG = base64.StdEncoding.EncodeToString(b.Bytes())
+	return m
+}
+
 // readRFBServer parses server messages until an error: DesktopSize ->
-// onSize, ServerCutText (Latin-1) -> onClip; pixels are skipped.
-func readRFBServer(r *bufio.Reader, onSize func(w, h int), onClip func(string)) error {
+// size, ServerCutText (Latin-1) -> clip, Cursor -> cursor; pixels are skipped.
+func readRFBServer(r *bufio.Reader, ev rfbEvents) error {
 	b := make([]byte, 16)
 	for {
 		t, err := r.ReadByte()
@@ -569,11 +613,26 @@ func readRFBServer(r *bufio.Reader, onSize func(w, h int), onClip func(string)) 
 						return err
 					}
 				case -223:
-					onSize(w, h)
+					ev.size(w, h)
+				case -239: // Cursor: hotspot in x, y
+					n := w * h * 4
+					if w > maxCursor || h > maxCursor { // skip it, keep the last one
+						if _, err := r.Discard(n + (w+7)/8*h); err != nil {
+							return err
+						}
+						break
+					}
+					data := make([]byte, n+(w+7)/8*h)
+					if _, err := io.ReadFull(r, data); err != nil {
+						return err
+					}
+					x, y := int(binary.BigEndian.Uint16(b)), int(binary.BigEndian.Uint16(b[2:]))
+					ev.cursor(cursorMsg(w, h, x, y, data[:n], data[n:]))
 				default:
 					return fmt.Errorf("unexpected RFB encoding %d", int32(binary.BigEndian.Uint32(b[8:])))
 				}
 			}
+			ev.update()
 		case 1: // SetColourMapEntries
 			if _, err := io.ReadFull(r, b[:5]); err != nil {
 				return err
@@ -594,7 +653,7 @@ func readRFBServer(r *bufio.Reader, onSize func(w, h int), onClip func(string)) 
 			if _, err := io.ReadFull(r, text); err != nil {
 				return err
 			}
-			onClip(latin1ToString(text))
+			ev.clip(latin1ToString(text))
 		default:
 			return fmt.Errorf("unexpected RFB message %d", t)
 		}
@@ -618,6 +677,7 @@ type dcMsg struct {
 	Encoder string `json:"encoder,omitempty"`
 	FPS     int    `json:"fps,omitempty"`
 	Kbps    int    `json:"max_kbps,omitempty"`
+	PNG     string `json:"png,omitempty"` // "cursor" (server): base64 RGBA PNG
 }
 
 func clampU16(v int) uint16 { return uint16(max(0, min(v, 0xffff))) }
@@ -669,6 +729,7 @@ type webrtcSession struct {
 
 	dc      atomic.Pointer[webrtc.DataChannel]
 	lastEnc atomic.Pointer[dcMsg] // resent when the channel opens
+	cursor  atomic.Pointer[dcMsg] // the last shape, likewise
 	restart chan string
 	stop    chan struct{}
 	once    sync.Once
@@ -817,7 +878,8 @@ func (s *webrtcSession) heartbeat() {
 }
 
 func (s *webrtcSession) readRFB() {
-	err := readRFBServer(s.rfb.r, func(w, h int) {
+	cursorShapes := false
+	err := readRFBServer(s.rfb.r, rfbEvents{size: func(w, h int) {
 		s.sizeMu.Lock()
 		changed := w != s.w || h != s.h
 		s.w, s.h = w, h
@@ -826,7 +888,21 @@ func (s *webrtcSession) readRFB() {
 			s.send(dcMsg{T: "size", W: w, H: h})
 			s.requestRestart("size")
 		}
-	}, func(text string) { s.send(dcMsg{T: "clip", Text: text}) })
+	}, clip: func(text string) { s.send(dcMsg{T: "clip", Text: text}) },
+		cursor: func(m dcMsg) {
+			cursorShapes = true
+			if old := s.cursor.Swap(&m); old == nil || *old != m {
+				s.send(m)
+			}
+		},
+		// x11vnc sends a new shape only while an update request is pending:
+		// keep one (1x1, so pixels are next to nothing) once it does shapes.
+		// The Wayland helper sends none, so it keeps the 2 s size poll only.
+		update: func() {
+			if cursorShapes {
+				_ = s.rfb.pollSize()
+			}
+		}})
 	select {
 	case <-s.stop:
 	default:
@@ -1218,6 +1294,9 @@ func (s *webrtcSession) answer(offer webrtc.SessionDescription) (*webrtc.Session
 			w, h := s.size()
 			s.send(dcMsg{T: "size", W: w, H: h})
 			if m := s.lastEnc.Load(); m != nil {
+				s.send(*m)
+			}
+			if m := s.cursor.Load(); m != nil {
 				s.send(*m)
 			}
 		})
