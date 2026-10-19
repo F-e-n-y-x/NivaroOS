@@ -7,9 +7,11 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"image/png"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"slices"
 	"strconv"
@@ -383,14 +385,23 @@ func TestReadRFBServer(t *testing.T) {
 }
 
 func TestEncoderHung(t *testing.T) {
-	defer func(d time.Duration) { webrtcHungAfter = d }(webrtcHungAfter)
-	webrtcHungAfter = 3 * time.Second
+	defer func(d, g time.Duration) { webrtcHungAfter, webrtcStartGrace = d, g }(webrtcHungAfter, webrtcStartGrace)
+	webrtcHungAfter, webrtcStartGrace = 3*time.Second, 10*time.Second
 	t0 := time.Unix(1000, 0)
-	if encoderHung(t0.Add(2*time.Second), t0, time.Time{}) {
-		t.Error("2 s after start is not hung")
+	// No packet from this run yet: it is starting (NVENC/CUDA init takes 1 s
+	// on an idle box and over 3 s on a loaded one - an emulator booting
+	// next to it), so only the start grace applies.
+	if encoderHung(t0.Add(4*time.Second), t0, time.Time{}) {
+		t.Error("4 s into the start is not hung")
 	}
-	if !encoderHung(t0.Add(4*time.Second), t0, time.Time{}) {
-		t.Error("4 s without a packet is hung")
+	if encoderHung(t0.Add(4*time.Second), t0, t0.Add(-time.Second)) {
+		t.Error("the previous run's last packet does not count for this run")
+	}
+	if !encoderHung(t0.Add(11*time.Second), t0, time.Time{}) {
+		t.Error("no packet 11 s after the start is hung")
+	}
+	if !encoderHung(t0.Add(10*time.Second), t0, t0.Add(6*time.Second)) {
+		t.Error("streaming, then 4 s without a packet is hung")
 	}
 	if encoderHung(t0.Add(10*time.Second), t0, t0.Add(9*time.Second)) {
 		t.Error("a packet 1 s ago is not hung")
@@ -426,8 +437,8 @@ func (c *countWriter) Write(b []byte) (int, error) {
 // recorded, and feed (if set) gets each run's RTP port.
 func supervised(t *testing.T, feed func(p encParams, stop <-chan struct{})) (*webrtcSession, func() []encParams) {
 	t.Helper()
-	oldHung, oldPLI := webrtcHungAfter, webrtcPLIEvery
-	webrtcHungAfter, webrtcPLIEvery = 300*time.Millisecond, 400*time.Millisecond
+	oldHung, oldPLI, oldGrace := webrtcHungAfter, webrtcPLIEvery, webrtcStartGrace
+	webrtcHungAfter, webrtcPLIEvery, webrtcStartGrace = 300*time.Millisecond, 400*time.Millisecond, time.Second
 	var mu sync.Mutex
 	var runs []encParams
 	s := &webrtcSession{track: &countWriter{}, fps: 30, kbps: 1000, w: 1920, h: 1080,
@@ -447,7 +458,7 @@ func supervised(t *testing.T, feed func(p encParams, stop <-chan struct{})) (*we
 	t.Cleanup(func() {
 		s.once.Do(func() { close(s.stop) })
 		<-done
-		webrtcHungAfter, webrtcPLIEvery = oldHung, oldPLI
+		webrtcHungAfter, webrtcPLIEvery, webrtcStartGrace = oldHung, oldPLI, oldGrace
 	})
 	return s, func() []encParams { mu.Lock(); defer mu.Unlock(); return slices.Clone(runs) }
 }
@@ -489,6 +500,69 @@ func rtpFeed() func(p encParams, stop <-chan struct{}) {
 		}
 	}
 }
+
+// A loaded box (owner, 2026-10-19: an Android emulator booting, swap full)
+// starts NVENC in > 3 s. The hang rule killed every run before its first
+// frame, demoted nvh264enc to x264enc and then gave up: "every encoder
+// failed". A slow first packet within the start grace is a start, not a hang.
+func TestSupervisorWaitsForASlowFirstFrame(t *testing.T) {
+	feed := rtpFeed()
+	s, runs := supervised(t, func(p encParams, stop <-chan struct{}) {
+		select { // first packet > 2x the hang time after the start
+		case <-stop:
+			return
+		case <-time.After(700 * time.Millisecond):
+		}
+		feed(p, stop)
+	})
+	// The browser has no keyframe yet and asks for one: the start is it.
+	time.Sleep(500 * time.Millisecond)
+	s.requestRestart("pli")
+	time.Sleep(webrtcStartGrace + 4*webrtcHungAfter)
+	if r := runs(); len(r) != 1 || r[0].Encoder != "nvh264enc" {
+		t.Fatalf("%d runs, last %s: a slow start was killed (hang rule or PLI)", len(r), r[len(r)-1].Encoder)
+	}
+}
+
+// Resizes (the app's "Match this phone") during a start aren't encoder
+// failures: they must not demote it.
+func TestSupervisorResizeDuringStartKeepsEncoder(t *testing.T) {
+	s, runs := supervised(t, nil)
+	for i := 1; i <= 2; i++ {
+		waitFor(t, "run", func() bool { return len(runs()) == i })
+		s.requestRestart("size")
+	}
+	waitFor(t, "third run", func() bool { return len(runs()) == 3 })
+	if r := runs(); r[2].Encoder != "nvh264enc" {
+		t.Errorf("after two resizes: %s, want nvh264enc", r[2].Encoder)
+	}
+}
+
+// The child's last output goes to the log when it exits or hangs: the
+// owner's "every encoder failed" left no gst text to go on.
+func TestSupervisorLogsEncoderOutput(t *testing.T) {
+	var logs bytes.Buffer
+	var mu sync.Mutex
+	log.SetOutput(writerFunc(func(b []byte) (int, error) { mu.Lock(); defer mu.Unlock(); return logs.Write(b) }))
+	defer log.SetOutput(os.Stderr)
+	s := &webrtcSession{track: &countWriter{}, w: 1920, h: 1080, have: map[string]bool{"x264enc": true},
+		restart: make(chan string, 1), presetCh: make(chan struct{}, 1), stop: make(chan struct{})}
+	s.spawn = func(encParams) *exec.Cmd {
+		return exec.Command("sh", "-c", "echo 'Setting pipeline to PLAYING ...'; echo 'ERROR: from element /GstPipeline:pipeline0/GstXImageSrc:ximagesrc0: boom' >&2; exit 1")
+	}
+	done := make(chan struct{})
+	go func() { s.superviseEncoder(); close(done) }()
+	defer func() { s.once.Do(func() { close(s.stop) }); <-done }()
+	waitFor(t, "the child's error in the log", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return strings.Contains(logs.String(), "ximagesrc0: boom") && strings.Contains(logs.String(), "Setting pipeline to PLAYING")
+	})
+}
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(b []byte) (int, error) { return f(b) }
 
 func TestSupervisorPLIAndSize(t *testing.T) {
 	s, runs := supervised(t, rtpFeed())

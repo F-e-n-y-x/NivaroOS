@@ -52,7 +52,8 @@ var (
 	webrtcUDPPort       = 28650
 	webrtcAllowLoopback = false // tests only: offer 127.0.0.1 candidates
 	webrtcRFBSocket     = hostVNCSocketPath
-	webrtcHungAfter     = 3 * time.Second  // no RTP this long: restart the encoder
+	webrtcHungAfter     = 3 * time.Second  // streaming, then no RTP this long: restart the encoder
+	webrtcStartGrace    = 10 * time.Second // a run's first packet may take this long (NVENC: 1 s idle, > 3 s on a loaded box)
 	webrtcPLIEvery      = 2 * time.Second  // at most one PLI restart per this
 	webrtcLinger        = 10 * time.Second // peer gone (or never came) this long: end
 	webrtcHeartbeat     = 2 * time.Second
@@ -339,7 +340,7 @@ func offerMain(sdp string) bool {
 }
 
 func x11Argv(display string, p encParams) []string {
-	a := []string{"-q", "ximagesrc", "display-name=" + display, "use-damage=false", "show-pointer=false",
+	a := []string{"ximagesrc", "display-name=" + display, "use-damage=false", "show-pointer=false",
 		"!", fmt.Sprintf("video/x-raw,framerate=%d/1", p.FPS)}
 	return append(a, gstTail(p)...)
 }
@@ -362,7 +363,6 @@ func encoderCmd(c captureTarget, p encParams) *exec.Cmd {
 		cmd = exec.Command(gstLaunch, x11Argv(c.x11.Display, p)...)
 		cmd.Env = xEnv(c.x11)
 	}
-	cmd.Stderr = os.Stderr
 	// A dead sidecar must never leak an encoder (or an NVENC session).
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
 	return cmd
@@ -409,8 +409,8 @@ func runHostWebRTCWayland(args []string) int {
 		return 1
 	}
 	defer sess.stop()
-	cmd := exec.Command(gstLaunch, append(append([]string{"-q"}, waylandSource(sess.node, *fps)...), fs.Args()...)...)
-	cmd.Stderr = os.Stderr
+	cmd := exec.Command(gstLaunch, append(waylandSource(sess.node, *fps), fs.Args()...)...)
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr // the sidecar's outTail
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
 	if err := cmd.Start(); err != nil {
 		log.Print(err)
@@ -938,14 +938,43 @@ func (r *rtpState) next(now time.Time) (seq int, ts int64, packets int64, last t
 	return int(r.seq + 1), int64(r.ts + uint32(now.Sub(r.at).Milliseconds()*90) + 1), r.n, r.at
 }
 
-// encoderHung: no packet for webrtcHungAfter since the later of the start
-// and the last packet.
+// encoderHung: a run with no packet yet gets webrtcStartGrace (killing a
+// slow start only makes the next one pay the start again); once it
+// streams, a gap of webrtcHungAfter is a hang.
 func encoderHung(now, started, lastPkt time.Time) bool {
-	ref := started
-	if lastPkt.After(ref) {
-		ref = lastPkt
+	if !lastPkt.After(started) {
+		return now.Sub(started) > webrtcStartGrace
 	}
-	return now.Sub(ref) > webrtcHungAfter
+	return now.Sub(lastPkt) > webrtcHungAfter
+}
+
+// outTail keeps the end of what an encoder child prints (gst-launch's
+// state changes on stdout, its errors on stderr) for the log.
+type outTail struct {
+	mu sync.Mutex
+	b  []byte
+}
+
+func (t *outTail) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.b = append(t.b, p...); len(t.b) > 4096 {
+		t.b = t.b[len(t.b)-4096:]
+	}
+	return len(p), nil
+}
+
+// lines: the last n non-empty lines.
+func (t *outTail) lines(n int) []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var out []string
+	for _, l := range strings.Split(string(t.b), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			out = append(out, l)
+		}
+	}
+	return out[max(0, len(out)-n):]
 }
 
 // superviseEncoder runs the encoder child until the session ends,
@@ -991,6 +1020,8 @@ func (s *webrtcSession) superviseEncoder() {
 		seq, ts, before, _ := rs.next(time.Now())
 		cmd := s.spawn(encParams{Encoder: enc, Preset: preset, FPS: sp.FPS, Kbps: sp.Kbps, MaxW: sp.MaxW, CudaScale: s.have["cudaconvertscale"], Main: s.main,
 			W: w, H: h, Seq: seq, TS: ts, Port: port})
+		tail := &outTail{}
+		cmd.Stdout, cmd.Stderr = tail, tail
 		started := time.Now()
 		if err := cmd.Start(); err != nil {
 			log.Printf("host webrtc: %s: %v", enc, err)
@@ -1009,16 +1040,21 @@ func (s *webrtcSession) superviseEncoder() {
 		if why == "stop" {
 			return
 		}
-		if _, _, after, _ := rs.next(time.Now()); after == before {
+		// Only the encoder's own failures count: a run cut short by a
+		// resize or a preset switch before its first packet says nothing.
+		if _, _, after, _ := rs.next(time.Now()); after != before {
+			fails = 0
+		} else if why == "exit" || why == "hung" {
 			if fails++; fails >= 2 {
 				log.Printf("host webrtc: %s produced no video twice - trying the next encoder", enc)
 				broken[enc], fails = true, 0
 			}
-		} else {
-			fails = 0
 		}
 		log.Printf("host webrtc: restarting %s (%s)", enc, why)
 		if why == "exit" || why == "hung" {
+			for _, l := range tail.lines(15) {
+				log.Printf("host webrtc: %s said: %s", enc, l)
+			}
 			select {
 			case <-s.stop:
 				return
@@ -1042,9 +1078,9 @@ func (s *webrtcSession) waitEncoder(exited <-chan struct{}, started time.Time, r
 		case <-s.presetCh:
 			return "preset"
 		case why := <-s.restart:
-			// A new run starts with a keyframe anyway; PLIs right after
-			// one are the browser still waiting for it.
-			if why == "pli" && time.Since(started) < webrtcPLIEvery {
+			// A new run starts with a keyframe anyway; PLIs before (and
+			// right after) its first packet are the browser waiting for it.
+			if _, _, _, last := rs.next(time.Now()); why == "pli" && (time.Since(started) < webrtcPLIEvery || !last.After(started)) {
 				continue
 			}
 			return why
