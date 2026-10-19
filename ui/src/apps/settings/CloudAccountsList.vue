@@ -60,7 +60,7 @@
 			<!-- Reconnect: token-kind (Drive/Dropbox/OneDrive) - paste a fresh token -->
 			<div v-if="reconnectingKey === a.mount_point && reconnectableKinds[a.type] === 'token'" class="reconnect-form">
 				<p class="field-help">{{ $t('Sign in again - the account keeps its name and place in Files, and backups carry on.') }}</p>
-				<OAuthSignInSteps :type="a.type" :provider="providerLabels[a.type] || a.type" :own-client="!!a.own_client" @change="reconnectOAuth = $event" />
+				<OAuthSignInSteps :type="a.type" :provider="providerLabels[a.type] || a.type" :own-client="!!a.own_client" :name="a.fs" :saved-client-id="a.client_id || ''" @change="reconnectOAuth = $event" />
 				<div class="form-actions">
 					<b-button rounded size="is-small" type="is-primary" :loading="reconnecting" :disabled="!reconnectOAuth" @click="submitReconnectToken(a)">{{ $t('Reconnect') }}</b-button>
 					<b-button rounded size="is-small" @click="reconnectingKey = null">{{ $t('Cancel') }}</b-button>

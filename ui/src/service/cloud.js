@@ -48,6 +48,16 @@ const cloud = {
 		return api.post(`${PREFIX}/accounts/${name}/reconnect`, { params })
 	},
 
+	// sign in again with the account's saved own app, server-side (the
+	// secret never comes to the browser): POST starts it and returns the
+	// sign-in link, GET polls for the token
+	authorize(name) {
+		return api.post(`${PREFIX}/accounts/${name}/authorize`, {})
+	},
+	authorizeStatus(name) {
+		return api.get(`${PREFIX}/accounts/${name}/authorize`)
+	},
+
 	// real upload/download throughput check against the account: POST
 	// starts a background run, GET polls it, DELETE stops it
 	speedTest(name) {

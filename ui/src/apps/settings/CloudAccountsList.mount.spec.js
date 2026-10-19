@@ -32,7 +32,7 @@ function mount(comp, props, accounts) {
 describe('Online Storage account list', () => {
 	test('an expired sign-in stays listed, says why, and Reconnect opens the sign-in steps', async () => {
 		const { el, app } = mount(List, {}, [
-			{ fs: 'gd', name: 'My Drive', type: 'drive', mount_point: '/mnt/gd', own_client: true, status: 'sign_in_expired', problem: testingWhy },
+			{ fs: 'gd', name: 'My Drive', type: 'drive', mount_point: '/mnt/gd', own_client: true, client_id: '383322-abc.apps.googleusercontent.com', status: 'sign_in_expired', problem: testingWhy },
 			{ fs: 'ok', name: 'Work', type: 'drive', mount_point: '/mnt/ok' }
 		])
 		await flush()
@@ -50,6 +50,8 @@ describe('Online Storage account list', () => {
 		expect(el.querySelector('.reconnect-form .oauth-steps')).not.toBeNull()
 		// The account uses its own app: the publish warning is right there.
 		expect(el.querySelector('.reconnect-form').textContent).toContain('Publish the app or it expires in 7 days.')
+		// ...and its saved app is reused, not asked for again.
+		expect(el.querySelector('.reconnect-form').textContent).toContain('Using your saved app (383322…)')
 		app.unmount()
 	})
 })

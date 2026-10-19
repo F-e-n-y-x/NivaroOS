@@ -23,6 +23,7 @@ type MountPoint struct {
 	Avail      string `json:"avail,omitempty"`
 	Used       string `json:"used,omitempty"`
 	OwnClient  bool   `json:"own_client,omitempty"` // OAuth through the user's own app, not rclone's shared one
+	ClientID   string `json:"client_id,omitempty"`  // that app's ID (public; the secret never leaves the server)
 	// Status: "" mounted, "not_mounted", or "sign_in_expired" (Reconnect
 	// fixes it); Problem says why.
 	Status  string `json:"status,omitempty"`

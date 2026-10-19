@@ -62,8 +62,9 @@ func ListStorages(c *gin.Context) {
 			MountPoint: a.MountPoint,
 			Name:       service.MyService.Storage().GetAttributeValueByName(a.Name, "username"),
 			Type:       t,
-			OwnClient:  service.MyService.Storage().GetAttributeValueByName(a.Name, "client_id") != "",
+			ClientID:   service.MyService.Storage().GetAttributeValueByName(a.Name, "client_id"),
 		}
+		item.OwnClient = item.ClientID != ""
 		if !a.Mounted {
 			item.Status = "not_mounted"
 			if p := service.CloudProblemOf(a.Name); p != nil {
