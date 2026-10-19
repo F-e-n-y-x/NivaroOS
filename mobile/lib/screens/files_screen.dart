@@ -6,6 +6,7 @@ import 'package:clock/clock.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/cloud_account.dart';
 import '../models/favorite_folder.dart';
@@ -20,6 +21,7 @@ import '../services/storage_service.dart';
 import '../ui/ui.dart';
 import '../utils/format.dart';
 import 'file_viewer_screen.dart';
+import 'files/cloud_account_tile.dart';
 import 'files/file_ops.dart';
 import 'files/file_sheets.dart';
 import 'files/file_tabs.dart';
@@ -130,6 +132,7 @@ class FilesScreenState extends State<FilesScreen> {
   FileLocation? _thisPhone;
   bool _phonesLoading = true;
   List<FileLocation> _cloud = const [];
+  List<CloudAccount> _cloudAccounts = const [];
   bool _cloudLoading = true;
   Object? _cloudError;
   List<FileLocation> _favorites = const [];
@@ -330,6 +333,7 @@ class FilesScreenState extends State<FilesScreen> {
       setState(() {
         _cloudLoading = false;
         _cloudError = null;
+        _cloudAccounts = accounts;
         _cloud = [
           for (final a in accounts)
             FileLocation(
@@ -696,6 +700,16 @@ class FilesScreenState extends State<FilesScreen> {
 
   // -------------------------------------------------------------------------
   // Actions
+
+  /// Signing in again (rclone authorize) happens in the web UI.
+  Future<void> _reconnectCloud() async {
+    _snack('In the web UI, open Settings › Online Storage and press Reconnect on this account.');
+    final uri = Uri.tryParse(ApiClient.instance.baseUrl);
+    if (uri == null) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
 
   void _snack(String message, {SnackBarAction? action, bool error = false}) {
     final messenger = ScaffoldMessenger.maybeOf(context);
@@ -1437,14 +1451,8 @@ class FilesScreenState extends State<FilesScreen> {
     return TileGroup(
       title: 'Cloud drives',
       children: [
-        for (final c in _cloud)
-          ListTile(
-            leading: const Icon(Icons.cloud_outlined),
-            title: Text(c.label, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(c.detail ?? c.path, maxLines: 1, overflow: TextOverflow.ellipsis),
-            enabled: c.online,
-            onTap: () => _openLocation(c),
-          ),
+        for (var i = 0; i < _cloud.length; i++)
+          CloudAccountTile(account: _cloudAccounts[i], onOpen: () => _openLocation(_cloud[i]), onReconnect: _reconnectCloud),
       ],
     );
   }

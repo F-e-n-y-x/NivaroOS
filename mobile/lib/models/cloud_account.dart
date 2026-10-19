@@ -8,6 +8,11 @@ class CloudAccount {
   final double? uploadMbps;
   final double? downloadMbps;
 
+  /// "" mounted, "not_mounted", or "sign_in_expired" (Reconnect in the
+  /// web UI fixes it); [problem] says why.
+  final String status;
+  final String problem;
+
   const CloudAccount({
     required this.name,
     required this.fs,
@@ -16,6 +21,8 @@ class CloudAccount {
     this.icon = '',
     this.uploadMbps,
     this.downloadMbps,
+    this.status = '',
+    this.problem = '',
   });
 
   factory CloudAccount.fromJson(Map<String, dynamic> j) {
@@ -35,11 +42,16 @@ class CloudAccount {
       icon: j['icon'] as String? ?? '',
       uploadMbps: up,
       downloadMbps: down,
+      status: j['status'] as String? ?? '',
+      problem: j['problem'] as String? ?? '',
     );
   }
 
   /// Mounted, so its files can be browsed.
-  bool get isMounted => mountPoint.isNotEmpty;
+  bool get isMounted => mountPoint.isNotEmpty && status.isEmpty;
+
+  /// The provider no longer accepts the sign-in: someone has to Reconnect.
+  bool get signInExpired => status == 'sign_in_expired';
 
   String get displayName {
     if (name.isNotEmpty) return name;
