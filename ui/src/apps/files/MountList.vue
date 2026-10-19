@@ -456,7 +456,9 @@ export default {
 		async getCloudStorage() {
 			try {
 				const cloudRes = await this.$api.cloud.list()
-				this.cloudStorageList = cloudRes.data.data.map((storage) => {
+				// An account that isn't mounted (sign-in expired...) is listed
+				// in Settings > Online Storage, not as a location to open.
+				this.cloudStorageList = cloudRes.data.data.filter((storage) => !storage.status).map((storage) => {
 					// Backend now returns an mdi icon name (e.g. "google-drive") rather
 					// than a served SVG URL - render it as a normal icon, not an image.
 					return {

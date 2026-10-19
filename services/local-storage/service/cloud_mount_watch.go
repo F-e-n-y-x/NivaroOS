@@ -283,6 +283,12 @@ func (w *mountWatcher) Tick() {
 		if err := w.env.Mount(t); err != nil {
 			s.failures++
 			s.next = now.Add(remountBackoff(s.failures))
+			if noteMountFailure(t.Name, err, now) {
+				// Retrying doesn't help until someone signs in again
+				// (noteMountFailure logged and notified).
+				s.next = now.Add(signInRetry)
+				continue
+			}
 			logger.Error("cloud mounts: remount failed; will retry",
 				zap.String("remote", t.Name), zap.String("mountPoint", mp), zap.String("why", s.reason),
 				zap.Int("attempt", s.failures), zap.Duration("retryIn", s.next.Sub(now)), zap.Error(err))

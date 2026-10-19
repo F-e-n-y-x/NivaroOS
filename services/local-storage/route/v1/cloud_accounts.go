@@ -175,6 +175,9 @@ func PostCloudAccount(c *gin.Context) {
 	}
 	data["username"] = req.Label
 	data["mount_point"] = mountPoint
+	if _, ok := req.Params["token"]; ok {
+		data[service.ConnectedAtKey] = time.Now().UTC().Format(time.RFC3339)
+	}
 
 	if err := service.MyService.Storage().CreateConfig(data, name, req.Type); err != nil {
 		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
@@ -475,6 +478,9 @@ func PostCloudAccountReconnect(c *gin.Context) {
 		msg := fmt.Sprintf("the new sign-in didn't work, so the account keeps its previous one: %v", err)
 		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: msg, Data: msg})
 		return
+	}
+	if _, ok := req.Params["token"]; ok {
+		_ = service.MyService.Storage().SetAttributeValue(name, service.ConnectedAtKey, time.Now().UTC().Format(time.RFC3339), false)
 	}
 	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: gin.H{"name": name, "mount_point": mountPoint}})
 }

@@ -17,6 +17,10 @@
 					<template v-else>{{ $t('Your own {provider} app gets its own speed limits - much faster for big backups like photo libraries. It takes about 10 minutes to create, once.', { provider }) }}</template>
 					<a :href="guideUrl" target="_blank" rel="noopener">{{ $t('How to create one') }}</a>
 				</p>
+				<p v-if="own && type === 'drive'" class="publish-warning">
+					<i class="mdi mdi-alert-outline"></i>
+					<span><b>{{ $t('Publish the app or it expires in 7 days.') }}</b> {{ $t('A Google app left in Testing mode is signed out by Google every 7 days. Publish it first: Google Cloud › OAuth consent screen › Publish app. Already expired? Publish it, then Reconnect.') }}</span>
+				</p>
 				<template v-if="own">
 					<b-field :label="$t('Client ID')" :type="idError ? 'is-danger' : ''" :message="idError">
 						<b-input v-model.trim="clientId" size="is-small" autocomplete="off" spellcheck="false"></b-input>
@@ -186,6 +190,16 @@ export default {
 		color: var(--color-primary-fg);
 		white-space: nowrap;
 	}
+}
+.publish-warning {
+	display: flex;
+	gap: var(--space-2);
+	font-size: var(--font-xs);
+	color: var(--color-warning-fg, #92400e);
+	background: var(--color-warning-soft, rgba(245, 158, 11, 0.1));
+	border-radius: var(--radius-sm);
+	padding: var(--space-2);
+	margin: var(--space-2) 0;
 }
 .authorize-cmd {
 	display: block;

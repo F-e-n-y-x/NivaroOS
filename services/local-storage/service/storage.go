@@ -134,6 +134,7 @@ func (s *storageStruct) MountStorage(mountPoint, deviceName string) error {
 	}()
 	MountLists[mountPoint] = mnt
 	mountDevs[mountPoint] = dev
+	clearCloudProblem(deviceName)
 	writeCloudTrash()
 	delete(mountExit, mountPoint)
 	parkKnownStuck(cloudMount{Name: deviceName, MountPoint: mountPoint, VFS: mnt.VFS})
@@ -320,6 +321,7 @@ func (s *storageStruct) SetAttributeValue(name, key, value string, isPassword bo
 
 func (s *storageStruct) DeleteConfigByName(name string) {
 	rconfig.DeleteRemote(name)
+	clearCloudProblem(name)
 }
 func NewStorageService() StorageService {
 	return &storageStruct{}

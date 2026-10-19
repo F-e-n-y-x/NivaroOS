@@ -53,27 +53,26 @@ func ListStorages(c *gin.Context) {
 	// 	Content: storages,
 	// 	Total:   total,
 	// }})
-	r, err := service.MyService.Storage().GetStorages()
-
-	if err != nil {
-		c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
-		return
-	}
-
 	list := []httper.MountPoint{}
-
-	for _, v := range r.MountPoints {
-		t := service.MyService.Storage().GetAttributeValueByName(v.Fs, "type")
-		name := service.MyService.Storage().GetAttributeValueByName(v.Fs, "username")
+	for _, a := range service.CloudAccounts() {
+		t := service.MyService.Storage().GetAttributeValueByName(a.Name, "type")
 		item := httper.MountPoint{
-			Fs:         v.Fs,
+			Fs:         a.Name,
 			Icon:       cloudProviderIcon(t),
-			MountPoint: v.MountPoint,
-			Name:       name,
+			MountPoint: a.MountPoint,
+			Name:       service.MyService.Storage().GetAttributeValueByName(a.Name, "username"),
 			Type:       t,
-			OwnClient:  service.MyService.Storage().GetAttributeValueByName(v.Fs, "client_id") != "",
+			OwnClient:  service.MyService.Storage().GetAttributeValueByName(a.Name, "client_id") != "",
 		}
-		if size, avail, used, ok := statfsUsage(v.MountPoint); ok {
+		if !a.Mounted {
+			item.Status = "not_mounted"
+			if p := service.CloudProblemOf(a.Name); p != nil {
+				if p.SignInExpired {
+					item.Status = "sign_in_expired"
+				}
+				item.Problem = p.Message
+			}
+		} else if size, avail, used, ok := statfsUsage(a.MountPoint); ok {
 			item.Size = strconv.FormatUint(size, 10)
 			item.Avail = strconv.FormatUint(avail, 10)
 			item.Used = strconv.FormatUint(used, 10)

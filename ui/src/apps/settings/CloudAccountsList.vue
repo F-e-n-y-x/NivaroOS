@@ -12,6 +12,12 @@
 						<div class="setting-desc">
 							{{ a.mount_point }}
 							<template v-if="a.own_client">&middot; {{ $t('Your own app') }}</template>
+							<span v-if="a.status === 'sign_in_expired'" class="account-problem is-expired">
+								<i class="mdi mdi-account-alert-outline"></i> <b>{{ $t('Sign-in expired') }}</b><template v-if="a.problem"> &middot; {{ a.problem }}</template>
+							</span>
+							<span v-else-if="a.status === 'not_mounted'" class="account-problem">
+								<i class="mdi mdi-alert-circle-outline"></i> {{ $t('Not connected right now - it retries in the background.') }}<template v-if="a.problem"> ({{ a.problem }})</template>
+							</span>
 							<span v-if="speedLive[a.mount_point]" class="speed-result is-live">
 								&middot; {{ speedPhaseLabel(speedLive[a.mount_point]) }}<template v-if="speedLive[a.mount_point].live_mbps > 0"> {{ fmtMbps(speedLive[a.mount_point].live_mbps) }} Mbps</template>
 								<a class="speed-stop" @click="stopSpeedTest(a)">{{ $t('Stop') }}</a>
@@ -34,6 +40,7 @@
 						<b-button rounded size="is-small" @click="editingKey = null">{{ $t('Cancel') }}</b-button>
 					</template>
 					<template v-else>
+						<b-button v-if="a.status === 'sign_in_expired' && reconnectableKinds[a.type] && reconnectingKey !== a.mount_point" class="reconnect-cta" rounded size="is-small" type="is-primary" icon-left="login" @click="toggleReconnect(a)">{{ $t('Reconnect') }}</b-button>
 						<button class="icon-button" type="button" :title="$t('Test speed')" :disabled="speedTestingKey === a.mount_point" @click="runSpeedTest(a)">
 							<i class="mdi mdi-speedometer" :class="{ 'speedtest-pulse': speedTestingKey === a.mount_point }"></i>
 						</button>
@@ -496,6 +503,20 @@ export default {
 	margin-top: var(--space-1);
 	font-size: var(--font-xs);
 	color: var(--theme-text-secondary, #475569);
+}
+
+.account-problem {
+	display: block;
+	margin-top: var(--space-1);
+	color: var(--theme-text-secondary, #475569);
+
+	&.is-expired {
+		color: var(--color-danger-fg);
+	}
+}
+
+.reconnect-cta {
+	margin-right: var(--space-2);
 }
 
 .reconnect-form {

@@ -14,6 +14,8 @@ Your client ID and secret are stored only on your server, in the same protected 
 
 ## Google Drive
 
+> **Publish the app or it expires in 7 days.** A Google app left in *Testing* mode is signed out by Google every 7 days: the account stops working and NivaroOS shows it as **Sign-in expired**. Publishing it (step 1.4.3) fixes that for good.
+
 ### 1. Create the app (once)
 
 1. Open <https://console.cloud.google.com/> and sign in with the Google account you back up to.
@@ -22,7 +24,7 @@ Your client ID and secret are stored only on your server, in the same protected 
 4. Go to **Google Auth Platform** (called **OAuth consent screen** in older consoles):
    1. **Branding:** set an app name (for example `NivaroOS`), your email as the support email, then **Save**.
    2. **Audience:** choose **External**. Under **Test users**, add your own Google address.
-   3. Still on **Audience**, click **Publish app** so it shows **In production**. **This matters:** while an app is in *Testing*, Google ends its sign-ins after **7 days**. A personal app doesn't need Google's review. You'll only see an "unverified app" warning when you sign in.
+   3. **Publish the app or it expires in 7 days.** Still on **Audience**, click **Publish app** so it shows **In production**. While an app is in *Testing*, Google ends its sign-ins after **7 days**. A personal app doesn't need Google's review. You'll only see an "unverified app" warning when you sign in.
 5. Go to **Clients → Create client**:
    - **Application type:** **Desktop app**. Don't pick "Web application": rclone's sign-in returns to `http://127.0.0.1:53682/`, which only Desktop apps accept without extra setup.
    - There is no URL field for a Desktop app. That's expected: Google accepts the `127.0.0.1` address rclone uses on its own.
@@ -42,6 +44,13 @@ Your client ID and secret are stored only on your server, in the same protected 
 The account list now shows **Your own app** next to the account.
 
 > Running `rclone authorize` on your own computer works too. Install rclone there, run the command the form shows, and paste the token back.
+
+### 3. If it says "Sign-in expired"
+
+Google ended the sign-in (after 7 days for an app still in *Testing*, or after a password change or removed access). NivaroOS keeps the account and its settings, sends one notification, and stops retrying every few minutes.
+
+1. If the app is still in *Testing*: Google Cloud → **Google Auth Platform → Audience** (or **OAuth consent screen**) → **Publish app**.
+2. Settings → Online Storage → the account → **Reconnect** (shown on the account's row), then sign in again as in step 2. The account keeps its name and place in Files, and backups carry on.
 
 ---
 
@@ -72,6 +81,6 @@ Settings → Cloud → the account → **Reconnect** → **rclone's app** → si
 
 - **"has not completed the Google verification process" / `Error 403: access_denied` (Google):** the app is still in *Testing* and your account isn't a test user. Go to **Audience → Publish app** (or add your address under **Test users**), then sign in again.
 - **`redirect_uri_mismatch` (Google):** the client isn't a **Desktop app**. Create a Desktop client and use that one.
-- **Signed out again after a week (Google):** the app is still in *Testing*. Publish it (step 1.4.3), then reconnect.
+- **Signed out again after a week / "Sign-in expired" / `invalid_grant` (Google):** the app is still in *Testing*. Publish it (step 1.4.3), then Reconnect (step 3).
 - **`invalid_client`:** the ID or secret was pasted with a missing character. Copy both again.
 - **Still slow:** Google allows 750 GB of uploads per account per day. A backup that reaches it stops cleanly and continues the next day.

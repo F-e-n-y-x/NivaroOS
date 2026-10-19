@@ -23,6 +23,10 @@ type MountPoint struct {
 	Avail      string `json:"avail,omitempty"`
 	Used       string `json:"used,omitempty"`
 	OwnClient  bool   `json:"own_client,omitempty"` // OAuth through the user's own app, not rclone's shared one
+	// Status: "" mounted, "not_mounted", or "sign_in_expired" (Reconnect
+	// fixes it); Problem says why.
+	Status  string `json:"status,omitempty"`
+	Problem string `json:"problem,omitempty"`
 }
 type MountResult struct {
 	Error string `json:"error"`
