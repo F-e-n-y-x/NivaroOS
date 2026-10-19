@@ -167,8 +167,18 @@ func PostCloudAccount(c *gin.Context) {
 		return
 	}
 	name := remoteName(req.Label, req.Type)
-	mountPoint := "/mnt/" + name
+	mountPoint, err := createAccount(req, name)
+	if err != nil {
+		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
+		return
+	}
+	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: gin.H{"name": name, "mount_point": mountPoint}})
+}
 
+// createAccount saves the account as remote name and mounts it (nothing is
+// left behind when the mount fails).
+func createAccount(req createAccountRequest, name string) (mountPoint string, err error) {
+	mountPoint = "/mnt/" + name
 	data := rc.Params{}
 	for k, v := range req.Params {
 		data[k] = v
@@ -178,17 +188,32 @@ func PostCloudAccount(c *gin.Context) {
 	if _, ok := req.Params["token"]; ok {
 		data[service.ConnectedAtKey] = time.Now().UTC().Format(time.RFC3339)
 	}
-
 	if err := service.MyService.Storage().CreateConfig(data, name, req.Type); err != nil {
-		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
-		return
+		return "", err
 	}
 	if err := service.MyService.Storage().MountStorage(mountPoint, name); err != nil {
 		service.MyService.Storage().DeleteConfigByName(name)
-		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
-		return
+		return "", err
 	}
-	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: gin.H{"name": name, "mount_point": mountPoint}})
+	return mountPoint, nil
+}
+
+func isTokenProvider(t string) bool {
+	for _, p := range providerCatalog {
+		if p.Type == t {
+			return p.AuthKind == "token"
+		}
+	}
+	return false
+}
+
+func providerLabel(t string) string {
+	for _, p := range providerCatalog {
+		if p.Type == t {
+			return p.Label
+		}
+	}
+	return t
 }
 
 // --- iCloud: rclone's iclouddrive backend needs a real interactive,
