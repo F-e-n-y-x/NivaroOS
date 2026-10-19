@@ -63,8 +63,20 @@ func startBG(t *testing.T, name string, args ...string) *exec.Cmd {
 	return cmd
 }
 
+// resizeDesktop: the app's "Screen resolution" / "Match this phone" on the
+// test display (skips where the X server can't resize).
+func resizeDesktop(t *testing.T, disp string, w, h int) {
+	t.Helper()
+	if _, err := exec.LookPath("Xtigervnc"); err != nil {
+		t.Skip("Xtigervnc (tigervnc-standalone-server) not found: Xvfb can't resize")
+	}
+	if err := setHostDisplayXrandr(w, h, hostXTarget{Display: disp}); err != nil {
+		t.Fatalf("resize to %dx%d: %v", w, h, err)
+	}
+}
+
 func gstRunning(display string) bool {
-	out, _ := exec.Command("pgrep", "-f", "gst-launch-1.0 -q ximagesrc display-name="+display+" ").Output()
+	out, _ := exec.Command("pgrep", "-f", "gst-launch-1.0 ximagesrc display-name="+display+" ").Output()
 	return len(bytes.TrimSpace(out)) > 0
 }
 
@@ -81,8 +93,15 @@ func testDesktop(t *testing.T) (enc, disp string, onDisp func(string, ...string)
 		enc = "x264enc"
 	}
 	disp = freeDisplay(t)
-	startBG(t, "Xvfb", disp, "-screen", "0", "1280x720x24", "-nolisten", "tcp")
-	waitFor(t, "Xvfb", func() bool { return displaySocketExists(disp) })
+	// Xtigervnc (tigervnc-standalone-server) resizes through RandR like the
+	// owner's desktop ("Match this phone"); Xvfb can't.
+	if _, err := exec.LookPath("Xtigervnc"); err == nil {
+		startBG(t, "Xtigervnc", disp, "-geometry", "1280x720", "-depth", "24", "-SecurityTypes", "None", "-rfbport", "-1",
+			"-rfbunixpath", t.TempDir()+"/xvnc.sock", "-nolisten", "tcp")
+	} else {
+		startBG(t, "Xvfb", disp, "-screen", "0", "1280x720x24", "-nolisten", "tcp")
+	}
+	waitFor(t, "X server", func() bool { return displaySocketExists(disp) })
 	// X clients of the test only ever see the throwaway display.
 	onDisp = func(name string, args ...string) *exec.Cmd {
 		c := exec.Command(name, args...)
@@ -93,8 +112,9 @@ func testDesktop(t *testing.T) (enc, disp string, onDisp func(string, ...string)
 	// x11vnc only reads the real cursor shape (XFIXES) once it sees a window
 	// manager; the test display has none.
 	t.Setenv("X11VNC_AVOID_WINDOWS", "never")
+	// The flags nivaroos-host-desktop.sh gives it that matter here.
 	startBG(t, "x11vnc", "-display", disp, "-rfbport", "0", "-rfbportv6", "-1", "-unixsock", sock, "-noipv6", "-nopw",
-		"-forever", "-shared", "-nonap", "-quiet")
+		"-forever", "-shared", "-nonap", "-xrandr", "resize", "-noxdamage", "-quiet")
 	waitFor(t, "x11vnc socket", func() bool { return socketListening(sock) })
 
 	oldSock, oldCap, oldLoop, oldPort, oldLinger := webrtcRFBSocket, webrtcCapture, webrtcAllowLoopback, webrtcUDPPort, webrtcLinger
@@ -335,40 +355,7 @@ func TestIntegrationWebRTCOfferStreamsAndInjects(t *testing.T) {
 // TestIntegrationWebViewerInChrome runs the real web viewer
 // (ui/src/shell/desktop/HostDesktopWebRTC.vue) in headless Chrome against
 // the lane. WEBRTC_IT_UI is a Vite dev server of ui/ (pnpm exec vite --port
-// 18093) with two scratch files in ui/ (not committed):
-//
-//	webrtc-harness.html: <div id="app"></div><script type="module" src="/webrtc-harness.js"></script>
-//	webrtc-harness.js (?preset=, ?switch=<preset> sends that preset on the
-//	data channel after 8 s; posts states and per-second stats to /__log):
-//	  import { createApp, h } from 'vue'
-//	  import Viewer from '@/shell/desktop/HostDesktopWebRTC.vue'
-//	  const q = new URLSearchParams(location.search)
-//	  const log = (o) => fetch('/__log', { method: 'POST', body: JSON.stringify(o) })
-//	  window.__states = []
-//	  localStorage.setItem('access_token', 'test')
-//	  const pcs = []
-//	  const PC = window.RTCPeerConnection
-//	  window.RTCPeerConnection = function (...a) { const p = new PC(...a); pcs.push(p); return p }
-//	  window.RTCPeerConnection.prototype = PC.prototype
-//	  let chan = null
-//	  const send = RTCDataChannel.prototype.send
-//	  RTCDataChannel.prototype.send = function (d) { chan = this; return send.call(this, d) }
-//	  if (q.get('switch')) setTimeout(() => chan && send.call(chan, JSON.stringify({ t: 'preset', preset: q.get('switch') })), 8000)
-//	  setInterval(async () => {
-//	    const p = pcs.at(-1)
-//	    const o = { ev: 'stats', pcs: pcs.length }
-//	    if (p) (await p.getStats()).forEach((s) => {
-//	      if (s.type === 'inbound-rtp' && s.kind === 'video') Object.assign(o, { dec: s.framesDecoded, w: s.frameWidth })
-//	      if (s.type === 'codec') o.codec = s.sdpFmtpLine
-//	    })
-//	    log(o)
-//	  }, 1000)
-//	  createApp({ render: () => h('div', { style: 'position:fixed;inset:0' }, [h(Viewer, {
-//	    fallback: false, preset: q.get('preset') || 'low',
-//	    onState: (s) => { window.__states.push(s.state + ':' + s.reason); log({ ev: 'state', s: s.state, r: s.reason }) },
-//	    onSize: (s) => (window.__size = s), onStats: (s) => (window.__stats = s),
-//	    onCursor: (c) => { window.__cursor = c; setTimeout(() => log({ ev: 'cursor', x: c.x, y: c.y, w: c.w,
-//	      css: document.querySelector('.hd-webrtc').style.cursor.slice(0, 40) }), 300) } })]) }).mount('#app')
+// 18093) serving the test page ui/webrtc-harness.{html,js}.
 func TestIntegrationWebViewerInChrome(t *testing.T) {
 	ui := os.Getenv("WEBRTC_IT_UI")
 	if ui == "" {
@@ -378,7 +365,7 @@ func TestIntegrationWebViewerInChrome(t *testing.T) {
 	if err != nil {
 		t.Skip("no google-chrome")
 	}
-	enc, _, onDisp := testDesktop(t)
+	enc, disp, onDisp := testDesktop(t)
 	api := http.NewServeMux()
 	RegisterHostStreamRoutes(api)
 	target, _ := url.Parse(ui)
@@ -542,6 +529,30 @@ func TestIntegrationWebViewerInChrome(t *testing.T) {
 	if st := eval("window.__stats"); !strings.Contains(st, `"fps":`) || !strings.Contains(st, `"preset":"low"`) || !strings.Contains(st, `"encoder":"`+enc+`"`) {
 		t.Errorf("stats %s", st)
 	}
+
+	// The host resizes mid-stream (a phone-shaped screen): same peer, the
+	// new size, the picture at Low's 1280-wide cap, still decoding.
+	resizeDesktop(t, disp, 2400, 1080)
+	var video string
+	for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(200 * time.Millisecond) {
+		video = eval("[document.querySelector('video').videoWidth, document.querySelector('video').videoHeight]")
+		if video == "[1280,576]" && eval("window.__size") == `{"w":2400,"h":1080}` {
+			break
+		}
+	}
+	if video != "[1280,576]" || eval("window.__size") != `{"w":2400,"h":1080}` {
+		t.Errorf("after the resize: video %s, size %s", video, eval("window.__size"))
+	}
+	var f0, f1 float64
+	_ = json.Unmarshal([]byte(eval("document.querySelector('video').getVideoPlaybackQuality().totalVideoFrames")), &f0)
+	time.Sleep(2 * time.Second)
+	_ = json.Unmarshal([]byte(eval("document.querySelector('video').getVideoPlaybackQuality().totalVideoFrames")), &f1)
+	if f1-f0 < 20 {
+		t.Errorf("%v frames in 2 s after the resize", f1-f0)
+	}
+	if st := eval("window.__states"); strings.Count(st, "live:") != 1 || strings.Contains(st, "reconnecting") {
+		t.Errorf("re-offered across the resize: states %s", st)
+	}
 }
 
 // TestIntegrationWebViewerInFirefox: the owner's browser (2026-10-16 bug:
@@ -556,7 +567,7 @@ func TestIntegrationWebViewerInFirefox(t *testing.T) {
 	if ui == "" || ff == "" || gmp == "" {
 		t.Skip("WEBRTC_IT_UI, WEBRTC_IT_FIREFOX or WEBRTC_IT_OPENH264 not set")
 	}
-	_, _, onDisp := testDesktop(t)
+	_, disp, onDisp := testDesktop(t)
 	api := http.NewServeMux()
 	RegisterHostStreamRoutes(api)
 	target, _ := url.Parse(ui)
@@ -610,12 +621,43 @@ user_pref("media.peerconnection.ice.obfuscate_host_addresses", false);
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); _ = cmd.Wait() })
-	time.Sleep(10 * time.Second)
-	cursorWindow(t, onDisp) // the host's cursor changes mid-stream
+	// Mid-stream the owner's phone sizes (2026-10-19: 3398x1220 -> 1920x824),
+	// a host cursor change and (at 15 s) a preset switch.
+	time.Sleep(6 * time.Second)
+	resizeDesktop(t, disp, 1920, 824)
+	time.Sleep(4 * time.Second)
+	cursorWindow(t, onDisp)
+	time.Sleep(4 * time.Second)
+	resizeDesktop(t, disp, 1080, 2400)
+	mu.Lock()
+	decAtResize := 0.0
+	for _, m := range logs {
+		if m["ev"] == "stats" {
+			decAtResize, _ = m["dec"].(float64)
+		}
+	}
+	mu.Unlock()
 	time.Sleep(10 * time.Second)
 
 	mu.Lock()
 	defer mu.Unlock()
+	var sizes []string
+	var lastW, lastH float64
+	for _, m := range logs {
+		switch m["ev"] {
+		case "size":
+			sizes = append(sizes, fmt.Sprint(m["w"], "x", m["h"]))
+		case "stats":
+			lastW, _ = m["vw"].(float64)
+			lastH, _ = m["vh"].(float64)
+		}
+	}
+	if !slicesContain(sizes, "1920x824") || sizes[len(sizes)-1] != "1080x2400" {
+		t.Errorf("size messages %v", sizes)
+	}
+	if lastW != 1080 || lastH != 2400 { // Balanced: 1080 wide is under its cap
+		t.Errorf("video %vx%v after the resize to 1080x2400", lastW, lastH)
+	}
 	var states []string
 	var decEnd float64
 	codec := ""
@@ -647,8 +689,11 @@ user_pref("media.peerconnection.ice.obfuscate_host_addresses", false);
 	if !strings.HasPrefix(cursorCSS, `url("data:image/png;base64,`) {
 		t.Errorf("the window's cursor shape never became the page's cursor (%q)", cursorCSS)
 	}
-	if decEnd < 300 { // 8 s at 20 fps (Low) + 12 s at 30 (Balanced) = ~520
+	if decEnd < 300 { // ~10 s at 20 fps (Low) + ~14 s at 30 (Balanced)
 		t.Errorf("only %v frames decoded", decEnd)
+	}
+	if decEnd-decAtResize < 100 { // 10 s at 30 fps after the last resize
+		t.Errorf("%v frames decoded after the last resize", decEnd-decAtResize)
 	}
 }
 
