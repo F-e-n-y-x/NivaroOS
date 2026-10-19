@@ -22,6 +22,7 @@ import '../ui/ui.dart';
 import '../utils/format.dart';
 import 'file_viewer_screen.dart';
 import 'files/cloud_account_tile.dart';
+import 'files/cloud_signin_screen.dart';
 import 'files/file_ops.dart';
 import 'files/file_sheets.dart';
 import 'files/file_tabs.dart';
@@ -701,14 +702,20 @@ class FilesScreenState extends State<FilesScreen> {
   // -------------------------------------------------------------------------
   // Actions
 
-  /// Signing in again (rclone authorize) happens in the web UI.
-  Future<void> _reconnectCloud() async {
-    _snack('In the web UI, open Settings › Online Storage and press Reconnect on this account.');
-    final uri = Uri.tryParse(ApiClient.instance.baseUrl);
-    if (uri == null) return;
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {}
+  /// Adds a cloud drive ([account] null) or signs one in again; the
+  /// browser-free kinds (iCloud, S3...) reconnect in the web UI.
+  Future<void> _cloudSignIn([CloudAccount? account]) async {
+    if (account != null && !account.browserSignIn) {
+      _snack('In the web UI, open Settings › Online Storage and press Reconnect on this account.');
+      final uri = Uri.tryParse(ApiClient.instance.baseUrl);
+      if (uri == null) return;
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {}
+      return;
+    }
+    final done = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => CloudSignInScreen(account: account)));
+    if (done == true && mounted) await _loadCloud();
   }
 
   void _snack(String message, {SnackBarAction? action, bool error = false}) {
@@ -1436,23 +1443,17 @@ class FilesScreenState extends State<FilesScreen> {
   Widget _cloudGroup() {
     if (_cloudLoading) return TileGroup(title: 'Cloud drives', children: [_skeletonRows(1)]);
     if (_cloudError != null && _cloud.isEmpty) return const SizedBox.shrink();
-    if (_cloud.isEmpty) {
-      return const TileGroup(
-        title: 'Cloud drives',
-        children: [
-          ListTile(
-            leading: Icon(Icons.cloud_outlined),
-            title: Text('No cloud drives'),
-            subtitle: Text('Connect Google Drive, OneDrive, Dropbox and others in the web UI.'),
-          ),
-        ],
-      );
-    }
     return TileGroup(
       title: 'Cloud drives',
       children: [
         for (var i = 0; i < _cloud.length; i++)
-          CloudAccountTile(account: _cloudAccounts[i], onOpen: () => _openLocation(_cloud[i]), onReconnect: _reconnectCloud),
+          CloudAccountTile(account: _cloudAccounts[i], onOpen: () => _openLocation(_cloud[i]), onReconnect: () => _cloudSignIn(_cloudAccounts[i])),
+        ListTile(
+          leading: const Icon(Icons.add),
+          title: const Text('Add cloud drive'),
+          subtitle: _cloud.isEmpty ? const Text('Google Drive, OneDrive or Dropbox') : null,
+          onTap: _cloudSignIn,
+        ),
       ],
     );
   }

@@ -123,11 +123,14 @@ Map<String, dynamic> fixture(String path) {
 
 /// A canned response for [FakeServer.overrides].
 class FakeResponse {
-  const FakeResponse(this.body, {this.status = 200});
+  const FakeResponse(this.body, {this.status = 200, this.headers = const {}});
 
   /// JSON-encodable data, or a String sent as-is.
   final Object? body;
   final int status;
+
+  /// Extra headers (a redirect's location).
+  final Map<String, String> headers;
 }
 
 /// The fake NivaroOS server. Every request is answered from the fixture
@@ -162,7 +165,7 @@ class FakeServer {
     final override = (req.url.hasQuery ? overrides['$key?${Uri.decodeQueryComponent(req.url.query)}'] : null) ?? overrides[key];
     if (override != null) {
       final r = override is FakeResponse ? override : FakeResponse(override);
-      return _json(r.body, r.status);
+      return _json(r.body, r.status, r.headers);
     }
     if (req.method == 'GET') {
       final json = File('$_fixtures$path.json');
@@ -185,10 +188,10 @@ class FakeServer {
   static final _transparentPng = base64Decode(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=');
 
-  static http.Response _json(Object? body, int status) => http.Response(
+  static http.Response _json(Object? body, int status, [Map<String, String> headers = const {}]) => http.Response(
         body is String ? body : jsonEncode(body),
         status,
-        headers: {'content-type': 'application/json'},
+        headers: {'content-type': 'application/json', ...headers},
       );
 }
 

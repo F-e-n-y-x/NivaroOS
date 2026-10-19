@@ -43,6 +43,8 @@ Your client ID and secret are stored only on your server, in the same protected 
 
 The account list now shows **Your own app** next to the account.
 
+> **On the phone app:** Files → Cloud drives → **Add cloud drive** (or **Reconnect** on an expired one). Pick the service and the app, press **Sign in**, finish in the browser that opens, then tap **Return to NivaroOS**. No terminal and no token to copy: the app catches the provider's return to `127.0.0.1:53682` on the phone and passes it to the server, and the server saves the drive. Your client secret goes to the server once and is never shown again.
+
 > Running `rclone authorize` on your own computer works too. Install rclone there, run the command the form shows, and paste the token back.
 
 ### 3. If it says "Sign-in expired"

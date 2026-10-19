@@ -149,6 +149,17 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // Cloud drive sign-in (lib/services/cloud_signin.dart): the app stays
+        // awake while the browser covers it (CloudSignInService).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/cloud_signin").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "start" -> CloudSignInService.start(this, call.argument<String>("provider") ?: "")
+                "stop" -> CloudSignInService.stop(this)
+                else -> return@setMethodCallHandler result.notImplemented()
+            }
+            result.success(null)
+        }
+
         shareChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/share_intent").also { ch ->
             ch.setMethodCallHandler { call, result ->
                 when (call.method) {

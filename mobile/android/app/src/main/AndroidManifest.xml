@@ -285,6 +285,26 @@
                 <data android:mimeType="application/x-bittorrent" />
             </intent-filter>
         </activity>
+        <!-- Cloud drive sign-in in the browser (CloudSignIn.kt): keeps the
+             app's redirect listener running while the browser covers it,
+             and "Return to NivaroOS" afterwards, which only reopens the app. -->
+        <service
+            android:name=".CloudSignInService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+        <activity
+            android:name=".CloudSignInReturnActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="nivaroos-cloud" />
+            </intent-filter>
+        </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
