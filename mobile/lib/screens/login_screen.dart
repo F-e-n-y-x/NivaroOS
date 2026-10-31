@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_client.dart';
+import '../services/secure_window.dart';
 import '../services/session_service.dart';
 import '../services/storage_service.dart';
 import '../ui/ui.dart';
@@ -32,7 +33,9 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+// Always out of screenshots and the recent-apps preview: it takes a
+// password (SecureWindow).
+class _LoginScreenState extends State<LoginScreen> with SecureWindowState<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _passwordFocus = FocusNode();

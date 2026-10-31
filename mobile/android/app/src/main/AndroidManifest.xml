@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- The optional app lock (lib/services/app_lock.dart). -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
@@ -23,34 +25,24 @@
     <!-- Sideload-only single build (plan section 7.1), so the permissions
          Play restricts (REQUEST_INSTALL_PACKAGES for self-update,
          MANAGE_EXTERNAL_STORAGE for sharing the phone's storage) stay.
-         Cleartext stays allowed app-wide: LAN servers are usually plain
-         http by IP (plan WP0-6); https servers are used as https. -->
+         Cleartext: res/xml/network_security_config.xml says why it stays
+         permitted there and where the app draws the line instead
+         (lib/services/connection_security.dart). -->
     <!-- allowBackup off: the session lives in Keystore-backed secure
          storage, which a backup restored to another phone can't decrypt. -->
     <application
         android:label="NivaroOS"
         android:name="${applicationName}"
-        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:allowBackup="false"
         android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
         tools:replace="android:allowBackup">
         <!-- Builds up to 1.2.x ran an always-on dataSync service through
-             flutter_background_service. Android 15 limits dataSync to 6 h a
-             day and forbids starting it at boot, and that plugin exports its
-             service and receivers, restarts itself from an alarm and starts
-             from BOOT_COMPLETED. Its components are removed here (the Dart
-             package stays in pubspec for now but is not used), replaced by
-             the app's own, all private to the app (plan M-18, M-19, M-33). -->
-        <service
-            android:name="id.flutter.flutter_background_service.BackgroundService"
-            tools:node="remove" />
-        <receiver
-            android:name="id.flutter.flutter_background_service.WatchdogReceiver"
-            tools:node="remove" />
-        <receiver
-            android:name="id.flutter.flutter_background_service.BootReceiver"
-            tools:node="remove" />
+             flutter_background_service (exported, self-restarting, started
+             at boot). The package has been removed; its jobs are the app's
+             own services below, all private to the app (plan M-18, M-19,
+             M-33). -->
 
         <!-- "Share this phone's storage": a user-started session, with an end
              time (dataSync, handling Android 15's timeout) or none (specialUse,
@@ -111,6 +103,8 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- "Open Tailscale" when the server can't be reached away from home. -->
+        <package android:name="com.tailscale.ipn" />
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

@@ -71,3 +71,9 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // The AppCompat launch and normal themes (res/values/styles.xml), which
+    // the app lock's biometric prompt needs on Android 8 and below.
+    implementation("androidx.appcompat:appcompat:1.7.1")
+}
