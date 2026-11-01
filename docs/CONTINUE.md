@@ -1,6 +1,6 @@
 # NivaroOS — continue here (written 2026-11-01, before formatting the PC)
 
-Give this file to Claude Code in the new install: "read /DATA/blue/Projects/NivaroOS-CONTINUE.md and continue".
+Give this file to Claude Code in the new install: "read /DATA/blue/Projects/NivaroOS/CONTINUE.md and continue".
 A copy without the local paths is in the repo: `docs/CONTINUE.md`.
 
 ## Where everything is
@@ -8,10 +8,10 @@ A copy without the local paths is in the repo: `docs/CONTINUE.md`.
 | What | Where | Survives the format? |
 |---|---|---|
 | Code (all pushed) | GitHub `F-e-n-y-x/NivaroOS`, branch `master` | yes |
-| Main checkout (59 uncommitted changes, 4 stashes from an older session) | `/DATA/blue/Projects/NivaroOS` (blue drive) — also pushed as `refs/wip/main-checkout-uncommitted-2026-11-01` + `refs/wip/main-checkout-stash-0..3-2026-11-01` (tracked changes only; the 23 untracked files are only on the blue drive) | yes (blue) |
-| Agent work area | `/DATA/blue/Projects/nivaroos-wip` (rules file `AGENT-RULES-reliability.md`, `webrtc-contract.md`, `progress-*.md`, `bundle/` build worktree) | yes (blue) |
-| Go caches | `/DATA/blue/Projects/cache/go-build`, `go-mod` | yes (blue) |
-| Saved-before-format copies | `/DATA/blue/Projects/NivaroOS-before-format-2026-11-01/` | yes (blue) |
+| Main checkout (59 uncommitted changes, 4 stashes from an older session) | `/DATA/blue/Projects/NivaroOS/repo` (blue drive) — also pushed as `refs/wip/main-checkout-uncommitted-2026-11-01` + `refs/wip/main-checkout-stash-0..3-2026-11-01` (tracked changes only; the 23 untracked files are only on the blue drive) | yes (blue) |
+| Agent work area | `/DATA/blue/Projects/NivaroOS/wip` (rules file `AGENT-RULES-reliability.md`, `webrtc-contract.md`, `progress-*.md`, `bundle/` build worktree) | yes (blue) |
+| Go caches | `/DATA/blue/Projects/NivaroOS/cache/go-build`, `go-mod` | yes (blue) |
+| Saved-before-format copies | `/DATA/blue/Projects/NivaroOS/before-format-2026-11-01/` | yes (blue) |
 | ↳ NivaroOS settings backups (encrypted .7z) | `…/settings-backup/` (copied from `/DATA/Backup/NivaroOS settings`, which is on the SYSTEM drive) | yes (blue) |
 | ↳ Server release signing key (minisign) + Android release keystore + key.properties | `…/release-signing/` (also on `/DATA/tower/NivaroOS-release-key/`) | yes |
 | ↳ Claude memory + settings.json | `…/claude/` | yes |
@@ -22,8 +22,8 @@ Docker data (/var/lib/containerd, ~50 GB images incl. ComfyUI, Immich), /etc/niv
 ## After the format — rebuild steps
 1. Install the OS, mount the drives (blue = ext4 UUID 3af9934e-2f68-4d24-9ed6-d3c5f4049ad0 at /DATA/blue; tower NTFS at /DATA/tower; tank at /DATA/tank).
 2. Install NivaroOS with the settings restore:
-   `curl … install.sh | sudo bash -s -- --restore "/DATA/blue/Projects/NivaroOS-before-format-2026-11-01/settings-backup/<newest>.7z.001"` (asks for the settings key). Or install normally, then Welcome screen › "Restore from a NivaroOS settings backup". Apps are recreated automatically (Immich etc.); their data under /DATA/AppData must be on a data drive.
-3. Restore dev setup: symlink `/root/NivaroOS` → `/DATA/blue/Projects/NivaroOS` and `/root/nivaroos-wip` → `/DATA/blue/Projects/nivaroos-wip`; copy `…/release-signing/nivaroos-server.{key,pub}` to `/root/.nivaroos-release/` (0700/0600); `go env -w GOCACHE=/DATA/blue/Projects/cache/go-build GOMODCACHE=/DATA/blue/Projects/cache/go-mod`; Go 1.27.2 at /usr/local/go; Flutter at /opt/flutter-3.47; pnpm; gh (login); minisign (apt).
+   `curl … install.sh | sudo bash -s -- --restore "/DATA/blue/Projects/NivaroOS/before-format-2026-11-01/settings-backup/<newest>.7z.001"` (asks for the settings key). Or install normally, then Welcome screen › "Restore from a NivaroOS settings backup". Apps are recreated automatically (Immich etc.); their data under /DATA/AppData must be on a data drive.
+3. Restore dev setup: symlink `/root/NivaroOS` → `/DATA/blue/Projects/NivaroOS/repo` and `/root/nivaroos-wip` → `/DATA/blue/Projects/NivaroOS/wip`; copy `…/release-signing/nivaroos-server.{key,pub}` to `/root/.nivaroos-release/` (0700/0600); `go env -w GOCACHE=/DATA/blue/Projects/NivaroOS/cache/go-build GOMODCACHE=/DATA/blue/Projects/NivaroOS/cache/go-mod`; Go 1.27.2 at /usr/local/go; Flutter at /opt/flutter-3.47; pnpm; gh (login); minisign (apt).
 4. Claude: copy `…/claude/memory/*` to `~/.claude/projects/-root/memory/`, `…/claude/settings.json` to `~/.claude/`; add `"permissions":{"additionalDirectories":["/DATA/blue/Projects"]}` (stops repeated "accept" prompts).
 5. Re-sign-in Google Drive if needed (own OAuth app, published "In production"): Settings › Online Storage › Reconnect (uses the saved app).
 
