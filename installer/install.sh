@@ -1015,6 +1015,64 @@ DOCKEREOF
 }
 
 # ------------------------------------------------------------------------------
+# GPU support for apps: an NVIDIA GPU with a working driver gets the NVIDIA
+# Container Toolkit and Docker's "nvidia" runtime, so apps that ask for the
+# GPU (Immich machine learning / video transcoding, Jellyfin, ComfyUI...)
+# start instead of failing with 'could not select device driver "nvidia"'.
+# Nothing happens without a working NVIDIA driver (apps then use the CPU).
+# Docker is restarted only when the runtime wasn't registered yet, so a
+# re-run (an update) never interrupts running apps.
+# ------------------------------------------------------------------------------
+install_gpu_container_runtime() {
+	run_step "GPU Support for Apps (NVIDIA Container Toolkit)" "
+		if ! command -v nvidia-smi >/dev/null 2>&1 || ! nvidia-smi -L >/dev/null 2>&1; then
+			echo 'No working NVIDIA driver - apps use the CPU. Re-run the installer after installing the driver.'
+			exit 0
+		fi
+		if ! command -v nvidia-ctk >/dev/null 2>&1; then
+			repo=https://nvidia.github.io/libnvidia-container
+			if command -v apt-get >/dev/null 2>&1; then
+				command -v gpg >/dev/null 2>&1 || pkg_install gnupg
+				mkdir -p /etc/apt/keyrings
+				curl -fsSL \"\$repo/gpgkey\" | gpg --dearmor --yes -o /etc/apt/keyrings/nvidia-container-toolkit.gpg
+				curl -fsSL \"\$repo/stable/deb/nvidia-container-toolkit.list\" |
+					sed 's#deb https://#deb [signed-by=/etc/apt/keyrings/nvidia-container-toolkit.gpg] https://#g' \
+						>/etc/apt/sources.list.d/nvidia-container-toolkit.list
+				echo /etc/apt/sources.list.d/nvidia-container-toolkit.list >> \"$MANIFEST_FILE\"
+				echo /etc/apt/keyrings/nvidia-container-toolkit.gpg >> \"$MANIFEST_FILE\"
+				apt-get -o DPkg::Lock::Timeout=600 update -qq
+			elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+				curl -fsSL \"\$repo/stable/rpm/nvidia-container-toolkit.repo\" -o /etc/yum.repos.d/nvidia-container-toolkit.repo
+				echo /etc/yum.repos.d/nvidia-container-toolkit.repo >> \"$MANIFEST_FILE\"
+			elif command -v zypper >/dev/null 2>&1; then
+				zypper --non-interactive ar -f \"\$repo/stable/rpm/nvidia-container-toolkit.repo\" >/dev/null 2>&1 || true
+				zypper --non-interactive --gpg-auto-import-keys refresh >/dev/null 2>&1 || true
+			elif ! command -v pacman >/dev/null 2>&1; then
+				echo 'NVIDIA Container Toolkit is not packaged for this distro - GPU apps fall back to the CPU.' >&2
+				exit 0
+			fi
+			pkg_install nvidia-container-toolkit
+		fi
+		if ! command -v nvidia-ctk >/dev/null 2>&1; then
+			echo 'NVIDIA Container Toolkit could not be installed - GPU apps fall back to the CPU.' >&2
+			exit 0
+		fi
+		if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '\"nvidia\"'; then
+			echo 'Docker already has the nvidia runtime.'
+			exit 0
+		fi
+		nvidia-ctk runtime configure --runtime=docker
+		systemctl restart docker
+		for i in {1..15}; do
+			docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '\"nvidia\"' && exit 0
+			sleep 1
+		done
+		echo 'Docker did not pick up the nvidia runtime.' >&2
+		exit 1
+	"
+}
+
+# ------------------------------------------------------------------------------
 # Repository Source & Go Toolchain
 # ------------------------------------------------------------------------------
 clone_or_update_repo() {
@@ -1885,7 +1943,7 @@ remove_leftovers() {
 # plan_steps prints the step functions this run will call, in order. The
 # step count shown as [n/total] is this list's length.
 plan_steps() {
-	echo install_core_dependencies tune_system_limits check_docker install_samba
+	echo install_core_dependencies tune_system_limits check_docker install_gpu_container_runtime install_samba
 	# VM Manager's packages first: the sidecar builds against libvirt.
 	[ "$WITH_VM" = "yes" ] && echo install_vm_manager
 	echo clone_or_update_repo install_core_services

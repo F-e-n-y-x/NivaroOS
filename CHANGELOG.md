@@ -10,6 +10,13 @@ updated from `master` by re-running the installer.
 
 ### Fixed
 
+- Apps that use the NVIDIA GPU (Immich machine learning and video
+  transcoding, Jellyfin, ComfyUI...) start on a fresh install. The installer
+  now sets up the NVIDIA Container Toolkit and Docker's "nvidia" runtime
+  when an NVIDIA GPU with a working driver is present. Before, it had to be
+  installed by hand, and GPU apps failed with 'could not select device
+  driver "nvidia"'. Re-running the installer never restarts Docker once the
+  runtime is registered.
 - A server built from source no longer offers to "install" a release it
   already contains. It used to offer the newest release (e.g. 1.5.4) even
   when master was past it, so taking it was a downgrade. The installer now
