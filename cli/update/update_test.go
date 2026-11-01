@@ -470,3 +470,79 @@ func TestNightlyWhileAnUpdateRunsIsNotAFailure(t *testing.T) {
 		t.Fatalf("no word about it: %q", out.String())
 	}
 }
+
+// A box built from source is offered the newest release only when its build
+// doesn't already contain it: master past the release (ahead) or at it
+// (identical) would make "Install X" a downgrade. Behind, diverged, a failed
+// compare or no stamped commit keep the old behaviour (the release is offered).
+func TestCheckSourceBuildSkipsContainedRelease(t *testing.T) {
+	list := []ghRelease{rel("server-v1.5.4", false, false, full("1.5.4")...), rel("server-v1.5.3", false, false, full("1.5.3")...)}
+	defer func(c, s string) { CompareAPI, SourceCommit = c, s }(CompareAPI, SourceCommit)
+	for _, c := range []struct {
+		name, commit, status string
+		code                 int
+		offered              bool
+	}{
+		{"ahead", "abc123", "ahead", 200, false},
+		{"identical", "abc123", "identical", 200, false},
+		{"behind", "abc123", "behind", 200, true},
+		{"diverged", "abc123", "diverged", 200, true},
+		{"compare fails", "abc123", "", 500, true},
+		{"no commit stamped", "", "ahead", 200, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			setup(t, "", list)
+			asked := ""
+			cmp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				asked = r.URL.Path
+				if c.code != 200 {
+					w.WriteHeader(c.code)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(map[string]string{"status": c.status})
+			}))
+			defer cmp.Close()
+			CompareAPI, SourceCommit = cmp.URL+"/compare/", c.commit
+			st, err := Check(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.offered != (st.Available != nil) {
+				t.Fatalf("offered=%v, state %+v", st.Available != nil, st)
+			}
+			if c.offered && st.Available.Version != "1.5.4" {
+				t.Fatalf("offered %s, want the newest 1.5.4", st.Available.Version)
+			}
+			wantState := StateIdle
+			if c.offered {
+				wantState = StateAvailable
+			}
+			if st.State != wantState {
+				t.Fatalf("state %q, want %q", st.State, wantState)
+			}
+			if c.commit != "" && asked != "/compare/server-v1.5.4...abc123" {
+				t.Fatalf("compare asked %q", asked)
+			}
+			if c.commit == "" && asked != "" {
+				t.Fatalf("no commit: GitHub must not be asked, asked %q", asked)
+			}
+		})
+	}
+}
+
+// A release install never asks the compare API: its version decides.
+func TestCheckReleaseInstallIgnoresCompare(t *testing.T) {
+	defer func(c, s string) { CompareAPI, SourceCommit = c, s }(CompareAPI, SourceCommit)
+	setup(t, "1.5.3", []ghRelease{rel("server-v1.5.4", false, false, full("1.5.4")...)})
+	called := false
+	cmp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true }))
+	defer cmp.Close()
+	CompareAPI, SourceCommit = cmp.URL+"/compare/", "abc123"
+	st, err := Check(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Available == nil || st.Available.Version != "1.5.4" || called {
+		t.Fatalf("release 1.5.3 -> 1.5.4 must be offered without a compare; called=%v %+v", called, st)
+	}
+}

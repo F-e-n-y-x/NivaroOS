@@ -62,6 +62,16 @@ func check(ctx context.Context) (State, error) {
 	st.LastError = ""
 	st.Unsupported = unsupported()
 	st.Available = pickRelease(list, set.Channel, arch, st.Current, st.BadVersions)
+	// A box built from source has no version, so pickRelease takes any
+	// release - but master is often past the newest one. Offer it only when
+	// this build doesn't already contain it (else "Install 1.5.4" would be a
+	// downgrade). Releases come from master in order, so if the newest is
+	// contained, so is every older one.
+	if a := st.Available; a != nil && st.Current == "" {
+		if has, ok := sourceHas(ctx, httpClient, a.Tag, SourceCommit); ok && has {
+			st.Available = nil
+		}
+	}
 	if !inProgress(st.State) {
 		st.State = StateIdle
 		if st.Available != nil {

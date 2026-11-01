@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // compareVersions orders X.Y.Z[-pre] versions (semver precedence: a
@@ -160,6 +162,54 @@ func pickRelease(list []ghRelease, channel, arch, current string, bad []string) 
 
 // ReleasesAPI is swapped by tests.
 var ReleasesAPI = "https://api.github.com/repos/F-e-n-y-x/NivaroOS/releases?per_page=30"
+
+// SourceCommit is the commit a from-source install was built from, stamped by
+// installer/build-bundle.sh (-X .../cli/update.SourceCommit=<sha>). Empty in
+// release bundles and in source builds from before it was stamped.
+var SourceCommit string
+
+// CompareAPI is GitHub's compare endpoint (base...head); swapped by tests.
+var CompareAPI = "https://api.github.com/repos/F-e-n-y-x/NivaroOS/compare/"
+
+// sourceHas: does this from-source build already contain the release's tag?
+// It does when GitHub's compare of tag...commit says "identical" or "ahead"
+// (the build is the tag, or the tag plus newer commits) - then installing the
+// release would be a downgrade. ok is false when it can't tell (no commit
+// stamped, network or API error); the caller then keeps offering the release,
+// which stays a manual, explained opt-in on a source box.
+func sourceHas(ctx context.Context, c *http.Client, tag, commit string) (has, ok bool) {
+	if tag == "" || commit == "" {
+		return false, false
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, CompareAPI+url.PathEscape(tag)+"..."+url.PathEscape(commit), nil)
+	if err != nil {
+		return false, false
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	res, err := c.Do(req)
+	if err != nil {
+		return false, false
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return false, false
+	}
+	var cmp struct {
+		Status string `json:"status"` // identical | ahead | behind | diverged
+	}
+	if json.NewDecoder(res.Body).Decode(&cmp) != nil {
+		return false, false
+	}
+	switch cmp.Status {
+	case "identical", "ahead":
+		return true, true
+	case "behind", "diverged":
+		return false, true
+	}
+	return false, false
+}
 
 func fetchReleases(ctx context.Context, c *http.Client) ([]ghRelease, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ReleasesAPI, nil)

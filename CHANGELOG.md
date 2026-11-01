@@ -8,6 +8,14 @@ updated from `master` by re-running the installer.
 
 ## [Unreleased]
 
+### Fixed
+
+- A server built from source no longer offers to "install" a release it
+  already contains. It used to offer the newest release (e.g. 1.5.4) even
+  when master was past it, so taking it was a downgrade. The installer now
+  stamps the build's commit into the CLI, and the updater asks GitHub whether
+  that commit already contains the release before offering it.
+
 ## [server 1.5.4] - 2026-10-17
 
 Everything in 1.5.3, which never installed: its gateway couldn't read

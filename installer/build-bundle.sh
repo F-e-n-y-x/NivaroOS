@@ -170,7 +170,13 @@ put fans 0644 "$(unitsrc fans nivaroos-fans.service)" /usr/lib/systemd/system/ni
 component fans always nivaroos-fans.service
 
 # The CLI (also `nivaroos update`); apply.sh links nivaroos and casaos-cli to it.
-gobuild cli cli nivaroos-cli
+if [ -n "$VERSION" ]; then
+	gobuild cli cli nivaroos-cli
+else
+	# A from-source install: the self-updater needs this build's commit so it
+	# doesn't offer a release this build already contains (a downgrade).
+	gobuild cli cli nivaroos-cli -ldflags "-s -w -X github.com/F-e-n-y-x/NivaroOS/cli/update.SourceCommit=$(git -C "$SRC" rev-parse HEAD 2>/dev/null || true)"
+fi
 component cli always -
 
 # --- safety net, update units, scripts (always) -----------------------------
