@@ -25,7 +25,7 @@ func TestNMDeviceManaged(t *testing.T) {
 }
 
 func TestNMBridgeAddArgs(t *testing.T) {
-	adds, err := nmBridgeAddArgs(CreateBridgeRequest{Name: "br0", HostNIC: "enp7s0"})
+	adds, err := nmBridgeAddArgs(CreateBridgeRequest{Name: "br0", HostNIC: "enp7s0"}, nmIdentity{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestNMBridgeAddArgs(t *testing.T) {
 	}
 
 	adds, err = nmBridgeAddArgs(CreateBridgeRequest{Name: "br0", HostNIC: "enp7s0",
-		StaticIP: "192.168.11.10", Netmask: "255.255.255.0", Gateway: "192.168.11.1"})
+		StaticIP: "192.168.11.10", Netmask: "255.255.255.0", Gateway: "192.168.11.1"}, nmIdentity{MAC: "9c:6b:00:a2:f9:49", ClientID: "ff:00"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,6 +51,9 @@ func TestNMBridgeAddArgs(t *testing.T) {
 		if !strings.Contains(bridge, want) {
 			t.Errorf("static bridge args %q lack %q", bridge, want)
 		}
+	}
+	if strings.Contains(bridge, "cloned-mac-address") || strings.Contains(bridge, "dhcp-client-id") {
+		t.Errorf("a static bridge must not clone the NIC's DHCP identity: %q", bridge)
 	}
 }
 
@@ -91,6 +94,7 @@ func TestCreateBridgeNMRegistersWithBackend(t *testing.T) {
 		t.Fatalf("backend %q", b.Backend)
 	}
 	want := []string{
+		"-g GENERAL.CONNECTION device",                                          // the NIC's DHCP identity is read first
 		"connection delete nivaroos-br0-port", "connection delete nivaroos-br0", // stale leftovers cleared first
 		"connection add type", "connection add type",
 		"connection up nivaroos-br0", "connection up nivaroos-br0-port",
@@ -178,5 +182,45 @@ func TestOldRegistryEntriesAreIfupdown(t *testing.T) {
 	list, err := loadBridgeRegistry(reg)
 	if err != nil || len(list) != 1 || list[0].Backend != "" {
 		t.Fatalf("old entry: %+v %v", list, err)
+	}
+}
+
+// A DHCP bridge presents the NIC's MAC and DHCP client ID, so the router
+// hands the host back the address it had before the bridge.
+func TestNMBridgeClonesNICIdentityForDHCP(t *testing.T) {
+	adds, err := nmBridgeAddArgs(CreateBridgeRequest{Name: "br0", HostNIC: "enp7s0"},
+		nmIdentity{MAC: "9c:6b:00:a2:f9:49", ClientID: "ff:00:a2:f9:49:00:01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bridge := strings.Join(adds[0], " ")
+	for _, want := range []string{"ethernet.cloned-mac-address 9c:6b:00:a2:f9:49", "ipv4.dhcp-client-id ff:00:a2:f9:49:00:01", "ipv4.method auto"} {
+		if !strings.Contains(bridge, want) {
+			t.Errorf("DHCP bridge args %q lack %q", bridge, want)
+		}
+	}
+}
+
+func TestNMNICIdentity(t *testing.T) {
+	old, oldMAC := nmcli, nicMAC
+	t.Cleanup(func() { nmcli, nicMAC = old, oldMAC })
+	nicMAC = func(string) (string, error) { return "9c:6b:00:a2:f9:49", nil }
+	nmcli = func(args ...string) ([]byte, error) {
+		switch strings.Join(args, " ") {
+		case "-g GENERAL.CONNECTION device show enp7s0":
+			return []byte("Wired connection\n"), nil
+		case "-g ipv4.dhcp-client-id connection show Wired connection":
+			return []byte(`ff\:00\:a2\:f9\:49` + "\n"), nil // -g escapes ':'
+		}
+		return nil, errors.New("unexpected")
+	}
+	id := nmNICIdentity("enp7s0")
+	if id.MAC != "9c:6b:00:a2:f9:49" || id.ClientID != "ff:00:a2:f9:49" {
+		t.Fatalf("identity %+v", id)
+	}
+	// Already a bridge port (a re-create): never copy NivaroOS's own profile.
+	nmcli = func(args ...string) ([]byte, error) { return []byte("nivaroos-br0-port\n"), nil }
+	if id := nmNICIdentity("enp7s0"); id.ClientID != "" {
+		t.Fatalf("copied a client ID from nivaroos' own profile: %+v", id)
 	}
 }

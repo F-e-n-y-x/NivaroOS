@@ -242,9 +242,11 @@ export default {
 			if (!vm) return this.$t('None')
 			if (vm.networks && vm.networks.length > 0) {
 				const n = vm.networks[0]
+				if (n.mode === 'direct') return this.$t('Direct') + ': ' + n.host_nic
 				return n.mode === 'bridge' ? n.bridge_name || this.$t('Bridge') : this.$t('NAT')
 			}
 			if (!vm.network_mode) return this.$t('None')
+			if (vm.network_mode.startsWith('direct:')) return this.$t('Direct') + ': ' + vm.network_mode.replace('direct:', '')
 			return vm.network_mode.startsWith('bridge:') ? vm.network_mode.replace('bridge:', '') : this.$t('NAT')
 		},
 		async runAction(name, kind, actionFn, done) {

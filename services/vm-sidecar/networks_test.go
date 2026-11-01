@@ -427,3 +427,19 @@ func TestListNetworks_IncludesDefaultNATAndRegisteredBridges(t *testing.T) {
 		t.Errorf("expected the registered bridge entry, got %+v", networks)
 	}
 }
+
+// A DHCP bridge takes over the NIC's MAC, so the DHCP server hands the host
+// back the address it had; a static bridge doesn't need it.
+func TestWriteInterfacesSnippet_DHCPKeepsNICMAC(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeInterfacesSnippet(dir, bridgeSnippetData{Name: "br0", HostNIC: "enp7s0", MAC: "9c:6b:00:a2:f9:49"}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "br0.conf"))
+	got := string(b)
+	for _, want := range []string{"iface br0 inet dhcp\n    hwaddress ether 9c:6b:00:a2:f9:49\n    bridge_ports enp7s0"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("snippet lacks %q:\n%s", want, got)
+		}
+	}
+}

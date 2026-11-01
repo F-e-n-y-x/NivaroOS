@@ -83,6 +83,20 @@ describe('vmSidecar', () => {
 		expect(names).toEqual(['enp7s0'])
 	})
 
+	test('getDefaultRouteInterface GETs /networks/default-route', async () => {
+		globalThis.fetch.mockReturnValue(jsonResponse({ interface: 'enp7s0' }))
+		const r = await vmSidecar.getDefaultRouteInterface()
+		expect(globalThis.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/networks/default-route`, { headers: {} })
+		expect(r).toEqual({ interface: 'enp7s0' })
+	})
+
+	test('confirmBridge POSTs /networks/bridge/{name}/confirm', async () => {
+		globalThis.fetch.mockReturnValue(jsonResponse(null))
+		await vmSidecar.confirmBridge('br0')
+		expect(globalThis.fetch.mock.calls[0][0]).toBe(`${vmSidecar.baseUrl}/networks/bridge/br0/confirm`)
+		expect(globalThis.fetch.mock.calls[0][1].method).toBe('POST')
+	})
+
 	test('consoleUrl builds a same-origin ws:// URL scoped to the VM name', () => {
 		// window is undefined under vitest's node environment, so the
 		// client falls back to "localhost" - see vmSidecar.js.

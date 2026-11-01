@@ -24,15 +24,15 @@
 
 		<div v-else class="network-list">
 			<p class="network-intro">
-				{{ $t('NAT: VMs share this server\'s connection and are hidden behind it (simplest). Bridge: VMs join your LAN like a separate device, with their own IP from your router.') }}
+				{{ $t('NAT: VMs share this server\'s connection and are hidden behind it (simplest). Bridge: VMs join your LAN like a separate device, with their own IP from your router. Direct: VMs also get their own IP from your router, with no bridge to set up - but this server itself can\'t reach them over the network.') }}
 			</p>
 			<div v-for="net in networks" :key="net.name" class="network-row">
 				<div class="network-icon" :class="{ 'is-active': net.active }">
-					<b-icon :icon="net.mode === 'bridge' ? 'lan-connect' : 'lan'" :custom-size="net.mode === 'bridge' ? 'mdi-18px' : 'mdi-22px'"></b-icon>
+					<b-icon :icon="net.mode === 'bridge' ? 'lan-connect' : net.mode === 'direct' ? 'ethernet' : 'lan'" :custom-size="net.mode === 'nat' ? 'mdi-22px' : 'mdi-18px'"></b-icon>
 				</div>
 				<div class="network-info">
-					<span class="network-name" :title="net.name">{{ net.name }}</span>
-					<span class="network-meta">{{ net.mode === 'bridge' ? $t('Bridge') : $t('NAT') }}<template v-if="net.host_nic"> &middot; {{ net.host_nic }}</template></span>
+					<span class="network-name" :title="net.name">{{ net.mode === 'direct' ? $t('Direct') + ': ' + net.name : net.name }}</span>
+					<span class="network-meta">{{ net.mode === 'bridge' ? $t('Bridge') : net.mode === 'direct' ? $t('Direct (macvtap) - own IP from your router, nothing to set up') : $t('NAT') }}<template v-if="net.host_nic && net.mode !== 'direct'"> &middot; {{ net.host_nic }}</template></span>
 					<span v-if="usedBy(net).length" class="network-meta">{{ $t('Used by: {vms}', { vms: usedBy(net).join(', ') }) }}</span>
 				</div>
 				<span class="network-status" :class="{ 'is-active': net.active }">
@@ -65,6 +65,17 @@
 					size="small"
 				></vm-dropdown>
 			</b-field>
+			<template v-if="bridgingOwnConnection">
+				<div class="vm-notice is-warning" role="note">
+					{{ $t('{nic} is this server\'s own connection. Its network drops for a few seconds while the bridge takes over, then it comes back through the bridge - with the same IP over DHCP. If it doesn\'t come back, the change is undone automatically after 45 seconds.', { nic: form.host_nic }) }}
+				</div>
+				<b-field>
+					<label class="static-ip-toggle">
+						<input type="checkbox" v-model="form.consentOwnConnection" />
+						{{ $t('I understand - bridge this server\'s own connection') }}
+					</label>
+				</b-field>
+			</template>
 			<div class="vm-notice is-info" v-if="!interfaces.length && !loadingInterfaces" role="note">
 				{{ $t('No spare physical network interfaces were found on this machine.') }}
 			</div>
@@ -86,9 +97,10 @@
 				</b-field>
 				<p v-if="staticIpError" class="field-error" role="alert">{{ staticIpError }}</p>
 				<p class="static-ip-hint">
-					{{ $t('Recommended when bridging the interface carrying this host\'s own connection - a DHCP-assigned bridge can get a different address than the host had before.') }}
+					{{ $t('Usually not needed: without it the bridge uses DHCP and keeps this server\'s current IP (it takes over the network port\'s identity).') }}
 				</p>
 			</template>
+			<div class="vm-notice is-info" v-if="reconnecting" role="status">{{ $t('Waiting for the server to come back through the bridge...') }}</div>
 			<div class="vm-notice is-danger" v-if="error" role="alert">{{ error }}</div>
 
 			<template #footer>
@@ -134,12 +146,18 @@ export default {
 			deleteError: '',
 			deletingUsers: [],
 			vms: [],
-			form: { name: '', host_nic: '', useStaticIP: false, static_ip: '', netmask: '', gateway: '' }
+			form: { name: '', host_nic: '', useStaticIP: false, static_ip: '', netmask: '', gateway: '', consentOwnConnection: false },
+			defaultRouteNIC: '',
+			reconnecting: false
 		}
 	},
 	computed: {
+		bridgingOwnConnection() {
+			return !!this.form.host_nic && this.form.host_nic === this.defaultRouteNIC
+		},
 		canCreate() {
 			if (!this.form.name || !this.form.host_nic) return false
+			if (this.bridgingOwnConnection && !this.form.consentOwnConnection) return false
 			if (this.form.useStaticIP && (!this.form.static_ip || !this.form.netmask || !this.form.gateway || this.staticIpError)) return false
 			return true
 		},
@@ -157,6 +175,7 @@ export default {
 				value: nic,
 				label: nic,
 				icon: 'lan',
+				meta: nic === this.defaultRouteNIC ? this.$t('This server\'s connection') : '',
 			}))
 		},
 	},
@@ -188,7 +207,14 @@ export default {
 		async loadInterfaces() {
 			this.loadingInterfaces = true
 			try {
-				this.interfaces = await vmSidecar.listHostInterfaces()
+				const [nics, dflt] = await Promise.all([
+					vmSidecar.listHostInterfaces(),
+					vmSidecar.getDefaultRouteInterface().catch(() => ({})),
+				])
+				this.interfaces = nics
+				this.defaultRouteNIC = (dflt && dflt.interface) || ''
+				// One port only (the usual home server): preselect it.
+				if (!this.form.host_nic && this.interfaces.length === 1) this.form.host_nic = this.interfaces[0]
 			} catch (e) {
 				this.interfaces = []
 				this.error = this.$t('Could not list the network interfaces: {reason}', { reason: e.message })
@@ -199,7 +225,11 @@ export default {
 		// Which VMs are attached to a network (so removing it can warn).
 		usedBy(net) {
 			return this.vms
-				.filter((vm) => (vm.networks || []).some((n) => (net.mode === 'bridge' ? n.mode === 'bridge' && n.bridge_name === net.name : n.mode !== 'bridge')))
+				.filter((vm) => (vm.networks || []).some((n) => {
+					if (net.mode === 'bridge') return n.mode === 'bridge' && n.bridge_name === net.name
+					if (net.mode === 'direct') return n.mode === 'direct' && n.host_nic === net.host_nic
+					return n.mode !== 'bridge' && n.mode !== 'direct'
+				}))
 				.map((vm) => vm.name)
 		},
 		isIPv4(v) {
@@ -216,18 +246,56 @@ export default {
 			this.creating = true
 			try {
 				const payload = { name: this.form.name, host_nic: this.form.host_nic }
+				const own = this.bridgingOwnConnection
+				if (own) payload.force_default_route = true
 				if (this.form.useStaticIP) {
 					payload.static_ip = this.form.static_ip
 					payload.netmask = this.form.netmask
 					payload.gateway = this.form.gateway
 				}
-				await vmSidecar.createBridge(payload)
+				try {
+					await vmSidecar.createBridge(payload)
+				} catch (e) {
+					// The host's own connection drops mid-request, so the answer
+					// can be lost even when the bridge was made: check below.
+					if (!own) throw e
+				}
+				if (own) await this.confirmWhenBack(this.form.name)
 				this.showCreate = false
 				await this.refresh()
 			} catch (e) {
 				this.error = e.message
 			} finally {
 				this.creating = false
+			}
+		},
+		// After bridging the host's own connection: wait until the server
+		// answers again through the bridge, then confirm it - otherwise the
+		// sidecar undoes it after 45 s, as it would if it really broke.
+		async confirmWhenBack(name) {
+			this.reconnecting = true
+			try {
+				for (let i = 0; i < 18; i++) {
+					await new Promise((r) => setTimeout(r, 2000))
+					let nets
+					try {
+						nets = await vmSidecar.listNetworks()
+					} catch {
+						continue // the server isn't reachable yet
+					}
+					if (!(nets || []).some((n) => n.mode === 'bridge' && n.name === name)) {
+						throw new Error(this.$t('The bridge could not be created - the network was restored.'))
+					}
+					try {
+						await vmSidecar.confirmBridge(name)
+						return
+					} catch {
+						continue
+					}
+				}
+				throw new Error(this.$t('The server did not come back through the bridge in time - the change is being undone automatically.'))
+			} finally {
+				this.reconnecting = false
 			}
 		},
 		async performDeleteNetwork() {

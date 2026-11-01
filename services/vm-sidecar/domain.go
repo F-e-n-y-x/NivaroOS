@@ -168,8 +168,12 @@ type DiskInfo struct {
 
 // NICSpec is a network adapter as given in a create/update request.
 type NICSpec struct {
-	Mode       string `json:"mode"` // "nat" or "bridge"
+	Mode       string `json:"mode"` // "nat", "bridge" or "direct"
 	BridgeName string `json:"bridge_name,omitempty"`
+	// HostNIC is the host interface a "direct" (macvtap) adapter sits on:
+	// the VM gets its own MAC and its own DHCP address from the LAN's
+	// router, with no bridge and no change to the host's own network.
+	HostNIC string `json:"host_nic,omitempty"`
 	// "virtio" (default) or a slower emulated NIC ("e1000", "rtl8139")
 	// for guests too old to have virtio drivers.
 	Model     string `json:"model,omitempty"`
@@ -181,6 +185,7 @@ type NICSpec struct {
 type NICInfo struct {
 	Mode       string `json:"mode"`
 	BridgeName string `json:"bridge_name,omitempty"`
+	HostNIC    string `json:"host_nic,omitempty"` // "direct" adapters
 	Model      string `json:"model"`
 	MAC        string `json:"mac,omitempty"`
 	LinkState  string `json:"link_state,omitempty"` // "up" or "down"
@@ -270,6 +275,7 @@ type domainXML struct {
 			Source struct {
 				Network string `xml:"network,attr"`
 				Bridge  string `xml:"bridge,attr"`
+				Dev     string `xml:"dev,attr"` // type='direct' (macvtap)
 			} `xml:"source"`
 			Model struct {
 				Type string `xml:"type,attr"`
@@ -393,6 +399,9 @@ func toVM(dom *libvirt.Domain) (VM, error) {
 		if i.Type == "bridge" && i.Source.Bridge != "" {
 			info.Mode = "bridge"
 			info.BridgeName = i.Source.Bridge
+		} else if i.Type == "direct" && i.Source.Dev != "" {
+			info.Mode = "direct"
+			info.HostNIC = i.Source.Dev
 		} else if i.Source.Network != "" {
 			info.Mode = "nat"
 		} else {
@@ -403,6 +412,8 @@ func toVM(dom *libvirt.Domain) (VM, error) {
 	if len(vm.Networks) > 0 {
 		if vm.Networks[0].Mode == "bridge" {
 			vm.NetworkMode = "bridge:" + vm.Networks[0].BridgeName
+		} else if vm.Networks[0].Mode == "direct" {
+			vm.NetworkMode = "direct:" + vm.Networks[0].HostNIC
 		} else {
 			vm.NetworkMode = "nat:default"
 		}
@@ -586,6 +597,7 @@ type renderedDisk struct {
 type renderedNIC struct {
 	Mode       string
 	BridgeName string
+	HostNIC    string
 	Model      string
 	MAC        string
 	LinkState  string
@@ -643,7 +655,7 @@ func buildDeviceRender(disks []DiskSpec, isoPath string, networks []NICSpec, boo
 		if model == "" {
 			model = "virtio"
 		}
-		renderedNets[i] = renderedNIC{Mode: n.Mode, BridgeName: n.BridgeName, Model: model, MAC: n.MAC, LinkState: n.LinkState}
+		renderedNets[i] = renderedNIC{Mode: n.Mode, BridgeName: n.BridgeName, HostNIC: n.HostNIC, Model: model, MAC: n.MAC, LinkState: n.LinkState}
 	}
 
 	for pos, sym := range bootOrder {
@@ -831,8 +843,8 @@ const domainXMLTemplate = `<domain type='kvm'>
 
 // nicDeviceXMLTemplate is one <interface> element - shared by the full
 // domain template (as the "nic" sub-template) and live NIC hot-plug.
-const nicDeviceXMLTemplate = `<interface type='{{if eq .Mode "bridge"}}bridge{{else}}network{{end}}'>
-      {{if eq .Mode "bridge"}}<source bridge='{{x .BridgeName}}'/>{{else}}<source network='default'/>{{end}}
+const nicDeviceXMLTemplate = `<interface type='{{if eq .Mode "bridge"}}bridge{{else if eq .Mode "direct"}}direct{{else}}network{{end}}'>
+      {{if eq .Mode "bridge"}}<source bridge='{{x .BridgeName}}'/>{{else if eq .Mode "direct"}}<source dev='{{x .HostNIC}}' mode='bridge'/>{{else}}<source network='default'/>{{end}}
       <model type='{{x .Model}}'/>
       {{if .MAC}}<mac address='{{x .MAC}}'/>{{end}}
       {{if .LinkState}}<link state='{{x .LinkState}}'/>{{end}}
@@ -1184,8 +1196,15 @@ func validateNIC(i int, n NICSpec) error {
 		if err := validateIfaceName("bridge name", n.BridgeName); err != nil {
 			return badRequestf("network %d: %v", i, err)
 		}
+	case "direct":
+		if n.HostNIC == "" {
+			return badRequestf("network %d: host_nic is required when mode is \"direct\"", i)
+		}
+		if err := validateIfaceName("host interface", n.HostNIC); err != nil {
+			return badRequestf("network %d: %v", i, err)
+		}
 	default:
-		return badRequestf("network %d: unsupported mode %q (use nat or bridge)", i, n.Mode)
+		return badRequestf("network %d: unsupported mode %q (use nat, bridge or direct)", i, n.Mode)
 	}
 	if n.Model != "" && !nicModels[n.Model] {
 		return badRequestf("network %d: unsupported model %q (use virtio, e1000e, e1000 or rtl8139)", i, n.Model)
@@ -1754,7 +1773,7 @@ func (s *LibvirtStore) applyLiveNetworks(dom *libvirt.Domain, name string, have 
 		if nicMatches(*old, n) {
 			continue
 		}
-		if nicMatches(*old, NICSpec{Mode: n.Mode, BridgeName: n.BridgeName, Model: n.Model, MAC: n.MAC, LinkState: old.LinkState}) {
+		if nicMatches(*old, NICSpec{Mode: n.Mode, BridgeName: n.BridgeName, HostNIC: n.HostNIC, Model: n.Model, MAC: n.MAC, LinkState: old.LinkState}) {
 			if err := s.SetNetworkLinkState(name, old.MAC, linkStateOrUp(n.LinkState)); err != nil {
 				return err
 			}
@@ -1784,11 +1803,14 @@ func nicMatches(info NICInfo, spec NICSpec) bool {
 	if mode == "" {
 		mode = "nat"
 	}
-	bridge := ""
+	bridge, hostNIC := "", ""
 	if mode == "bridge" {
 		bridge = spec.BridgeName
 	}
-	return info.Mode == mode && info.BridgeName == bridge && info.Model == model &&
+	if mode == "direct" {
+		hostNIC = spec.HostNIC
+	}
+	return info.Mode == mode && info.BridgeName == bridge && info.HostNIC == hostNIC && info.Model == model &&
 		strings.EqualFold(info.MAC, spec.MAC) && linkStateOrUp(info.LinkState) == linkStateOrUp(spec.LinkState)
 }
 
@@ -1798,12 +1820,12 @@ func renderNICXML(n NICSpec) (string, error) {
 		model = "virtio"
 	}
 	var buf strings.Builder
-	err := nicDeviceTemplate.Execute(&buf, renderedNIC{Mode: n.Mode, BridgeName: n.BridgeName, Model: model, MAC: n.MAC, LinkState: n.LinkState})
+	err := nicDeviceTemplate.Execute(&buf, renderedNIC{Mode: n.Mode, BridgeName: n.BridgeName, HostNIC: n.HostNIC, Model: model, MAC: n.MAC, LinkState: n.LinkState})
 	return buf.String(), err
 }
 
 func nicXMLFromInfo(info NICInfo) string {
-	x, _ := renderNICXML(NICSpec{Mode: info.Mode, BridgeName: info.BridgeName, Model: info.Model, MAC: info.MAC, LinkState: info.LinkState})
+	x, _ := renderNICXML(NICSpec{Mode: info.Mode, BridgeName: info.BridgeName, HostNIC: info.HostNIC, Model: info.Model, MAC: info.MAC, LinkState: info.LinkState})
 	return x
 }
 
@@ -2491,7 +2513,7 @@ func (s *LibvirtStore) UpdateNetworkAdapter(name, oldMAC string, nic NICSpec) er
 			newNetworks = append(newNetworks, nic)
 			continue
 		}
-		newNetworks = append(newNetworks, NICSpec{Mode: n.Mode, BridgeName: n.BridgeName, Model: n.Model, MAC: n.MAC, LinkState: n.LinkState})
+		newNetworks = append(newNetworks, NICSpec{Mode: n.Mode, BridgeName: n.BridgeName, HostNIC: n.HostNIC, Model: n.Model, MAC: n.MAC, LinkState: n.LinkState})
 	}
 	if idx < 0 {
 		newNetworks = append(newNetworks, nic)

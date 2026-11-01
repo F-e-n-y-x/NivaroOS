@@ -145,7 +145,7 @@
 		<div v-if="currentStepId === 'network'" class="wizard-pane">
 			<div class="wizard-section">
 				<h3 class="setting-card-title">{{ $t('Network Adapters') }}</h3>
-				<vm-network-list v-model="form.networks" :bridge-networks="bridgeNetworks"></vm-network-list>
+				<vm-network-list v-model="form.networks" :bridge-networks="bridgeNetworks" :direct-networks="directNetworks"></vm-network-list>
 			</div>
 		</div>
 
@@ -174,7 +174,7 @@
 				<div class="setting-row"><div class="row-label">{{ $t('ISO') }}</div><div class="row-control review-value">{{ form.iso_path || $t('None') }}</div></div>
 				<div class="setting-row">
 					<div class="row-label">{{ $t('Network') }}</div>
-					<div class="row-control review-value">{{ form.networks.length ? form.networks.map((n) => (n.mode === 'nat' ? $t('NAT') : n.bridge_name)).join(', ') : $t('None') }}</div>
+					<div class="row-control review-value">{{ form.networks.length ? form.networks.map((n) => (n.mode === 'direct' ? $t('Direct') + ': ' + n.host_nic : n.mode === 'bridge' ? n.bridge_name : $t('NAT'))).join(', ') : $t('None') }}</div>
 				</div>
 				<div class="setting-row" v-if="form.usb_devices.length"><div class="row-label">{{ $t('USB Devices') }}</div><div class="row-control review-value">{{ form.usb_devices.length }}</div></div>
 				<div class="setting-row" v-if="form.pci_devices.length"><div class="row-label">{{ $t('PCI Devices') }}</div><div class="row-control review-value">{{ form.pci_devices.length }}</div></div>
@@ -278,6 +278,9 @@ export default {
 		},
 		bridgeNetworks() {
 			return this.networks.filter((n) => n.mode === 'bridge')
+		},
+		directNetworks() {
+			return this.networks.filter((n) => n.mode === 'direct')
 		},
 		// Basic mode collapses to one disk, one adapter, no USB/PCI step -
 		// Unraid and VirtualBox 7.1 both use exactly this two-tier

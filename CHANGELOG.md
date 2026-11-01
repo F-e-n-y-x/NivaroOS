@@ -8,8 +8,28 @@ updated from `master` by re-running the installer.
 
 ## [Unreleased]
 
+### Added
+
+- VM Manager: "Direct" network adapters (macvtap). A VM gets its own IP from
+  the router on any wired port, with no bridge to set up and no change to
+  the server's own network. The server itself can't reach such a VM over
+  the network (a kernel limit); add a NAT adapter too if the VM needs the
+  server. Wi-Fi ports aren't offered, since access points accept only one
+  MAC per client.
+
 ### Fixed
 
+- VM Manager: a DHCP bridge keeps the server's own IP. The bridge takes
+  over the network port's MAC address (and its DHCP client ID under
+  NetworkManager), so the router hands back the address the server already
+  had. The dashboard can now bridge the server's only network port: it
+  marks it as "this server's connection", asks for consent, and confirms
+  the bridge once the server answers again (otherwise it is undone after
+  45 seconds). DHCP is the normal choice; a static IP is optional.
+- VM Manager: VMs on a bridge get their address from the router even when
+  Docker runs on the server. Each bridge gets an allow rule in Docker's
+  DOCKER-USER firewall chain, re-applied at every start, so Docker's
+  forwarding rules can't drop the VMs' DHCP and traffic.
 - VM Manager: bridged networks work on a host whose network card is run
   by NetworkManager, as on a desktop install where the wired connection
   shows in the desktop's network settings. The bridge is made from two

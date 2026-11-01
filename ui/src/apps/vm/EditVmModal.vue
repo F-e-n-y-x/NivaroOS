@@ -85,7 +85,7 @@
 			</div>
 			<div class="edit-section">
 				<h3 class="setting-card-title">{{ $t('Network Adapters') }}</h3>
-				<vm-network-list v-model="form.networks" :bridge-networks="bridgeNetworks"></vm-network-list>
+				<vm-network-list v-model="form.networks" :bridge-networks="bridgeNetworks" :direct-networks="directNetworks"></vm-network-list>
 			</div>
 			<div class="edit-section">
 				<h3 class="setting-card-title">{{ $t('Shared Folder') }}</h3>
@@ -202,6 +202,9 @@ export default {
 		bridgeNetworks() {
 			return this.networks.filter((n) => n.mode === 'bridge')
 		},
+		directNetworks() {
+			return this.networks.filter((n) => n.mode === 'direct')
+		},
 		// The slider steps in raw MiB (matching form.memory_mib directly),
 		// but typing an exact value is far more natural in GB - this
 		// converts both ways, snapping back to the slider's own 512MiB
@@ -295,7 +298,7 @@ export default {
 				display_width: fresh.display_width || 0,
 				display_height: fresh.display_height || 0,
 				disks: (fresh.disks || []).map((d) => ({ path: d.path, gib: d.gib, bus: d.bus, ssd: !!d.ssd })),
-				networks: (fresh.networks || []).map((n) => ({ mode: n.mode, bridge_name: n.bridge_name, model: n.model || 'virtio', mac: n.mac || '', link_state: n.link_state || 'up' })),
+				networks: (fresh.networks || []).map((n) => ({ mode: n.mode, bridge_name: n.bridge_name, host_nic: n.host_nic, model: n.model || 'virtio', mac: n.mac || '', link_state: n.link_state || 'up' })),
 				usb_devices: fresh.usb_devices || [],
 				pci_devices: fresh.pci_devices || [],
 			}

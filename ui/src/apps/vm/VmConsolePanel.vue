@@ -329,10 +329,10 @@
 							<template v-if="!editingNet">
 								<div v-for="(n, idx) in (vm && vm.networks) || []" :key="idx" class="device-menu-row net-menu-row">
 									<div class="device-row-icon" :class="{ active: n.link_state !== 'down' }">
-										<b-icon :icon="n.mode === 'bridge' ? 'lan-connect' : 'lan'" size="is-small" :custom-size="n.mode === 'bridge' ? 'mdi-12px' : 'mdi-16px'"></b-icon>
+										<b-icon :icon="n.mode === 'bridge' ? 'lan-connect' : n.mode === 'direct' ? 'ethernet' : 'lan'" size="is-small" :custom-size="n.mode === 'nat' || !n.mode ? 'mdi-16px' : 'mdi-12px'"></b-icon>
 									</div>
 									<div class="network-row-details">
-										<span class="network-row-label">{{ n.mode === 'bridge' ? n.bridge_name : $t('NAT Network') }}</span>
+										<span class="network-row-label">{{ n.mode === 'bridge' ? n.bridge_name : n.mode === 'direct' ? $t('Direct') + ': ' + n.host_nic : $t('NAT Network') }}</span>
 										<span class="network-row-meta">{{ (n.model || 'virtio').toUpperCase() }} <template v-if="n.mac">&middot; {{ n.mac }}</template></span>
 									</div>
 									<button
@@ -369,6 +369,18 @@
 											icon="lan-connect"
 											size="small"
 										></vm-dropdown>
+									</div>
+									<div v-if="netForm.mode === 'direct'" class="net-editor-section">
+										<label class="net-editor-label">{{ $t('Host Network Port') }}</label>
+										<vm-dropdown
+											v-model="netForm.host_nic"
+											:options="directDropdownOptions"
+											:placeholder="$t('Select network port...')"
+											dark
+											icon="ethernet"
+											size="small"
+										></vm-dropdown>
+										<p class="device-menu-hint">{{ $t('Own IP from your router. This PC itself can\'t reach the VM over the network.') }}</p>
 									</div>
 									<div class="net-editor-section">
 										<label class="net-editor-label">{{ $t('Adapter Emulation Model') }}</label>
@@ -736,6 +748,7 @@ export default {
 			editingNetMAC: '',
 			netForm: { mode: 'nat', bridge_name: '', model: 'virtio', mac: '', link_state: 'up' },
 			availableBridges: [],
+			availableDirect: [],
 			statePollTimer: null,
 			usbMenuOpen: false,
 			diskMenuOpen: false,
@@ -876,10 +889,14 @@ export default {
 				icon: 'lan-connect',
 			}))
 		},
+		directDropdownOptions() {
+			return (this.availableDirect || []).map((d) => ({ value: d.host_nic, label: d.host_nic, icon: 'ethernet' }))
+		},
 		networkModeOptions() {
 			return [
 				{ value: 'nat', label: this.$t('NAT (Shared Network)'), icon: 'lan', meta: 'Default' },
 				{ value: 'bridge', label: this.$t('Bridge (Direct LAN Access)'), icon: 'lan-connect', meta: 'Bridged' },
+				{ value: 'direct', label: this.$t('Direct (Own IP, no bridge)'), icon: 'ethernet', meta: 'macvtap' },
 			]
 		},
 		adapterModelOptions() {
@@ -1319,8 +1336,9 @@ export default {
 			const rawModel = (currentNet.model || 'virtio').toLowerCase()
 			const rawMode = (currentNet.mode || 'nat').toLowerCase()
 			this.netForm = {
-				mode: rawMode === 'bridge' ? 'bridge' : 'nat',
+				mode: ['bridge', 'direct'].includes(rawMode) ? rawMode : 'nat',
 				bridge_name: currentNet.bridge_name || (this.availableBridges[0] ? this.availableBridges[0].name : 'br0'),
+				host_nic: currentNet.host_nic || (this.availableDirect[0] ? this.availableDirect[0].host_nic : ''),
 				model: ['virtio', 'e1000e', 'e1000', 'rtl8139'].includes(rawModel) ? rawModel : 'virtio',
 				mac: currentNet.mac || '',
 				link_state: currentNet.link_state || 'up',
@@ -1330,7 +1348,11 @@ export default {
 		async saveNetworkAdapter() {
 			this.netBusy = true
 			try {
-				await vmSidecar.updateNetworkAdapter(this.vmName, this.editingNetMAC, this.netForm)
+				// Only the field the chosen mode uses: a leftover bridge name
+				// on a direct adapter (or the reverse) would just be noise.
+				const { bridge_name, host_nic, ...rest } = this.netForm
+				const payload = { ...rest, ...(rest.mode === 'bridge' ? { bridge_name } : rest.mode === 'direct' ? { host_nic } : {}) }
+				await vmSidecar.updateNetworkAdapter(this.vmName, this.editingNetMAC, payload)
 				this.$buefy.toast.open({
 					message: this.$t('Network adapter updated successfully'),
 					type: 'is-success',
@@ -1348,6 +1370,10 @@ export default {
 			try {
 				const nets = await vmSidecar.listNetworks()
 				this.availableBridges = (nets || []).filter((n) => n.mode === 'bridge')
+				this.availableDirect = (nets || []).filter((n) => n.mode === 'direct')
+				if (this.netForm.mode === 'direct' && !this.netForm.host_nic && this.availableDirect[0]) {
+					this.netForm.host_nic = this.availableDirect[0].host_nic
+				}
 			} catch (e) {}
 		},
 		runAction(method) {

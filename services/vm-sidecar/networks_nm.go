@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -51,15 +52,54 @@ func nmDeviceManaged(out, hostNIC string) bool {
 func nmBridgeProfile(name string) string { return "nivaroos-" + name }
 func nmPortProfile(name string) string   { return "nivaroos-" + name + "-port" }
 
+// nmIdentity is what a DHCP server knows hostNIC by: its MAC and the DHCP
+// client ID its NetworkManager profile sends (if one is set explicitly).
+// A DHCP bridge presents both, so the server hands back the same address
+// the host had before the bridge - the host keeps its IP, over DHCP.
+type nmIdentity struct{ MAC, ClientID string }
+
+var clientIDRe = regexp.MustCompile(`^[0-9A-Za-z:._-]{1,255}$`)
+
+// nmNICIdentity reads hostNIC's identity before the bridge takes it over.
+// Anything it can't read is left empty (the bridge then falls back to
+// NetworkManager's defaults).
+func nmNICIdentity(nic string) nmIdentity {
+	var id nmIdentity
+	if mac, err := nicMAC(nic); err == nil {
+		id.MAC = mac
+	}
+	out, err := nmcli("-g", "GENERAL.CONNECTION", "device", "show", nic)
+	con := strings.TrimSpace(string(out))
+	if err != nil || con == "" || strings.HasPrefix(con, "nivaroos-") {
+		return id
+	}
+	if out, err := nmcli("-g", "ipv4.dhcp-client-id", "connection", "show", con); err == nil {
+		// -g escapes the ':' of hex client IDs as "\:".
+		cid := strings.ReplaceAll(strings.TrimSpace(string(out)), `\:`, ":")
+		if clientIDRe.MatchString(cid) {
+			id.ClientID = cid
+		}
+	}
+	return id
+}
+
 // nmBridgeAddArgs builds the two `nmcli connection add` calls for a bridge.
 // Every field was validated by validateBridgeRequest (interface names,
 // dotted-quad IPv4) and is passed as its own argument, never through a shell.
-func nmBridgeAddArgs(req CreateBridgeRequest) ([][]string, error) {
+func nmBridgeAddArgs(req CreateBridgeRequest, id nmIdentity) ([][]string, error) {
 	bridge := []string{"connection", "add", "type", "bridge",
 		"ifname", req.Name, "con-name", nmBridgeProfile(req.Name),
 		"bridge.stp", "no", "bridge.forward-delay", "0",
 		"connection.autoconnect", "yes", "connection.autoconnect-priority", "100",
 		"ipv6.method", "auto"}
+	if req.StaticIP == "" {
+		if id.MAC != "" {
+			bridge = append(bridge, "ethernet.cloned-mac-address", id.MAC)
+		}
+		if id.ClientID != "" {
+			bridge = append(bridge, "ipv4.dhcp-client-id", id.ClientID)
+		}
+	}
 	if req.StaticIP != "" {
 		ones, bits := net.IPMask(net.ParseIP(req.Netmask).To4()).Size()
 		if bits == 0 {
@@ -81,7 +121,7 @@ func nmBridgeAddArgs(req CreateBridgeRequest) ([][]string, error) {
 // createBridgeNM is CreateBridgeNetwork for a NetworkManager-run NIC: same
 // validation already done, same registry, same ForceDefaultRoute auto-revert.
 func createBridgeNM(registryPath string, req CreateBridgeRequest) (BridgeNetwork, error) {
-	adds, err := nmBridgeAddArgs(req)
+	adds, err := nmBridgeAddArgs(req, nmNICIdentity(req.HostNIC))
 	if err != nil {
 		return BridgeNetwork{}, err
 	}
@@ -112,6 +152,7 @@ func createBridgeNM(registryPath string, req CreateBridgeRequest) (BridgeNetwork
 	if err := addBridgeToRegistry(registryPath, bridge); err != nil {
 		return BridgeNetwork{}, fmt.Errorf("save bridge to registry: %w", err)
 	}
+	ensureBridgeForwarding(req.Name)
 	return bridge, nil
 }
 
@@ -125,6 +166,7 @@ func nmDeleteProfiles(name string) {
 // removeBridgeNM tears a NetworkManager bridge down and hands hostNIC back to
 // its own profile.
 func removeBridgeNM(name, hostNIC string) error {
+	removeBridgeForwarding(name)
 	nmDeleteProfiles(name)
 	if out, err := nmcli("device", "connect", hostNIC); err != nil {
 		return fmt.Errorf("nmcli device connect %s: %v: %s", hostNIC, err, strings.TrimSpace(string(out)))

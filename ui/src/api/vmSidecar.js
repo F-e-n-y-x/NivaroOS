@@ -137,6 +137,11 @@ export const vmSidecar = {
 	listNetworks: () => request('/networks'),
 	listHostInterfaces: () => request('/networks/interfaces'),
 	createBridge: payload => request('/networks/bridge', jsonBody(payload)),
+	// Bridging the host's own connection: which interface carries it, and
+	// confirming the bridge once the host is reachable again (else it is
+	// undone automatically after 45 s).
+	getDefaultRouteInterface: () => request('/networks/default-route'),
+	confirmBridge: name => request(`/networks/bridge/${encodeURIComponent(name)}/confirm`, { method: 'POST' }),
 	deleteBridge: name => request(`/networks/bridge/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 
 	// USB/PCI devices available for passthrough, plus whether IOMMU is

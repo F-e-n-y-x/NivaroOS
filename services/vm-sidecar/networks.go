@@ -62,21 +62,51 @@ const backendNM = "networkmanager"
 
 type NetworkInfo struct {
 	Name    string `json:"name"`
-	Mode    string `json:"mode"` // "nat" or "bridge"
+	Mode    string `json:"mode"` // "nat", "bridge" or "direct"
 	HostNIC string `json:"host_nic,omitempty"`
 	Active  bool   `json:"active"`
 }
 
+// sysClassNet is where interfaces are listed; a var so tests can fake it.
+var sysClassNet = "/sys/class/net"
+
 func networkInterfaceExists(name string) bool {
-	_, err := os.Stat(filepath.Join("/sys/class/net", name))
+	_, err := os.Stat(filepath.Join(sysClassNet, name))
 	return err == nil
+}
+
+// directCandidates are the host NICs a "direct" (macvtap) VM adapter can sit
+// on: wired physical NICs that aren't a bridge member. Wi-Fi is left out - an
+// access point only accepts the station's own MAC, so a VM's extra MAC never
+// gets through - and so is a NIC already enslaved to a bridge (macvtap can't
+// attach to it; use the bridge instead).
+func directCandidates() []string {
+	names, err := listPhysicalInterfaces()
+	if err != nil {
+		return nil
+	}
+	out := []string{}
+	for _, n := range names {
+		base := filepath.Join(sysClassNet, n)
+		if _, err := os.Stat(filepath.Join(base, "wireless")); err == nil {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(base, "phy80211")); err == nil {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(base, "master")); err == nil {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 // listPhysicalInterfaces lists host NICs suitable for bridging: real
 // devices only (a "device" symlink under sysfs), which excludes bridges,
 // veth pairs, docker0, and TUN/TAP devices like tailscale0.
 func listPhysicalInterfaces() ([]string, error) {
-	entries, err := os.ReadDir("/sys/class/net")
+	entries, err := os.ReadDir(sysClassNet)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +115,7 @@ func listPhysicalInterfaces() ([]string, error) {
 		if e.Name() == "lo" {
 			continue
 		}
-		if _, err := os.Stat(filepath.Join("/sys/class/net", e.Name(), "device")); err != nil {
+		if _, err := os.Stat(filepath.Join(sysClassNet, e.Name(), "device")); err != nil {
 			continue
 		}
 		names = append(names, e.Name())
@@ -142,6 +172,9 @@ iface {{.Name}} inet static
     gateway {{.Gateway}}
 {{- else -}}
 iface {{.Name}} inet dhcp
+{{- if .MAC}}
+    hwaddress ether {{.MAC}}
+{{- end}}
 {{- end}}
     bridge_ports {{.HostNIC}}
     bridge_stp off
@@ -161,9 +194,28 @@ var bridgeSnippet = template.Must(template.New("bridge").Parse(bridgeSnippetTemp
 // from under it. Static sidesteps that - the same reason Unraid and
 // Proxmox both default their host management bridge to a fixed IP
 // rather than DHCP.
+//
+// A DHCP bridge instead takes over hostNIC's MAC (MAC, "hwaddress ether"):
+// the DHCP server then sees the same client - dhclient's client ID is the
+// MAC, dhcpcd's is its DUID plus an IAID derived from the MAC - and hands
+// back the address the host already had, just as before the bridge.
 type bridgeSnippetData struct {
 	Name, HostNIC              string
 	StaticIP, Netmask, Gateway string
+	MAC                        string
+}
+
+// nicMAC is hostNIC's hardware address; a var so tests don't need the NIC.
+var nicMAC = func(nic string) (string, error) {
+	b, err := os.ReadFile(filepath.Join("/sys/class/net", nic, "address"))
+	if err != nil {
+		return "", err
+	}
+	mac := strings.ToLower(strings.TrimSpace(string(b)))
+	if !macRe.MatchString(mac) {
+		return "", fmt.Errorf("unexpected MAC address %q for %s", mac, nic)
+	}
+	return mac, nil
 }
 
 func writeInterfacesSnippet(dir string, data bridgeSnippetData) error {
@@ -381,6 +433,7 @@ func revertBridge(s revertState) {
 		}
 		return
 	}
+	removeBridgeForwarding(s.name)
 	exec.Command("ifdown", s.name).Run()
 	// hostNIC was brought up as a bridge member (applyBridge's own
 	// ifup hostNIC call, under the "manual" stanza the bridge snippet
@@ -514,6 +567,16 @@ func CreateBridgeNetwork(registryPath, interfacesDir string, req CreateBridgeReq
 		return createBridgeNM(registryPath, req)
 	}
 
+	// Read before any file is touched, so a failure leaves nothing to undo.
+	snippetData := bridgeSnippetData{Name: req.Name, HostNIC: req.HostNIC, StaticIP: req.StaticIP, Netmask: req.Netmask, Gateway: req.Gateway}
+	if req.StaticIP == "" {
+		mac, err := nicMAC(req.HostNIC)
+		if err != nil {
+			return BridgeNetwork{}, fmt.Errorf("read %s's MAC address: %w", req.HostNIC, err)
+		}
+		snippetData.MAC = mac
+	}
+
 	// A host whose primary NIC is configured directly in the main file
 	// (interfaces.d/ empty, everything in one file) would otherwise end
 	// up with hostNIC defined twice once the snippet below also defines
@@ -523,7 +586,6 @@ func CreateBridgeNetwork(registryPath, interfacesDir string, req CreateBridgeReq
 		return BridgeNetwork{}, fmt.Errorf("neutralize main interfaces config: %w", err)
 	}
 
-	snippetData := bridgeSnippetData{Name: req.Name, HostNIC: req.HostNIC, StaticIP: req.StaticIP, Netmask: req.Netmask, Gateway: req.Gateway}
 	if err := writeInterfacesSnippet(interfacesDir, snippetData); err != nil {
 		return BridgeNetwork{}, fmt.Errorf("write network config: %w", err)
 	}
@@ -547,6 +609,7 @@ func CreateBridgeNetwork(registryPath, interfacesDir string, req CreateBridgeReq
 	if err := addBridgeToRegistry(registryPath, bridge); err != nil {
 		return BridgeNetwork{}, fmt.Errorf("save bridge to registry: %w", err)
 	}
+	ensureBridgeForwarding(req.Name)
 	return bridge, nil
 }
 
@@ -604,6 +667,7 @@ func DeleteBridgeNetwork(registryPath, interfacesDir, name, hostNIC, backend str
 		}
 		return removeBridgeFromRegistry(registryPath, name)
 	}
+	removeBridgeForwarding(name)
 	exec.Command("ifdown", name).Run()
 	exec.Command("dhcpcd", "-k", hostNIC).Run()
 	exec.Command("ifdown", hostNIC).Run()
@@ -638,6 +702,10 @@ func ListNetworks(store *LibvirtStore, registryPath string) ([]NetworkInfo, erro
 			Name: b.Name, Mode: "bridge", HostNIC: b.HostNIC, Active: networkInterfaceExists(b.Name),
 		})
 	}
+	// Direct (macvtap) networks need no setup: one per usable wired NIC.
+	for _, nic := range directCandidates() {
+		networks = append(networks, NetworkInfo{Name: nic, Mode: "direct", HostNIC: nic, Active: true})
+	}
 	return networks, nil
 }
 
@@ -658,6 +726,14 @@ func RegisterNetworkRoutes(mux *http.ServeMux, store *LibvirtStore, registryPath
 			return
 		}
 		writeJSON(w, http.StatusOK, names)
+	})
+
+	// The interface carrying this host's own connection: the dashboard marks
+	// it and asks for explicit consent (force_default_route) before bridging
+	// it. "" when there is no default route.
+	mux.HandleFunc("GET /networks/default-route", func(w http.ResponseWriter, r *http.Request) {
+		dev, _ := defaultRouteInterface()
+		writeJSON(w, http.StatusOK, map[string]string{"interface": dev})
 	})
 
 	mux.HandleFunc("POST /networks/bridge", func(w http.ResponseWriter, r *http.Request) {

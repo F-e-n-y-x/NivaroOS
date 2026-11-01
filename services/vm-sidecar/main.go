@@ -39,6 +39,8 @@ func main() {
 	RegisterISORoutes(mux, store, defaultISODir)
 	RegisterGuestToolsRoutes(mux, store)
 	RegisterNetworkRoutes(mux, store, defaultBridgeRegistryPath, interfacesDotDDir)
+	// Bridged VMs must get through Docker's firewall after every boot.
+	go EnsureBridgesForwarding(defaultBridgeRegistryPath)
 	RegisterConsoleRoutes(mux, store)
 	RegisterScreenshotRoutes(mux, store)
 	RegisterHostRoutes(mux)

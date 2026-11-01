@@ -2,14 +2,15 @@
 <!--
 	Shared network-adapter list editor for CreateVmModal and EditVmModal -
 	a VM can have zero NICs (fully isolated) or several, each independently
-	NAT or bridged - matching VMware Workstation/VirtualBox's per-adapter
+	NAT, bridged or direct (macvtap: its own IP from the router, no bridge
+	needed, but the host itself can't reach it) - matching VMware Workstation/VirtualBox's per-adapter
 	settings rather than one network choice for the whole VM.
 -->
 <template>
 	<div class="vm-net-list">
 		<div v-for="(net, i) in networks" :key="i" class="vm-net-row">
-			<div class="vm-net-icon" :class="{ 'is-bridge': net.mode === 'bridge' }">
-				<b-icon :icon="net.mode === 'bridge' ? 'lan-connect' : 'lan'" :custom-size="net.mode === 'bridge' ? 'mdi-18px' : 'mdi-22px'"></b-icon>
+			<div class="vm-net-icon" :class="{ 'is-bridge': net.mode === 'bridge' || net.mode === 'direct' }">
+				<b-icon :icon="net.mode === 'bridge' ? 'lan-connect' : net.mode === 'direct' ? 'ethernet' : 'lan'" :custom-size="net.mode === 'nat' || !net.mode ? 'mdi-22px' : 'mdi-18px'"></b-icon>
 			</div>
 			<div class="vm-net-controls">
 				<div class="segmented-control vm-net-mode">
@@ -34,7 +35,19 @@
 						:class="{ active: net.mode === 'bridge' }"
 						@click="setBridge(i, net.bridge_name || 'br0')"
 					>{{ $t('Bridge') }} ({{ net.bridge_name || 'br0' }})</button>
+					<button
+						v-for="d in directNetworks"
+						:key="'direct-' + d.host_nic"
+						type="button"
+						class="segmented-option"
+						:class="{ active: net.mode === 'direct' && net.host_nic === d.host_nic }"
+						:title="$t('Own IP from your router, no bridge needed. This PC itself can\'t reach the VM over the network.')"
+						@click="setDirect(i, d.host_nic)"
+					>{{ $t('Direct') }}: {{ d.host_nic }}</button>
 				</div>
+				<p v-if="net.mode === 'direct'" class="vm-net-hint vm-net-direct-hint">
+					{{ $t('Gets its own IP from your router. Other devices on your network can reach it, but this PC can\'t - add a NAT adapter too if the VM needs this PC (dashboard, shares).') }}
+				</p>
 				<div class="segmented-control vm-net-model" :title="$t('Network adapter emulation model')">
 					<button
 						type="button"
@@ -83,6 +96,8 @@ export default {
 	props: {
 		modelValue: { type: Array, default: () => [] },
 		bridgeNetworks: { type: Array, default: () => [] },
+		// Direct (macvtap) networks from /networks: one per usable wired NIC.
+		directNetworks: { type: Array, default: () => [] },
 		// Basic mode hides the ability to add further adapters - a single
 		// NAT/bridge choice is all that mode edits.
 		allowAdd: { type: Boolean, default: true },
@@ -94,10 +109,13 @@ export default {
 	},
 	methods: {
 		setField(index, field, val) {
-			this.$emit('update:modelValue', this.networks.map((n, i) => (i === index ? { ...n, [field]: val } : n)))
+			this.$emit('update:modelValue', this.networks.map((n, i) => (i === index ? { ...n, [field]: val, ...(field === 'mode' && val === 'nat' ? { bridge_name: undefined, host_nic: undefined } : {}) } : n)))
 		},
 		setBridge(index, bridgeName) {
-			this.$emit('update:modelValue', this.networks.map((n, i) => (i === index ? { ...n, mode: 'bridge', bridge_name: bridgeName } : n)))
+			this.$emit('update:modelValue', this.networks.map((n, i) => (i === index ? { ...n, mode: 'bridge', bridge_name: bridgeName, host_nic: undefined } : n)))
+		},
+		setDirect(index, hostNIC) {
+			this.$emit('update:modelValue', this.networks.map((n, i) => (i === index ? { ...n, mode: 'direct', host_nic: hostNIC, bridge_name: undefined } : n)))
 		},
 		addNet() {
 			this.$emit('update:modelValue', [...this.networks, { mode: 'nat', model: 'virtio' }])
@@ -195,6 +213,10 @@ export default {
 .vm-net-hint {
 	font-size: var(--font-xs);
 	color: var(--theme-text-muted, #64748b);
+}
+.vm-net-direct-hint {
+	margin: 0;
+	flex-basis: 100%;
 }
 // Narrow windows: the mode and model pickers wrap instead of overflowing.
 .vm-net-row .segmented-control {
