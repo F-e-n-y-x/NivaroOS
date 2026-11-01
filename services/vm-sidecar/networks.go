@@ -4,9 +4,15 @@
 // a small JSON registry - VMs attach to them directly via
 // <interface type='bridge'>, without needing a libvirt Network object).
 //
-// This box runs classic Debian ifupdown (/etc/network/interfaces,
-// sourcing /etc/network/interfaces.d/*), not netplan/systemd-networkd -
-// bridge config is written as an interfaces.d snippet.
+// Two backends, chosen per bridge when it is created and remembered in the
+// registry (BridgeNetwork.Backend) so deleting it later uses the same one:
+//   - ifupdown (classic Debian /etc/network/interfaces, sourcing
+//     /etc/network/interfaces.d/*): config is written as an interfaces.d
+//     snippet. The default.
+//   - NetworkManager, when it runs and manages the host NIC (a desktop
+//     install hands the wired NIC to it so it shows in the desktop's network
+//     settings): the bridge is two NivaroOS-owned connection profiles made
+//     with nmcli; the NIC's own profile is never edited (networks_nm.go).
 //
 // Bridge creation refuses the host's default-route interface by default
 // (validateHostNIC), so it normally can't drop the connection the API
@@ -47,7 +53,12 @@ type BridgeNetwork struct {
 	StaticIP string `json:"static_ip,omitempty"`
 	Netmask  string `json:"netmask,omitempty"`
 	Gateway  string `json:"gateway,omitempty"`
+	// Backend that created the bridge: backendNM, or "" for ifupdown (every
+	// bridge made before NetworkManager support).
+	Backend string `json:"backend,omitempty"`
 }
+
+const backendNM = "networkmanager"
 
 type NetworkInfo struct {
 	Name    string `json:"name"`
@@ -339,11 +350,16 @@ const bridgeRevertDelay = 45 * time.Second
 
 var pendingReverts sync.Map // bridge name -> *time.Timer
 
+// afterFunc schedules a ForceDefaultRoute auto-revert; a var so tests can
+// run it without waiting.
+var afterFunc = time.AfterFunc
+
 // revertState captures what's needed to fully undo neutralizeMainInterfaceStanza's write.
 type revertState struct {
 	name, hostNIC, snippetPath, registryPath string
 	originalMainConfig                       string
 	mainConfigChanged                        bool
+	backend                                  string // backendNM or "" (ifupdown)
 }
 
 // revertBridgeFiles undoes the config file changes only - split out from
@@ -358,6 +374,13 @@ func revertBridgeFiles(s revertState) error {
 }
 
 func revertBridge(s revertState) {
+	if s.backend == backendNM {
+		removeBridgeNM(s.name, s.hostNIC)
+		if s.registryPath != "" {
+			removeBridgeFromRegistry(s.registryPath, s.name)
+		}
+		return
+	}
 	exec.Command("ifdown", s.name).Run()
 	// hostNIC was brought up as a bridge member (applyBridge's own
 	// ifup hostNIC call, under the "manual" stanza the bridge snippet
@@ -487,6 +510,10 @@ func CreateBridgeNetwork(registryPath, interfacesDir string, req CreateBridgeReq
 		}
 	}
 
+	if nmManages(req.HostNIC) {
+		return createBridgeNM(registryPath, req)
+	}
+
 	// A host whose primary NIC is configured directly in the main file
 	// (interfaces.d/ empty, everything in one file) would otherwise end
 	// up with hostNIC defined twice once the snippet below also defines
@@ -570,7 +597,13 @@ func restoreMainInterfaceStanza(mainInterfacesPath, hostNIC string) (changed boo
 // confirmed (i.e. no pending revert timer exists for it any more) -
 // removes its interfaces.d snippet, restores hostNIC's original stanza
 // in the main config, and brings hostNIC back up as a plain interface.
-func DeleteBridgeNetwork(registryPath, interfacesDir, name, hostNIC string) error {
+func DeleteBridgeNetwork(registryPath, interfacesDir, name, hostNIC, backend string) error {
+	if backend == backendNM {
+		if err := removeBridgeNM(name, hostNIC); err != nil {
+			return err
+		}
+		return removeBridgeFromRegistry(registryPath, name)
+	}
 	exec.Command("ifdown", name).Run()
 	exec.Command("dhcpcd", "-k", hostNIC).Run()
 	exec.Command("ifdown", hostNIC).Run()
@@ -662,11 +695,11 @@ func RegisterNetworkRoutes(mux *http.ServeMux, store *LibvirtStore, registryPath
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		var hostNIC string
+		var hostNIC, backend string
 		found := false
 		for _, b := range bridges {
 			if b.Name == name {
-				hostNIC = b.HostNIC
+				hostNIC, backend = b.HostNIC, b.Backend
 				found = true
 				break
 			}
@@ -688,7 +721,7 @@ func RegisterNetworkRoutes(mux *http.ServeMux, store *LibvirtStore, registryPath
 			return
 		}
 		ConfirmBridge(name) // cancel any still-pending auto-revert first, so it can't fire mid-delete
-		if err := DeleteBridgeNetwork(registryPath, interfacesDir, name, hostNIC); err != nil {
+		if err := DeleteBridgeNetwork(registryPath, interfacesDir, name, hostNIC, backend); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}

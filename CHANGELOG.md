@@ -10,6 +10,13 @@ updated from `master` by re-running the installer.
 
 ### Fixed
 
+- VM Manager: bridged networks work on a host whose network card is run
+  by NetworkManager, as on a desktop install where the wired connection
+  shows in the desktop's network settings. The bridge is made from two
+  NivaroOS connection profiles; the card's own connection is never edited
+  and comes back when the bridge is deleted or auto-reverted. Hosts on
+  classic ifupdown keep working exactly as before. Each bridge remembers
+  which one made it.
 - Apps that use the NVIDIA GPU (Immich machine learning and video
   transcoding, Jellyfin, ComfyUI...) start on a fresh install. The installer
   now sets up the NVIDIA Container Toolkit and Docker's "nvidia" runtime
